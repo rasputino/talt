@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Talt.Client/Talt.Client.csproj" />
+    <Project Path="src/Talt.Core/Talt.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Talt.Core.Tests/Talt.Core.Tests.csproj" />
+  </Folder>
+</Solution>

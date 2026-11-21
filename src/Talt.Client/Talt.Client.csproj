@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Talt.Client</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Talt.Core\Talt.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.Windowing" />
+    <PackageReference Include="Silk.NET.Input" />
+    <PackageReference Include="Silk.NET.WebGPU" />
+    <PackageReference Include="Silk.NET.WebGPU.Native.WGPU" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Rendering\Shaders\*.wgsl" />
+  </ItemGroup>
+
+</Project>

@@ -83,8 +83,8 @@ performance. Target platforms: Windows, Linux and macOS.
 | Area | Choice | Status |
 |---|---|---|
 | Language / runtime | C# on .NET 10 | Decided |
-| Window, input, graphics bindings | Silk.NET | Tentative |
-| Graphics API | Vulkan (MoltenVK on macOS) or WebGPU | To be decided in prototype |
+| Window, input, graphics bindings | Silk.NET | Working in prototype |
+| Graphics API | WebGPU (wgpu-native: Vulkan, Metal or DirectX 12) | Working in prototype on Windows; Linux and macOS not tested yet |
 | ECS | Arch | Tentative |
 | Debug UI and tools | ImGui.NET | Tentative |
 | Final game UI | — | Open |
@@ -102,9 +102,9 @@ The game is developed mostly through AI-assisted coding. To keep the project man
 
 ## Next steps
 
-1. Technical prototype: open a window on all three platforms and render a voxel chunk.
-2. Simulation benchmark: thousands of vehicles moving on a large map.
-3. Choose the graphics API based on the prototype results.
+1. ~~Technical prototype: open a window and render voxel terrain.~~ Done on Windows (see [ARCHITECTURE.md](ARCHITECTURE.md)).
+2. Test the prototype on Linux and macOS.
+3. Simulation benchmark: thousands of vehicles moving on a large map.
 
 ## Open questions
 

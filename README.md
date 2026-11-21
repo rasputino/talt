@@ -4,7 +4,23 @@ An original transport management game with a voxel art style and support for ver
 
 ## Status
 
-Early stage project. See the [vision document](docs/VISION.md) for goals, scope and technology.
+Early stage project: a technical prototype renders a voxel terrain with WebGPU.
+
+- [Vision](docs/VISION.md): goals, scope and technology.
+- [Architecture](docs/ARCHITECTURE.md): how the code is organized.
+
+## Building and running
+
+Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download) and a GPU with Vulkan,
+Metal or DirectX 12 support.
+
+```
+dotnet build
+dotnet test
+dotnet run --project src/Talt.Client -c Release -- [chunks-per-side] [seed]
+```
+
+Example: `dotnet run --project src/Talt.Client -c Release -- 16 2026` renders a 512 × 512 map.
 
 ## Inspiration
 
