@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: build-and-test (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: windows-x64, runner: windows-latest }
+          - { name: linux-x64, runner: ubuntu-latest }
+          - { name: macos-arm64, runner: macos-latest }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-test
+        with:
+          artifact-name: test-results-${{ matrix.name }}
+
+  # Single aggregate check: require this one in branch protection so the matrix can change freely.
+  ci-result:
+    name: ci-result
+    if: always()
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any platform failed
+        run: |
+          echo "build-and-test result: ${{ needs.build-and-test.result }}"
+          [ "${{ needs.build-and-test.result }}" = "success" ]
+
+  publish:
+    name: publish (${{ matrix.rid }})
+    needs: ci-result
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: win-x64, runner: windows-latest }
+          - { rid: linux-x64, runner: ubuntu-latest }
+          - { rid: osx-arm64, runner: macos-latest }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: |
+            Directory.Packages.props
+            **/*.csproj
+      - name: Publish self-contained
+        shell: pwsh
+        run: dotnet publish src/Talt.Client -c Release -r ${{ matrix.rid }} --self-contained -o publish/talt-${{ matrix.rid }}
+      - name: Verify native libraries
+        shell: pwsh
+        run: ./ci/verify-publish.ps1 -Directory publish/talt-${{ matrix.rid }} -Rid ${{ matrix.rid }}
+      - name: Archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          if ('${{ matrix.rid }}' -eq 'win-x64') {
+            Compress-Archive -Path publish/talt-win-x64 -DestinationPath dist/talt-win-x64.zip
+          } else {
+            # tar keeps the executable bit, which zip from PowerShell would lose.
+            tar -czf dist/talt-${{ matrix.rid }}.tar.gz -C publish talt-${{ matrix.rid }}
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: talt-${{ matrix.rid }}
+          path: dist/*
+          retention-days: 30
+
+  nightly-release:
+    name: nightly-release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: talt-*
+          path: dist
+          merge-multiple: true
+      - name: Replace the nightly prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nightly --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create nightly dist/* --repo "$GITHUB_REPOSITORY" --prerelease \
+            --target "$GITHUB_SHA" --title "Nightly build" \
+            --notes "Unsigned development build of commit $GITHUB_SHA, for testing only."

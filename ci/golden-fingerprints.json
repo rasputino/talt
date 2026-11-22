@@ -1,0 +1,10 @@
+{
+  "runs": [
+    { "name": "default", "args": ["run", "--ticks", "5000"], "fingerprint": "C9F573FD7DE5CBE3" },
+    { "name": "default-sequential", "args": ["run", "--ticks", "5000", "--sequential"], "fingerprint": "C9F573FD7DE5CBE3" },
+    { "name": "reference", "args": ["run", "--map", "4096", "--vehicles", "50000", "--ticks", "10000"], "fingerprint": "C0C656C5AB2D3302" }
+  ],
+  "replays": [
+    { "name": "windows-reference", "session": "ci/sessions/windows-reference.json" }
+  ]
+}

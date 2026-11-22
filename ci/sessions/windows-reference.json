@@ -1,0 +1,36 @@
+{
+  "formatVersion": 1,
+  "gameVersion": "0.1.0",
+  "settings": {
+    "seed": 2026,
+    "startYear": 1950,
+    "mapSizeTiles": 512,
+    "roadSpacing": 16,
+    "roadRemovalChancePerMille": 150,
+    "lineCount": 2000,
+    "vehicleCount": 20000
+  },
+  "entries": [],
+  "checkpoints": [
+    {
+      "tick": 1000,
+      "fingerprint": "62FDA4669AC944AC"
+    },
+    {
+      "tick": 2000,
+      "fingerprint": "727FA5D4DF002AED"
+    },
+    {
+      "tick": 3000,
+      "fingerprint": "46CFF4E8C911745F"
+    },
+    {
+      "tick": 4000,
+      "fingerprint": "87D36D1243CE2DF9"
+    },
+    {
+      "tick": 5000,
+      "fingerprint": "C9F573FD7DE5CBE3"
+    }
+  ]
+}

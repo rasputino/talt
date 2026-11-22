@@ -1,0 +1,50 @@
+name: Build, test and check fingerprints
+description: Restore, build in Release (warnings are errors), run the tests and the headless fingerprint check.
+
+inputs:
+  artifact-name:
+    description: Name of the uploaded test-results artifact
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+        cache: true
+        cache-dependency-path: |
+          Directory.Packages.props
+          **/*.csproj
+
+    - name: Environment
+      shell: pwsh
+      run: |
+        dotnet --info
+        "Runner: $env:RUNNER_OS $env:RUNNER_ARCH"
+        "Image: $env:ImageOS $env:ImageVersion"
+
+    - name: Restore
+      shell: pwsh
+      run: dotnet restore Talt.slnx
+
+    - name: Build (Release, warnings as errors)
+      shell: pwsh
+      run: dotnet build Talt.slnx -c Release --no-restore
+
+    - name: Test
+      shell: pwsh
+      # GPU-dependent tests, if ever added, carry the trait Category=Gpu and never run on CI runners.
+      run: dotnet test Talt.slnx -c Release --no-build --filter "Category!=Gpu" --logger "trx" --results-directory test-results
+
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: test-results/**/*.trx
+        if-no-files-found: warn
+
+    - name: Headless determinism check (golden fingerprints and replay)
+      shell: pwsh
+      run: ./ci/check-fingerprints.ps1

@@ -295,3 +295,26 @@ terrain triangles are drawn every frame with no culling or level of detail yet).
   frame simulating, so 30 FPS also needs drawing to take under about 8 ms per frame. The 2048 and
   4096 maps fail on drawing, not on simulation; those checks move to feature 003 (large-map
   rendering), whose budget is 2 GB of rendering memory.
+
+## Continuous integration
+
+GitHub Actions (repository `rasputino/talt`, private). Workflows are thin; the checks are PowerShell
+scripts in `ci/` that also run locally (`pwsh ci/check-fingerprints.ps1`).
+
+| Workflow | When | What |
+|---|---|---|
+| `ci.yml` job `build-and-test` | every push and pull request | On `windows-latest` (x64), `ubuntu-latest` (x64), `macos-latest` (arm64): restore, build Release with warnings as errors, `dotnet test` (TRX files uploaded), then `ci/check-fingerprints.ps1` |
+| `ci.yml` job `ci-result` | after the matrix | Single aggregate check; require this one in branch protection |
+| `ci.yml` jobs `publish`, `nightly-release` | push to `main` | Self-contained builds of `src/Talt.Client` for win-x64, linux-x64, osx-arm64, each checked for the wgpu-native and GLFW native libraries (`ci/verify-publish.ps1`); uploaded as artifacts and attached to the prerelease `nightly` (replaced on every run, unsigned, testing only) |
+| `ci-arm64.yml` | manual and push to `main` | Same build, test and fingerprint steps on `ubuntu-24.04-arm` and `windows-11-arm`; kept outside `ci-result` because a runner unavailable to a private repository queues instead of failing |
+| `benchmarks.yml` | manual and nightly | BenchmarkDotNet on `ubuntu-latest`, compared with `benchmarks/baselines/ubuntu-latest.json`; regressions above 10% are flagged in the run summary and as warnings but never fail the run |
+
+- **Determinism gate:** `ci/golden-fingerprints.json` holds the expected fingerprints (default scenario
+  at 5000 ticks, sequential and parallel; reference load 4096 map, 50 000 vehicles, 10 000 ticks).
+  `ci/sessions/windows-reference.json` was recorded on Windows and is replayed on every platform, so
+  every checkpoint must match. Change the golden values only when simulation rules change on purpose.
+- **GPU:** runners have no GPU, so the client is only built. Any future GPU test must carry the trait
+  `Category=Gpu`; CI excludes it.
+- **Baselines:** updated by hand (see `benchmarks/baselines/README.md`), never by the workflow.
+- **Not covered:** macOS Intel (x64) and any hardware with a real GPU. A downloaded build has to be
+  started by hand on Linux and macOS at least once.

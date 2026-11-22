@@ -1,0 +1,58 @@
+name: Benchmarks
+
+# Not run on every push: shared runners are too noisy. Manual or nightly only.
+# Regressions above 10% are flagged in the report and as warnings, and never fail the run.
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: BenchmarkDotNet job (short = quick and less precise, default = precise and slow)
+        type: choice
+        options: [short, default]
+        default: short
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: |
+            Directory.Packages.props
+            **/*.csproj
+
+      - name: Run benchmarks
+        shell: pwsh
+        run: |
+          $job = '${{ inputs.job }}'
+          if (-not $job) { $job = 'short' }   # scheduled runs have no inputs
+          dotnet run -c Release --project benchmarks/Talt.Benchmarks -- --filter "*" --job $job --exporters json --artifacts bdn-results
+
+      - name: Compare with the baseline
+        shell: pwsh
+        run: |
+          # BenchmarkDotNet writes one results file per benchmark class; merge them into one document.
+          $files = Get-ChildItem bdn-results/results -Filter '*-report-full-compressed.json'
+          $all = @{ Benchmarks = @() }
+          foreach ($file in $files) { $all.Benchmarks += (Get-Content -Raw $file | ConvertFrom-Json).Benchmarks }
+          $all | ConvertTo-Json -Depth 30 | Set-Content bdn-results/current.json
+          ./ci/compare-benchmarks.ps1 -Baseline benchmarks/baselines/ubuntu-latest.json -Current bdn-results/current.json -ReportPath bdn-results/benchmark-report.md
+          Get-Content bdn-results/benchmark-report.md | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-results
+          path: |
+            bdn-results/current.json
+            bdn-results/benchmark-report.md
+            bdn-results/results/*

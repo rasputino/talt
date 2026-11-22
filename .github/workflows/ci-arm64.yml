@@ -1,0 +1,29 @@
+name: CI ARM64
+
+# ARM64 hosted runners may not be available to private repositories on every plan, and a job for an
+# unavailable runner waits in the queue instead of failing. So ARM64 is kept apart from the required
+# `ci-result` check: it runs on demand and on pushes to main, and its result is informational.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test-arm64:
+    name: build-and-test (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-arm64, runner: ubuntu-24.04-arm }
+          - { name: windows-arm64, runner: windows-11-arm }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/build-test
+        with:
+          artifact-name: test-results-${{ matrix.name }}
