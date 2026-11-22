@@ -271,8 +271,12 @@ terrain triangles are drawn every frame with no culling or level of detail yet).
 
 - Windows x64: all tests pass; headless run and replay verified; the client's fingerprint at a given
   tick equals the headless one; the client exits cleanly.
-- Linux and macOS: **not run yet**. Run `dotnet test` (golden fingerprints) and a headless `replay`
-  there at least once; continuous integration (feature 002) will automate it.
+- Linux x64 (2026-11-22, Ubuntu 26.04 under WSL 2, .NET SDK 10.0.404): all 151 tests pass,
+  golden fingerprints included. Headless fingerprints equal the Windows ones (default scenario at
+  5000 ticks `C9F573FD7DE5CBE3`, parallel and sequential; reference load at 10 000 ticks
+  `C0C656C5AB2D3302`), and a session recorded on Windows replays on Linux with every checkpoint OK.
+- macOS and ARM64 (all systems): **not run yet**. Continuous integration (feature 002) will run
+  `dotnet test` and a headless `replay` there.
 - Keyboard controls (speeds, fast forward, pause, add/remove vehicle): checked by hand in the window
   on Windows (2026-11-22, `-- 32 50000 2026 --unlock-fast-forward`), on top of the unit tests of the
   runner and commands.
