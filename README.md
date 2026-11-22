@@ -9,6 +9,7 @@ thousands of simulated vehicles, using WebGPU.
 
 - [Vision](docs/VISION.md): goals, scope and technology.
 - [Architecture](docs/ARCHITECTURE.md): how the code is organized.
+- [Spec Kit guide](docs/SPECKIT_GUIDE.md): roadmap and prompts to implement the full game with Spec Kit.
 
 ## Building and running
 
