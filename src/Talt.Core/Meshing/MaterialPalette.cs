@@ -16,6 +16,7 @@ public static class MaterialPalette
         VoxelMaterial.Sand => Srgb(0xe0, 0xcf, 0x8c),
         VoxelMaterial.Water => Srgb(0x3d, 0x8e, 0xc9),
         VoxelMaterial.Snow => Srgb(0xf2, 0xf5, 0xf8),
+        VoxelMaterial.Road => Srgb(0x5a, 0x5c, 0x62),
         _ => Vector3.One,
     };
 

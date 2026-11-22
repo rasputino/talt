@@ -12,6 +12,7 @@ public enum VoxelMaterial : byte
     Sand,
     Water,
     Snow,
+    Road,
 }
 
 public static class VoxelMaterialExtensions

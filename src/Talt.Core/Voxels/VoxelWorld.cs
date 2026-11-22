@@ -31,6 +31,23 @@ public sealed class VoxelWorld
         return chunk?.Get(x & Chunk.Mask, y & Chunk.Mask, z & Chunk.Mask) ?? VoxelMaterial.Air;
     }
 
+    /// <summary>
+    /// Height of the first air voxel above the highest solid voxel in a column, searching down from
+    /// <paramref name="maxY"/>. Returns 0 when the column is empty.
+    /// </summary>
+    public int GetSurfaceHeight(int x, int z, int maxY = Chunk.Size - 1)
+    {
+        for (var y = maxY; y >= 0; y--)
+        {
+            if (GetVoxel(x, y, z).IsSolid())
+            {
+                return y + 1;
+            }
+        }
+
+        return 0;
+    }
+
     /// <summary>Sets the voxel at a world position, creating the chunk if needed.</summary>
     public void SetVoxel(int x, int y, int z, VoxelMaterial material)
     {

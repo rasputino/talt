@@ -42,6 +42,16 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
     private Buffer* _uniformBuffer;
     private BindGroup* _bindGroup;
 
+    private ShaderModule* _vehicleShader;
+    private RenderPipeline* _vehiclePipeline;
+    private Buffer* _cubeVertexBuffer;
+    private Buffer* _cubeIndexBuffer;
+    private ulong _cubeVertexBytes;
+    private uint _cubeIndexCount;
+    private Buffer* _instanceBuffer;
+    private int _instanceCapacity;
+    private int _instanceCount;
+
     private Texture* _depthTexture;
     private TextureView* _depthView;
     private Vector2D<int> _size;
@@ -65,6 +75,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _surfaceFormat = ChooseSurfaceFormat();
         Resize(window.FramebufferSize);
         CreatePipeline();
+        CreateVehiclePipeline();
     }
 
     public string AdapterDescription { get; private set; } = "unknown";
@@ -86,6 +97,35 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             var indexBuffer = CreateBuffer<uint>(mesh.Indices, BufferUsage.Index | BufferUsage.CopyDst);
             _meshes.Add(new GpuMesh(vertexBuffer, indexBuffer, (ulong)(mesh.Vertices.Length * VoxelVertex.SizeInBytes), (uint)mesh.Indices.Length));
             TriangleCount += mesh.Indices.Length / 3;
+        }
+    }
+
+    /// <summary>Replaces the vehicles drawn in the next frames. Grows the GPU buffer when needed.</summary>
+    public void UpdateVehicles(ReadOnlySpan<VehicleInstance> instances)
+    {
+        if (instances.Length > _instanceCapacity)
+        {
+            if (_instanceBuffer != null)
+            {
+                _wgpu.BufferRelease(_instanceBuffer);
+            }
+
+            _instanceCapacity = Math.Max(instances.Length, _instanceCapacity * 2);
+            var descriptor = new BufferDescriptor
+            {
+                Usage = BufferUsage.Vertex | BufferUsage.CopyDst,
+                Size = (ulong)(_instanceCapacity * sizeof(VehicleInstance)),
+            };
+            _instanceBuffer = _wgpu.DeviceCreateBuffer(_device, &descriptor);
+        }
+
+        _instanceCount = instances.Length;
+        if (_instanceCount > 0)
+        {
+            fixed (VehicleInstance* data = instances)
+            {
+                _wgpu.QueueWriteBuffer(_queue, _instanceBuffer, 0, data, (nuint)(_instanceCount * sizeof(VehicleInstance)));
+            }
         }
     }
 
@@ -193,6 +233,15 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             _wgpu.RenderPassEncoderDrawIndexed(pass, mesh.IndexCount, 1, 0, 0, 0);
         }
 
+        if (_instanceCount > 0)
+        {
+            _wgpu.RenderPassEncoderSetPipeline(pass, _vehiclePipeline);
+            _wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, _cubeVertexBuffer, 0, _cubeVertexBytes);
+            _wgpu.RenderPassEncoderSetVertexBuffer(pass, 1, _instanceBuffer, 0, (ulong)(_instanceCount * sizeof(VehicleInstance)));
+            _wgpu.RenderPassEncoderSetIndexBuffer(pass, _cubeIndexBuffer, IndexFormat.Uint16, 0, _cubeIndexCount * sizeof(ushort));
+            _wgpu.RenderPassEncoderDrawIndexed(pass, _cubeIndexCount, (uint)_instanceCount, 0, 0, 0);
+        }
+
         _wgpu.RenderPassEncoderEnd(pass);
         _wgpu.RenderPassEncoderRelease(pass);
 
@@ -222,6 +271,16 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
 
         _meshes.Clear();
         ReleaseDepthTexture();
+
+        if (_instanceBuffer != null)
+        {
+            _wgpu.BufferRelease(_instanceBuffer);
+        }
+
+        _wgpu.BufferRelease(_cubeVertexBuffer);
+        _wgpu.BufferRelease(_cubeIndexBuffer);
+        _wgpu.RenderPipelineRelease(_vehiclePipeline);
+        _wgpu.ShaderModuleRelease(_vehicleShader);
 
         _wgpu.BindGroupRelease(_bindGroup);
         _wgpu.BufferRelease(_uniformBuffer);
@@ -356,6 +415,35 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             Attributes = attributes,
         };
 
+        _pipeline = CreateRenderPipeline(_shader, &vertexLayout, 1);
+    }
+
+    /// <summary>Pipeline for vehicles: a unit cube drawn once per vehicle (instancing).</summary>
+    private void CreateVehiclePipeline()
+    {
+        _vehicleShader = CreateShaderModule(LoadShaderSource("vehicles.wgsl"));
+
+        var cubeAttributes = stackalloc VertexAttribute[2];
+        cubeAttributes[0] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 0, ShaderLocation = 0 };
+        cubeAttributes[1] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 12, ShaderLocation = 1 };
+        var instanceAttributes = stackalloc VertexAttribute[2];
+        instanceAttributes[0] = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 0, ShaderLocation = 2 };
+        instanceAttributes[1] = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 16, ShaderLocation = 3 };
+
+        var layouts = stackalloc VertexBufferLayout[2];
+        layouts[0] = new VertexBufferLayout { ArrayStride = 24, StepMode = VertexStepMode.Vertex, AttributeCount = 2, Attributes = cubeAttributes };
+        layouts[1] = new VertexBufferLayout { ArrayStride = (ulong)sizeof(VehicleInstance), StepMode = VertexStepMode.Instance, AttributeCount = 2, Attributes = instanceAttributes };
+        _vehiclePipeline = CreateRenderPipeline(_vehicleShader, layouts, 2);
+
+        var (vertices, indices) = UnitCube.Build();
+        _cubeVertexBuffer = CreateBuffer(vertices, BufferUsage.Vertex | BufferUsage.CopyDst);
+        _cubeIndexBuffer = CreateBuffer(indices, BufferUsage.Index | BufferUsage.CopyDst);
+        _cubeVertexBytes = (ulong)(vertices.Length * sizeof(float));
+        _cubeIndexCount = (uint)indices.Length;
+    }
+
+    private RenderPipeline* CreateRenderPipeline(ShaderModule* shader, VertexBufferLayout* vertexLayouts, int layoutCount)
+    {
         var colorTarget = new ColorTargetState { Format = _surfaceFormat, Blend = null, WriteMask = ColorWriteMask.All };
         var keep = new StencilFaceState
         {
@@ -378,7 +466,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         {
             var fragment = new FragmentState
             {
-                Module = _shader,
+                Module = shader,
                 EntryPoint = fragmentEntry,
                 TargetCount = 1,
                 Targets = &colorTarget,
@@ -386,7 +474,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             var descriptor = new RenderPipelineDescriptor
             {
                 Layout = _pipelineLayout,
-                Vertex = new VertexState { Module = _shader, EntryPoint = vertexEntry, BufferCount = 1, Buffers = &vertexLayout },
+                Vertex = new VertexState { Module = shader, EntryPoint = vertexEntry, BufferCount = (nuint)layoutCount, Buffers = vertexLayouts },
                 Primitive = new PrimitiveState
                 {
                     Topology = PrimitiveTopology.TriangleList,
@@ -398,7 +486,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
                 Multisample = new MultisampleState { Count = 1, Mask = uint.MaxValue, AlphaToCoverageEnabled = false },
                 Fragment = &fragment,
             };
-            _pipeline = _wgpu.DeviceCreateRenderPipeline(_device, &descriptor);
+            return _wgpu.DeviceCreateRenderPipeline(_device, &descriptor);
         }
     }
 

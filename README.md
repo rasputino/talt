@@ -4,7 +4,8 @@ An original transport management game with a voxel art style and support for ver
 
 ## Status
 
-Early stage project: a technical prototype renders a voxel terrain with WebGPU.
+Early stage project: a technical prototype renders a voxel terrain with a road grid and
+thousands of simulated vehicles, using WebGPU.
 
 - [Vision](docs/VISION.md): goals, scope and technology.
 - [Architecture](docs/ARCHITECTURE.md): how the code is organized.
@@ -17,10 +18,12 @@ Metal or DirectX 12 support.
 ```
 dotnet build
 dotnet test
-dotnet run --project src/Talt.Client -c Release -- [chunks-per-side] [seed]
+dotnet run --project src/Talt.Client -c Release -- [chunks-per-side] [vehicles] [seed]
+dotnet run --project benchmarks/Talt.Benchmarks -c Release -- --filter * --job short
 ```
 
-Example: `dotnet run --project src/Talt.Client -c Release -- 16 2026` renders a 512 × 512 map.
+Example: `dotnet run --project src/Talt.Client -c Release -- 16 20000` shows a 512 × 512 map with
+20 000 vehicles.
 
 ## Inspiration
 

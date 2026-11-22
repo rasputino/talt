@@ -103,8 +103,12 @@ The game is developed mostly through AI-assisted coding. To keep the project man
 ## Next steps
 
 1. ~~Technical prototype: open a window and render voxel terrain.~~ Done on Windows (see [ARCHITECTURE.md](ARCHITECTURE.md)).
-2. Test the prototype on Linux and macOS.
-3. Simulation benchmark: thousands of vehicles moving on a large map.
+2. ~~Simulation benchmark: thousands of vehicles moving on a large map.~~ Done: one million
+   independent vehicles tick in ~6 ms (see [ARCHITECTURE.md](ARCHITECTURE.md#benchmarks)).
+3. Vehicle interactions: following distance, junctions, signals and blocks, keeping the tick parallel.
+4. Rendering for large maps: greedy meshing, frustum culling and level of detail.
+5. Visual quality: shadows, smaller voxels per tile, scenery (trees, buildings).
+6. Test the prototype on Linux and macOS.
 
 ## Open questions
 
