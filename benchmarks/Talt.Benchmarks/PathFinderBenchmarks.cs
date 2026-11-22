@@ -20,7 +20,7 @@ public class PathFinderBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        _network = GridNetworkGenerator.Generate(257, 257, spacing: 16, seed: 1);
+        _network = GridNetworkGenerator.Generate(257, 257, spacingTiles: 16, seed: 1);
         _pathFinder = new PathFinder(_network);
         var random = new Random(42);
         _queries = [.. Enumerable.Range(0, Queries).Select(_ => (random.Next(_network.NodeCount), random.Next(_network.NodeCount)))];

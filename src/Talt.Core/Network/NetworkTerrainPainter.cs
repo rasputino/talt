@@ -23,7 +23,8 @@ public static class NetworkTerrainPainter
                 continue; // Two-way roads have one edge per direction; paint each road once.
             }
 
-            PaintSegment(world, network.NodePosition(from), network.NodePosition(to));
+            // Terrain painting is world setup, not simulation state, so float tile positions are fine.
+            PaintSegment(world, network.NodePositionTiles(from), network.NodePositionTiles(to));
         }
     }
 

@@ -3,25 +3,35 @@ using System.Numerics;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
+using Talt.Client.Localization;
 using Talt.Client.Rendering;
+using Talt.Core.Commands;
+using Talt.Core.Determinism;
 using Talt.Core.Meshing;
 using Talt.Core.Simulation;
 using Talt.Core.Terrain;
 
 namespace Talt.Client;
 
-/// <summary>Everything the prototype window needs to show.</summary>
+/// <summary>Everything the prototype window needs.</summary>
 internal sealed record PrototypeScene(
     IReadOnlyList<ChunkMesh> Meshes,
     Heightmap Heightmap,
-    VehicleFleet Fleet,
-    string Description);
+    GameSimulation Simulation,
+    Strings Strings,
+    PlayerSettings Settings,
+    SessionRecorder? Recorder = null,
+    string? RecordPath = null,
+    long? PrintFingerprintAtTick = null);
 
 /// <summary>
-/// Owns the window, the renderer, the camera controls and the simulation loop.
-/// Controls: left drag rotates, right drag pans, wheel zooms, WASD/arrows pan, Q/E rotate,
-/// Space pauses, +/- change simulation speed, Esc quits.
+/// Owns the window, the renderer, the camera controls and the fixed-step simulation loop.
 /// </summary>
+/// <remarks>
+/// Controls: left drag rotates, right drag pans, wheel zooms, WASD/arrows pan, Q/E rotate,
+/// Space pauses, 1/2/3 select ×1/×3/×8, F toggles fast forward (only when unlocked in the
+/// settings), N adds a vehicle, Delete removes the last vehicle you added, Esc quits.
+/// </remarks>
 internal sealed class GameWindow : IDisposable
 {
     private const float KeyboardPanSpeed = 1.2f;    // Fraction of the camera distance per second.
@@ -29,6 +39,7 @@ internal sealed class GameWindow : IDisposable
     private const float MouseRotateSpeed = 0.005f;  // Radians per pixel.
     private const float CameraClearance = 4f;       // Minimum height of the camera above the ground.
     private const float LaneOffset = 0.22f;         // Vehicles drive on the right half of the road.
+    private const double MessageSeconds = 4;
 
     private static readonly Vector4[] VehicleColors =
     [
@@ -43,28 +54,51 @@ internal sealed class GameWindow : IDisposable
     private readonly IWindow _window;
     private readonly OrbitCamera _camera = new();
     private readonly PrototypeScene _scene;
-    private readonly VehiclePose[] _poses;
-    private readonly VehicleInstance[] _instances;
-    private readonly Stopwatch _fpsTimer = new();
-    private readonly Stopwatch _tickTimer = new();
+    private readonly GameSimulation _simulation;
+    private readonly Strings _strings;
+    private readonly SimulationRunner _runner = new();
+    private readonly StopwatchTimeSource _time = new();
+    private readonly Stopwatch _statsTimer = new();
+    private readonly Stopwatch _messageTimer = new();
+    private readonly Random _uiRandom = new(); // Never the simulation's generator (I1): choices travel inside commands.
+    private readonly Stack<int> _playerAddedVehicles = new();
+
+    // Two pose snapshots for interpolation (research R4), indexed by slot, with the ids in each slot.
+    private VehiclePose[] _previousPoses = [];
+    private int[] _previousIds = [];
+    private int _previousCount;
+    private VehiclePose[] _currentPoses = [];
+    private int[] _currentIds = [];
+    private int _currentCount;
+    private long _currentCapturedAtTick = -1;
+    private VehicleInstance[] _instances = [];
+    private int _drawCount;
+    private float _drawFactor;
+    private readonly Action<int> _buildInstancesBatch;
 
     private WebGpuRenderer? _renderer;
     private IInputContext? _input;
     private Vector2? _lastMouse;
     private int _frames;
+    private int _ticksThisSecond;
     private double _tickMilliseconds;
-    private int _ticks;
-    private float _simulationSpeed = 1f;
-    private bool _paused;
+    private string _message = string.Empty;
 
     public GameWindow(PrototypeScene scene)
     {
         _scene = scene;
-        _poses = new VehiclePose[scene.Fleet.VehicleCount];
-        _instances = new VehicleInstance[scene.Fleet.VehicleCount];
+        _simulation = scene.Simulation;
+        _strings = scene.Strings;
+        _runner.SetFastForwardUnlocked(scene.Settings.FastForwardUnlocked);
+        _simulation.CommandProcessed += OnCommandProcessed;
+        _buildInstancesBatch = BuildInstancesBatch;
 
-        var center = new Vector2(scene.Heightmap.Width / 2f, scene.Heightmap.Depth / 2f);
-        _camera.Target = new Vector3(center.X, scene.Heightmap.Get(center.X, center.Y), center.Y);
+        var map = scene.Heightmap;
+        var center = new Vector2(map.Width / 2f, map.Depth / 2f);
+        _camera.Target = new Vector3(center.X, map.Get(center.X, center.Y), center.Y);
+
+        CaptureCurrentPoses();
+        CopyCurrentToPrevious();
 
         var options = WindowOptions.Default with
         {
@@ -88,6 +122,7 @@ internal sealed class GameWindow : IDisposable
         // Release GPU resources after the render loop has stopped, never during it.
         _renderer?.Dispose();
         _window.Dispose();
+        SaveRecording();
     }
 
     private void OnLoad()
@@ -109,7 +144,7 @@ internal sealed class GameWindow : IDisposable
             keyboard.KeyDown += (_, key, _) => OnKeyDown(key);
         }
 
-        _fpsTimer.Start();
+        _statsTimer.Start();
     }
 
     private void OnKeyDown(Key key)
@@ -120,15 +155,62 @@ internal sealed class GameWindow : IDisposable
                 _window.Close();
                 break;
             case Key.Space:
-                _paused = !_paused;
+                _runner.TogglePause();
                 break;
-            case Key.KeypadAdd or Key.Equal:
-                _simulationSpeed = MathF.Min(_simulationSpeed * 2f, 16f);
+            case Key.Number1:
+                _runner.SetStandardSpeed(GameSpeed.Normal);
                 break;
-            case Key.KeypadSubtract or Key.Minus:
-                _simulationSpeed = MathF.Max(_simulationSpeed / 2f, 0.25f);
+            case Key.Number2:
+                _runner.SetStandardSpeed(GameSpeed.Fast);
+                break;
+            case Key.Number3:
+                _runner.SetStandardSpeed(GameSpeed.VeryFast);
+                break;
+            case Key.F:
+                _runner.ToggleFastForward(); // Ignored while locked (FR-007a).
+                break;
+            case Key.N:
+                SubmitAddVehicle();
+                break;
+            case Key.Delete:
+                SubmitRemoveVehicle();
                 break;
         }
+    }
+
+    private void SubmitAddVehicle()
+    {
+        var fleet = _simulation.Vehicles;
+        var line = _uiRandom.Next(fleet.LineCount);
+        var speed = _uiRandom.Next(SyntheticTraffic.MinCruiseSpeed, SyntheticTraffic.MaxCruiseSpeed + 1);
+        _simulation.Submit(new AddVehicleCommand(line, speed));
+    }
+
+    private void SubmitRemoveVehicle()
+    {
+        if (_playerAddedVehicles.TryPop(out var id))
+        {
+            _simulation.Submit(new RemoveVehicleCommand(id));
+        }
+    }
+
+    private void OnCommandProcessed(CommandProcessed processed)
+    {
+        if (processed.Result.Succeeded && processed.Command is AddVehicleCommand)
+        {
+            _playerAddedVehicles.Push(_simulation.Vehicles.LastCreatedVehicleId);
+        }
+
+        _message = processed.Result.Succeeded
+            ? _strings.Format("command.applied", ("command", _strings.Get($"command.{processed.Command.TypeName}")))
+            : _strings.Format("command.rejected", ("reason", RejectionText(processed.Result.ReasonCode)));
+        _messageTimer.Restart();
+    }
+
+    private string RejectionText(string? reasonCode)
+    {
+        var key = $"command.rejected.{reasonCode}";
+        return _strings.Contains(key) ? _strings.Get(key) : _strings.Get("command.rejected.unknown");
     }
 
     private void OnMouseMove(IMouse mouse, Vector2 position)
@@ -173,17 +255,72 @@ internal sealed class GameWindow : IDisposable
 
         FollowTerrain(dt);
 
-        if (!_paused)
+        var stats = _runner.Advance(deltaSeconds, _simulation, _time, PromoteCurrentToPrevious, AfterEachTick);
+        if (stats.TicksRun > 0)
         {
-            // Clamp long frames (window dragged, debugger) so vehicles do not teleport.
-            var step = MathF.Min(dt, 0.1f) * _simulationSpeed;
-            _tickTimer.Restart();
-            _scene.Fleet.Tick(step);
-            _tickMilliseconds += _tickTimer.Elapsed.TotalMilliseconds;
-            _ticks++;
+            CaptureCurrentPoses();
         }
 
+        _ticksThisSecond += stats.TicksRun;
+        _tickMilliseconds += stats.TickMilliseconds;
         UploadVehicles();
+    }
+
+    /// <summary>
+    /// Called right before the last tick of a frame: the current snapshot becomes "previous". When it
+    /// is already up to date (the usual one-tick frame) the buffers are just swapped, no copying.
+    /// </summary>
+    private void PromoteCurrentToPrevious()
+    {
+        if (_currentCapturedAtTick != _simulation.CurrentTick)
+        {
+            CaptureCurrentPoses();
+        }
+
+        (_previousPoses, _currentPoses) = (_currentPoses, _previousPoses);
+        (_previousIds, _currentIds) = (_currentIds, _previousIds);
+        _previousCount = _currentCount;
+    }
+
+    private void AfterEachTick(GameSimulation simulation)
+    {
+        if (_scene.PrintFingerprintAtTick == simulation.CurrentTick)
+        {
+            Console.WriteLine($"fingerprint at tick {simulation.CurrentTick}: {StateHasher.Format(simulation.ComputeFingerprint())}");
+        }
+    }
+
+    private void CaptureCurrentPoses()
+    {
+        var fleet = _simulation.Vehicles;
+        EnsureCapacity(fleet.VehicleCount);
+        fleet.CopyPoses(_currentPoses, parallel: true);
+        fleet.CopyIds(_currentIds);
+        _currentCount = fleet.VehicleCount;
+        _currentCapturedAtTick = _simulation.CurrentTick;
+    }
+
+    private void CopyCurrentToPrevious()
+    {
+        EnsureCapacity(_currentCount);
+        Array.Copy(_currentPoses, _previousPoses, _currentCount);
+        Array.Copy(_currentIds, _previousIds, _currentCount);
+        _previousCount = _currentCount;
+    }
+
+    private void EnsureCapacity(int count)
+    {
+        if (_currentPoses.Length >= count)
+        {
+            return;
+        }
+
+        var size = Math.Max(count, _currentPoses.Length * 2);
+        Array.Resize(ref _previousPoses, size);
+        Array.Resize(ref _previousIds, size);
+        Array.Resize(ref _currentPoses, size);
+        Array.Resize(ref _currentIds, size);
+        Array.Resize(ref _instances, size);
     }
 
     /// <summary>
@@ -224,20 +361,43 @@ internal sealed class GameWindow : IDisposable
             return;
         }
 
-        var map = _scene.Heightmap;
-        _scene.Fleet.CopyPoses(_poses);
-        for (var v = 0; v < _poses.Length; v++)
+        // Interpolate and build GPU instances in parallel batches (rendering only).
+        _drawCount = _currentCount;
+        _drawFactor = _runner.InterpolationFactor;
+        const int batchSize = 4096;
+        var batches = (_drawCount + batchSize - 1) / batchSize;
+        if (batches > 1)
         {
-            var (position, direction) = _poses[v];
+            Parallel.For(0, batches, _buildInstancesBatch);
+        }
+        else if (batches == 1)
+        {
+            BuildInstancesBatch(0);
+        }
+
+        _renderer.UpdateVehicles(_instances.AsSpan(0, _drawCount));
+    }
+
+    private void BuildInstancesBatch(int batch)
+    {
+        const int batchSize = 4096;
+        var map = _scene.Heightmap;
+        var end = Math.Min((batch + 1) * batchSize, _drawCount);
+        for (var v = batch * batchSize; v < end; v++)
+        {
+            // Only interpolate when the slot holds the same vehicle in both snapshots.
+            var pose = v < _previousCount && _previousIds[v] == _currentIds[v]
+                ? PoseInterpolator.Interpolate(_previousPoses[v], _currentPoses[v], _drawFactor)
+                : _currentPoses[v];
+
+            var (position, direction) = pose;
             var right = new Vector2(-direction.Y, direction.X);
             var p = position + right * LaneOffset;
             var alongZ = MathF.Abs(direction.Y) > MathF.Abs(direction.X) ? 1f : 0f;
             _instances[v] = new VehicleInstance(
                 new Vector4(p.X, map.Get(position.X, position.Y), p.Y, alongZ),
-                VehicleColors[v % VehicleColors.Length]);
+                VehicleColors[_currentIds[v] % VehicleColors.Length]);
         }
-
-        _renderer.UpdateVehicles(_instances);
     }
 
     private void OnRender(double deltaSeconds)
@@ -245,18 +405,52 @@ internal sealed class GameWindow : IDisposable
         _renderer?.Draw(_camera);
 
         _frames++;
-        if (_fpsTimer.Elapsed.TotalSeconds >= 1)
+        var seconds = _statsTimer.Elapsed.TotalSeconds;
+        if (seconds >= 1)
         {
-            var fps = _frames / _fpsTimer.Elapsed.TotalSeconds;
-            var tick = _ticks > 0 ? _tickMilliseconds / _ticks : 0;
-            var state = _paused ? "paused" : $"x{_simulationSpeed:0.##}";
-            _window.Title = $"Transit & Logistics Tycoon — {fps:F0} FPS — {_scene.Description} — " +
-                $"{_scene.Fleet.VehicleCount:N0} vehicles, tick {tick:F2} ms ({state})";
+            UpdateTitle(seconds);
             _frames = 0;
-            _ticks = 0;
+            _ticksThisSecond = 0;
             _tickMilliseconds = 0;
-            _fpsTimer.Restart();
+            _statsTimer.Restart();
         }
+    }
+
+    private void UpdateTitle(double seconds)
+    {
+        var s = _strings;
+        var fps = _frames / seconds;
+        var effective = _ticksThisSecond / seconds / GameClock.TicksPerSecondAtNormalSpeed;
+        var tick = _ticksThisSecond > 0 ? _tickMilliseconds / _ticksThisSecond : 0;
+        var parts = new List<string>
+        {
+            "Transit & Logistics Tycoon",
+            s.FormatDate(_simulation.Date),
+            s.FormatSpeed(_runner.Speed),
+            s.Format("status.effectiveSpeed", ("speed", Math.Round(effective, 1))),
+            s.Format("status.fps", ("fps", Math.Round(fps))),
+            s.Format("status.vehicles", ("count", _simulation.Vehicles.VehicleCount)),
+            s.Format("status.tick", ("ms", Math.Round(tick, 2))),
+        };
+
+        if (_messageTimer.IsRunning && _messageTimer.Elapsed.TotalSeconds < MessageSeconds)
+        {
+            parts.Add(_message);
+        }
+
+        _window.Title = string.Join(" — ", parts);
+    }
+
+    private void SaveRecording()
+    {
+        if (_scene.Recorder is null || _scene.RecordPath is null)
+        {
+            return;
+        }
+
+        _scene.Recorder.AddCheckpoint(_simulation);
+        File.WriteAllText(_scene.RecordPath, _scene.Recorder.Session.ToJson());
+        Console.WriteLine($"Session recorded to {Path.GetFullPath(_scene.RecordPath)} ({_simulation.CurrentTick} ticks).");
     }
 
     private static float Axis(IKeyboard keyboard, Key primary, Key secondary) =>

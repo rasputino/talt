@@ -13,6 +13,8 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
+    <!-- Only for the SoA vs ECS comparison (research R5); never referenced by the game. -->
+    <PackageReference Include="Arch" />
   </ItemGroup>
 
 </Project>

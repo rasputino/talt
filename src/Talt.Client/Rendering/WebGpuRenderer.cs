@@ -293,7 +293,10 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _wgpu.AdapterRelease(_adapter);
         _wgpu.SurfaceRelease(_surface);
         _wgpu.InstanceRelease(_instance);
-        _wgpu.Dispose();
+
+        // Do not call _wgpu.Dispose(): it unloads wgpu-native while the library's internal threads
+        // may still be shutting down, which crashes the process on exit (access violation). The OS
+        // frees the library when the process ends.
     }
 
     private void RequestAdapter()

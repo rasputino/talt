@@ -1,39 +1,88 @@
 ﻿using System.Diagnostics;
-using System.Numerics;
+using System.Globalization;
 using Talt.Client;
+using Talt.Client.Localization;
+using Talt.Core.Commands;
 using Talt.Core.Meshing;
 using Talt.Core.Network;
+using Talt.Core.Scenarios;
 using Talt.Core.Simulation;
 using Talt.Core.Terrain;
 using Talt.Core.Voxels;
 
 // Technical prototype: voxel terrain with a road grid and simulated vehicles, rendered with WebGPU.
-// Usage: Talt.Client [chunks-per-side] [vehicles] [seed]
-var chunksPerSide = args.Length > 0 && int.TryParse(args[0], out var c) ? c : 16;
-var vehicleCount = args.Length > 1 && int.TryParse(args[1], out var v) ? v : 20_000;
-var seed = args.Length > 2 && int.TryParse(args[2], out var s) ? s : 2026;
+//
+// Usage: Talt.Client [chunks-per-side] [vehicles] [seed] [options]
+//   --start-year <year>          first in-game year (default 1950)
+//   --language en|es             interface language (default: system language)
+//   --unlock-fast-forward        unlock the separate fast-forward control (saved in settings)
+//   --lock-fast-forward          lock it again (saved in settings)
+//   --record [file]              record the session (default session.talt-session.json)
+//   --print-fingerprint-at <n>   print the state fingerprint after tick n
+var positional = new List<int>();
+var startYear = 1950;
+string? language = null;
+bool? unlockFastForward = null;
+string? recordPath = null;
+long? printFingerprintAt = null;
 
-const int RoadSpacing = 16; // Tiles between junctions.
+for (var i = 0; i < args.Length; i++)
+{
+    switch (args[i])
+    {
+        case "--start-year":
+            startYear = int.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        case "--language":
+            language = args[++i];
+            break;
+        case "--unlock-fast-forward":
+            unlockFastForward = true;
+            break;
+        case "--lock-fast-forward":
+            unlockFastForward = false;
+            break;
+        case "--record":
+            recordPath = i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)
+                ? args[++i]
+                : "session.talt-session.json";
+            break;
+        case "--print-fingerprint-at":
+            printFingerprintAt = long.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        default:
+            positional.Add(int.Parse(args[i], CultureInfo.InvariantCulture));
+            break;
+    }
+}
 
-var settings = new TerrainSettings(Seed: seed, ChunksX: chunksPerSide, ChunksZ: chunksPerSide);
-var size = chunksPerSide * Chunk.Size;
+var chunksPerSide = positional.Count > 0 ? positional[0] : 16;
+var vehicleCount = positional.Count > 1 ? positional[1] : 20_000;
+var seed = positional.Count > 2 ? positional[2] : 2026;
+
+var strings = Strings.Load(language ?? Strings.DetectLanguage());
+var playerSettings = PlayerSettings.Load(PlayerSettings.DefaultPath);
+if (unlockFastForward is { } unlock)
+{
+    playerSettings.FastForwardUnlocked = unlock;
+    playerSettings.Save(PlayerSettings.DefaultPath);
+}
+
+var settings = new ScenarioSettings(
+    Seed: seed,
+    StartYear: startYear,
+    MapSizeTiles: chunksPerSide * Chunk.Size,
+    VehicleCount: vehicleCount);
 var stopwatch = Stopwatch.StartNew();
 
-var world = TerrainGenerator.Generate(settings);
-Report($"Generated {size}×{size} terrain ({world.ChunkCount} chunks)");
+var simulation = GameSimulation.Create(settings);
+Report($"Created simulation ({simulation.Network.NodeCount:N0} junctions, {simulation.Vehicles.LineCount:N0} lines, {simulation.Vehicles.VehicleCount:N0} vehicles)");
 
-var junctions = size / RoadSpacing;
-var network = GridNetworkGenerator.Generate(
-    junctions, junctions, RoadSpacing, seed, removalChance: 0.15f,
-    origin: new Vector2(RoadSpacing / 2f, RoadSpacing / 2f));
-NetworkTerrainPainter.PaintRoads(world, network);
-Report($"Built road network ({network.NodeCount:N0} junctions, {network.EdgeCount:N0} one-way edges)");
+var world = TerrainGenerator.Generate(new TerrainSettings(Seed: seed, ChunksX: chunksPerSide, ChunksZ: chunksPerSide));
+NetworkTerrainPainter.PaintRoads(world, simulation.Network);
+var heightmap = Heightmap.FromWorld(world, settings.MapSizeTiles, settings.MapSizeTiles);
+Report($"Generated {settings.MapSizeTiles}×{settings.MapSizeTiles} terrain ({world.ChunkCount} chunks)");
 
-var lineCount = Math.Max(1, vehicleCount / 10);
-var fleet = SyntheticTraffic.Create(network, lineCount, vehicleCount, seed);
-Report($"Created {fleet.LineCount:N0} lines and {fleet.VehicleCount:N0} vehicles");
-
-var heightmap = Heightmap.FromWorld(world, size, size);
 // The world is only read while meshing, so chunks can be meshed in parallel.
 var meshes = world.Chunks
     .AsParallel()
@@ -42,7 +91,15 @@ var meshes = world.Chunks
     .ToList();
 Report($"Meshed {meshes.Sum(m => m.FaceCount):N0} faces");
 
-using var window = new GameWindow(new PrototypeScene(meshes, heightmap, fleet, $"{size}×{size} map"));
+SessionRecorder? recorder = null;
+if (recordPath is not null)
+{
+    recorder = new SessionRecorder(new RecordedSession(settings));
+    simulation.AttachRecorder(recorder);
+}
+
+using var window = new GameWindow(new PrototypeScene(
+    meshes, heightmap, simulation, strings, playerSettings, recorder, recordPath, printFingerprintAt));
 window.Run();
 
 void Report(string message)

@@ -7,6 +7,11 @@
     <Project Path="src/Talt.Core/Talt.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Talt.Client.Tests/Talt.Client.Tests.csproj" />
     <Project Path="tests/Talt.Core.Tests/Talt.Core.Tests.csproj" />
+    <Project Path="tests/Talt.Headless.Tests/Talt.Headless.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Talt.Headless/Talt.Headless.csproj" />
   </Folder>
 </Solution>

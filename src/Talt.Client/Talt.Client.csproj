@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Talt.Client.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Talt.Core\Talt.Core.csproj" />
   </ItemGroup>
 
@@ -19,6 +23,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Rendering\Shaders\*.wgsl" />
+    <!-- WithCulture=false: otherwise MSBuild treats ".en"/".es" as cultures and builds satellite assemblies. -->
+    <EmbeddedResource Include="Localization\Strings.*.json" WithCulture="false" LogicalName="Talt.Client.Localization.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

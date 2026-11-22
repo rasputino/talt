@@ -1,20 +1,23 @@
+using Talt.Core.Determinism;
+
 namespace Talt.Core.Network;
 
 /// <summary>
-/// A* shortest path search over a <see cref="TransportNetwork"/>.
+/// A* shortest path search over a <see cref="TransportNetwork"/>, in integer units.
 /// </summary>
 /// <remarks>
 /// Reuses its internal buffers between searches, so a search allocates nothing beyond growing the
 /// caller's output list. Not thread safe: use one instance per thread.
 /// A "visit stamp" marks which entries belong to the current search, so buffers never need clearing.
+/// Ties in the priority queue are broken by node index, so results are deterministic.
 /// </remarks>
 public sealed class PathFinder
 {
     private readonly TransportNetwork _network;
-    private readonly float[] _cost;
+    private readonly long[] _cost;
     private readonly int[] _cameFromEdge;
     private readonly int[] _stamp;
-    private readonly PriorityQueue<int, float> _open = new();
+    private readonly PriorityQueue<int, (long Priority, int Node)> _open = new();
     private int _currentStamp;
 
     public PathFinder(TransportNetwork network)
@@ -22,7 +25,7 @@ public sealed class PathFinder
         ArgumentNullException.ThrowIfNull(network);
 
         _network = network;
-        _cost = new float[network.NodeCount];
+        _cost = new long[network.NodeCount];
         _cameFromEdge = new int[network.NodeCount];
         _stamp = new int[network.NodeCount];
     }
@@ -52,13 +55,13 @@ public sealed class PathFinder
         _open.Clear();
         var goalPosition = _network.NodePosition(goal);
 
-        Visit(start, 0f, -1);
-        _open.Enqueue(start, Heuristic(start, goalPosition));
+        Visit(start, 0, -1);
+        _open.Enqueue(start, (Heuristic(start, goalPosition), start));
 
-        while (_open.TryDequeue(out var node, out var priority))
+        while (_open.TryDequeue(out var node, out var key))
         {
             // Lazy deletion: skip queue entries made obsolete by a cheaper path found later.
-            if (priority > _cost[node] + Heuristic(node, goalPosition) + 1e-3f)
+            if (key.Priority > _cost[node] + Heuristic(node, goalPosition))
             {
                 continue;
             }
@@ -77,7 +80,7 @@ public sealed class PathFinder
                 if (_stamp[next] != _currentStamp || cost < _cost[next])
                 {
                     Visit(next, cost, edge);
-                    _open.Enqueue(next, cost + Heuristic(next, goalPosition));
+                    _open.Enqueue(next, (cost + Heuristic(next, goalPosition), next));
                 }
             }
         }
@@ -85,16 +88,23 @@ public sealed class PathFinder
         return false;
     }
 
-    private void Visit(int node, float cost, int fromEdge)
+    private void Visit(int node, long cost, int fromEdge)
     {
         _stamp[node] = _currentStamp;
         _cost[node] = cost;
         _cameFromEdge[node] = fromEdge;
     }
 
-    /// <summary>Straight-line distance. Never overestimates, because edges are straight segments.</summary>
-    private float Heuristic(int node, System.Numerics.Vector2 goalPosition) =>
-        System.Numerics.Vector2.Distance(_network.NodePosition(node), goalPosition);
+    /// <summary>
+    /// Straight-line distance, rounded down. Exact for grid-aligned edges; for other edges the
+    /// rounding of each edge length can make it overestimate by at most one unit per edge, which
+    /// is negligible (1/65 536 of a tile) and keeps results deterministic.
+    /// </summary>
+    private long Heuristic(int node, GridPoint goal)
+    {
+        var position = _network.NodePosition(node);
+        return FixedMath.Length((long)goal.X - position.X, (long)goal.Z - position.Z);
+    }
 
     private void Reconstruct(int goal, List<int> edges)
     {

@@ -1,17 +1,19 @@
-using System.Numerics;
+using Talt.Core.Determinism;
 using Talt.Core.Network;
 
 namespace Talt.Core.Tests.Network;
 
 public class PathFinderTests
 {
+    private static readonly int Tile = FixedMath.UnitsPerTile;
+
     [Fact]
-    public void Network_OutEdges_ListsEdgesLeavingEachNode()
+    public void Network_OutEdges_AndIntegerLengths()
     {
         var builder = new TransportNetworkBuilder();
-        var a = builder.AddNode(new Vector2(0, 0));
-        var b = builder.AddNode(new Vector2(3, 4));
-        var c = builder.AddNode(new Vector2(3, 0));
+        var a = builder.AddNodeAtTile(0, 0);
+        var b = builder.AddNodeAtTile(3, 4);
+        var c = builder.AddNodeAtTile(3, 0);
         builder.AddRoad(a, b);
         builder.AddEdge(a, c);
         var network = builder.Build();
@@ -19,13 +21,23 @@ public class PathFinderTests
         Assert.Equal(2, network.OutEdges(a).Length);
         Assert.Equal(1, network.OutEdges(b).Length);
         Assert.Equal(0, network.OutEdges(c).Length);
-        Assert.Equal(5f, network.EdgeLength(network.OutEdges(b)[0]), 3);
+        Assert.Equal(5 * Tile, network.EdgeLength(network.OutEdges(b)[0])); // Diagonal via integer sqrt.
+        Assert.Equal(3 * Tile, network.EdgeLength(network.OutEdges(a)[1]));
+    }
+
+    [Fact]
+    public void GridNodes_AreAtExactTilePositions()
+    {
+        var network = GridNetworkGenerator.Generate(3, 3, spacingTiles: 16, originTileX: 8, originTileZ: 8);
+
+        Assert.Equal(GridPoint.FromTiles(8, 8), network.NodePosition(0));
+        Assert.Equal(GridPoint.FromTiles(40, 24), network.NodePosition(GridNetworkGenerator.NodeIndex(2, 1, 3)));
     }
 
     [Fact]
     public void FullGrid_ShortestPath_HasManhattanLength()
     {
-        var network = GridNetworkGenerator.Generate(10, 10, spacing: 8, removalChance: 0);
+        var network = GridNetworkGenerator.Generate(10, 10, spacingTiles: 8, removalChancePerMille: 0);
         var pathFinder = new PathFinder(network);
         var path = new List<int>();
 
@@ -36,13 +48,13 @@ public class PathFinderTests
 
         Assert.True(found);
         Assert.Equal(6 + 7, path.Count);
-        Assert.Equal((6 + 7) * 8f, path.Sum(network.EdgeLength), 3);
+        Assert.Equal((6 + 7) * 8L * Tile, path.Sum(e => (long)network.EdgeLength(e)));
     }
 
     [Fact]
     public void Path_IsConnectedFromStartToGoal()
     {
-        var network = GridNetworkGenerator.Generate(20, 20, spacing: 4, seed: 3, removalChance: 0.3f);
+        var network = GridNetworkGenerator.Generate(20, 20, spacingTiles: 4, seed: 3, removalChancePerMille: 300);
         var pathFinder = new PathFinder(network);
         var path = new List<int>();
         var start = GridNetworkGenerator.NodeIndex(0, 0, 20);
@@ -61,9 +73,9 @@ public class PathFinderTests
     public void UnreachableGoal_ReturnsFalse()
     {
         var builder = new TransportNetworkBuilder();
-        var a = builder.AddNode(Vector2.Zero);
-        var b = builder.AddNode(Vector2.One);
-        var c = builder.AddNode(new Vector2(5, 5));
+        var a = builder.AddNodeAtTile(0, 0);
+        var b = builder.AddNodeAtTile(1, 1);
+        var c = builder.AddNodeAtTile(5, 5);
         builder.AddRoad(a, b);
         var network = builder.Build();
         var path = new List<int> { 99 };
@@ -75,7 +87,7 @@ public class PathFinderTests
     [Fact]
     public void RepeatedSearches_GiveSameResult()
     {
-        var network = GridNetworkGenerator.Generate(30, 30, spacing: 4, seed: 9, removalChance: 0.2f);
+        var network = GridNetworkGenerator.Generate(30, 30, spacingTiles: 4, seed: 9, removalChancePerMille: 200);
         var pathFinder = new PathFinder(network);
         var first = new List<int>();
         var again = new List<int>();
@@ -90,10 +102,24 @@ public class PathFinderTests
     [Fact]
     public void SameStartAndGoal_IsAnEmptyPath()
     {
-        var network = GridNetworkGenerator.Generate(3, 3, spacing: 1);
+        var network = GridNetworkGenerator.Generate(3, 3, spacingTiles: 1);
         var path = new List<int>();
 
         Assert.True(new PathFinder(network).TryFindPath(4, 4, path));
         Assert.Empty(path);
+    }
+
+    [Fact]
+    public void SameSeed_GivesSameNetworkFingerprint()
+    {
+        Assert.Equal(Fingerprint(GridNetworkGenerator.Generate(20, 20, 8, seed: 4)), Fingerprint(GridNetworkGenerator.Generate(20, 20, 8, seed: 4)));
+        Assert.NotEqual(Fingerprint(GridNetworkGenerator.Generate(20, 20, 8, seed: 4)), Fingerprint(GridNetworkGenerator.Generate(20, 20, 8, seed: 5)));
+    }
+
+    private static ulong Fingerprint(TransportNetwork network)
+    {
+        var hasher = new StateHasher();
+        hasher.Append(network);
+        return hasher.GetFingerprint();
     }
 }
