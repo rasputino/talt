@@ -32,9 +32,9 @@
 - [X] T006 [US1] Create `.github/workflows/ci.yml` with triggers, concurrency cancellation, `permissions: contents: read`, and the `build-and-test` matrix (windows-latest, ubuntu-latest, macos-latest), `fail-fast: false`, timeouts, steps: checkout, setup-dotnet 10.0.x with NuGet cache, environment log (`dotnet --info`, OS version), restore, build Release, `dotnet test -c Release --no-build --filter "Category!=Gpu"` with TRX logger, always-upload TRX artifact, `ci/check-fingerprints.ps1`
 - [X] T007 [US1] Add the `ci-result` aggregate job (`if: always()`, fails when any `build-and-test` job did not succeed) to `.github/workflows/ci.yml`
 - [X] T008 [US1] Ask the user before committing and pushing; with approval push the branch, open the run and fix failures until the three platforms are green; record run times against the 15 minute budget (SC-003)
-- [ ] T009 [US1] Probe ARM64 availability: add `ubuntu-24.04-arm` and `windows-11-arm` matrix entries to `.github/workflows/ci.yml`; keep those that schedule on this private repository, remove the rest and note the gap
+- [X] T009 [US1] Probe ARM64 availability: add `ubuntu-24.04-arm` and `windows-11-arm` matrix entries to `.github/workflows/ci.yml`; keep those that schedule on this private repository, remove the rest and note the gap
 - [ ] T010 [US1] Prove blocking: push a throwaway change with a failing test (and one with a changed golden value) to confirm the platform and `ci-result` fail with expected/actual values visible; revert it
-- [ ] T011 [US1] Try enabling branch protection or a ruleset requiring `ci-result` on `main` with `gh api`; if the plan refuses, record the gap for the docs
+- [X] T011 [US1] Try enabling branch protection or a ruleset requiring `ci-result` on `main` with `gh api`; if the plan refuses, record the gap for the docs
 
 **Checkpoint**: US1 delivers verification on all available platforms, including the macOS/ARM64 results.
 
@@ -47,7 +47,7 @@
 - [X] T012 [P] [US2] Implement `ci/compare-benchmarks.ps1` per [contracts/ci-scripts.md](contracts/ci-scripts.md) (markdown report, `::warning::` lines, exit 0 on regression, handles missing baseline)
 - [X] T013 [US2] Run the benchmarks locally with JSON export (`--exporters json --job short`) and verify the script on the output, including a deliberately slowed copy (SC-005); store the degraded sample only in the scratchpad, not in the repo
 - [X] T014 [US2] Create `.github/workflows/benchmarks.yml` (`workflow_dispatch` with `job` input, nightly `schedule`, ubuntu-latest, run benchmarks, compare, write `$GITHUB_STEP_SUMMARY`, upload results and report artifacts)
-- [ ] T015 [US2] GitHub only offers manual (`workflow_dispatch`) and scheduled runs for workflows present on the default branch, so before the merge add a temporary `push` trigger limited to the feature branch in `.github/workflows/benchmarks.yml` (remove it before the final commit). Run the Benchmarks workflow once without a baseline, download its JSON, commit it deliberately as `benchmarks/baselines/ubuntu-latest.json` (with user approval) and write `benchmarks/baselines/README.md` documenting the update procedure; run again to see a comparison report
+- [X] T015 [US2] GitHub only offers manual (`workflow_dispatch`) and scheduled runs for workflows present on the default branch, so before the merge add a temporary `push` trigger limited to the feature branch in `.github/workflows/benchmarks.yml` (remove it before the final commit). Run the Benchmarks workflow once without a baseline, download its JSON, commit it deliberately as `benchmarks/baselines/ubuntu-latest.json` (with user approval) and write `benchmarks/baselines/README.md` documenting the update procedure; run again to see a comparison report
 
 ## Phase 5: User Story 3 - Downloadable builds from main (P3)
 
@@ -58,13 +58,13 @@
 - [X] T016 [P] [US3] Implement `ci/verify-publish.ps1` per [contracts/ci-scripts.md](contracts/ci-scripts.md) using the native file names recorded in T002 and test it locally against the win-x64 publish output and against an output with a library removed
 - [X] T017 [US3] Add the `publish` matrix job (push to `main` only, needs `ci-result`) to `.github/workflows/ci.yml`: publish self-contained per rid on the matching runner, run `ci/verify-publish.ps1`, archive as zip or tar.gz, upload artifact
 - [X] T018 [US3] Add the `nightly-release` job to `.github/workflows/ci.yml` (`contents: write` only for this job) that downloads the three archives and replaces the assets of the prerelease `nightly` using `gh release`, notes stating unsigned and for testing only
-- [ ] T019 [US3] Verify on GitHub: the `publish` jobs only run on `main`, so temporarily allow the feature branch in their `if` (and make `nightly-release` create a differently named prerelease, `nightly-test`, which is deleted afterwards); revert both changes after the check. Then confirm: artifacts and release assets exist; ask the user to start the Linux and macOS builds manually once and record the outcome
+- [X] T019 [US3] Verify on GitHub: the `publish` jobs only run on `main`, so temporarily allow the feature branch in their `if` (and make `nightly-release` create a differently named prerelease, `nightly-test`, which is deleted afterwards); revert both changes after the check. Then confirm: artifacts and release assets exist; ask the user to start the Linux and macOS builds manually once and record the outcome
 
 ## Phase 6: Polish and documentation
 
 - [X] T020 Add a "Continuous integration" section to `docs/ARCHITECTURE.md` (workflows, scripts, golden file regeneration rule, baseline update procedure, covered and not covered platforms, branch-protection status)
 - [X] T021 Update "Verification status" in `docs/ARCHITECTURE.md` with the macOS and ARM64 CI results (fingerprints, test counts, run date) and any gap
-- [ ] T022 Update the T062 status note in `specs/001-simulation-foundation/tasks.md` (and the cross-platform step in `specs/001-simulation-foundation/quickstart.md`) with the CI results; mark T062 done only if macOS and ARM64 are covered or the gap is explicitly accepted
+- [X] T022 Update the T062 status note in `specs/001-simulation-foundation/tasks.md` (and the cross-platform step in `specs/001-simulation-foundation/quickstart.md`) with the CI results; mark T062 done only if macOS and ARM64 are covered or the gap is explicitly accepted
 - [ ] T023 Add a CI badge or short CI note to `README.md` if it documents building; run the full quickstart validation and mark this feature's tasks complete
 - [ ] T024 Ask the user whether to commit and whether to open a pull request (no commit, push or PR without their yes)
 
@@ -86,3 +86,7 @@ MVP is Phase 1-3 (US1): it already closes the macOS/ARM64 verification gap. Then
 - T009 design change: ARM64 lives in `ci-arm64.yml` (not in the required matrix), because a runner unavailable to a private repo queues instead of failing. Shared steps are in the composite action `.github/actions/build-test`.
 - T020 done with a "Continuous integration" section; T021, T022 and the GitHub-run tasks (T008-T011, T015, T019) wait for the first pushed runs.
 - T008 result (run 45055058151): windows-x64, linux-x64 and macos-arm64 all green in under 3 minutes; fingerprints equal the golden values on all three. T021 recorded macOS arm64; ARM64 Linux/Windows, T010, T011, T015, T019 and T022 (final T062 status) remain.
+- T009 result: both ARM64 runners are available and pass with identical fingerprints, so they were added to the required matrix of `ci.yml` and `ci-arm64.yml` was removed.
+- T011 result: branch protection and rulesets return 403 on this plan (private repository, Free); gap documented in ARCHITECTURE.md.
+- T015 result: the first benchmark run took about 9.5 minutes; its JSON is committed as the baseline; a second run produced the comparison report (3 of 12 rows over 10% with no code change, i.e. noise).
+- T019 result: publish artifacts verified and a test prerelease received three assets; the start-by-hand check of the Linux and macOS builds remains with the user.

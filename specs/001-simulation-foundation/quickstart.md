@@ -45,8 +45,8 @@ Expected: exit code 0 and every checkpoint `OK`.
 
 ## 3. Cross-platform check (FR-013, SC-002)
 
-Run step 1 (golden tests) and the `replay` command on Linux and macOS at least once (until CI exists,
-feature 002). Fingerprints must equal the Windows values.
+Run step 1 (golden tests) and the `replay` command on Linux and macOS at least once (done by CI since
+feature 002, which runs them on every push). Fingerprints must equal the Windows values.
 
 ## 4. In the game (US1, US2, US3)
 

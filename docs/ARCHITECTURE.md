@@ -323,3 +323,14 @@ scripts in `ci/` that also run locally (`pwsh ci/check-fingerprints.ps1`).
 - **Baselines:** updated by hand (see `benchmarks/baselines/README.md`), never by the workflow.
 - **Not covered:** macOS Intel (x64) and any hardware with a real GPU. A downloaded build has to be
   started by hand on Linux and macOS at least once.
+- **Merge blocking (gap):** branch protection and rulesets are not available for private repositories
+  on the GitHub Free plan (the API answers 403, checked 2026-11-22), so GitHub cannot refuse a merge
+  by itself. The checks and the single `ci-result` check are published anyway; merge only when it is
+  green. Making the repository public or upgrading the plan lets you require `ci-result`.
+- **Benchmark noise:** two runs of the same code on `ubuntu-latest` differed by up to 13% on one
+  benchmark (3 rows flagged out of 12 with no code change), which is why regressions only warn and
+  benchmarks do not run on every push. Treat a single flagged row as a hint and repeat the run.
+- **Verified on GitHub (2026-11-22):** the `publish` jobs produce self-contained builds that pass
+  `verify-publish.ps1` for win-x64, linux-x64 and osx-arm64 (about 35-40 MB each), and the release
+  step replaces the prerelease assets. Starting the downloaded builds by hand on Linux and macOS is
+  still to be done by a person with a display.
