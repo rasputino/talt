@@ -273,5 +273,8 @@ terrain triangles are drawn every frame with no culling or level of detail yet).
   tick equals the headless one; the client exits cleanly.
 - Linux and macOS: **not run yet**. Run `dotnet test` (golden fingerprints) and a headless `replay`
   there at least once; continuous integration (feature 002) will automate it.
-- Keyboard controls (speeds, fast forward, pause, add/remove vehicle) are covered by unit tests of
-  the runner and commands but still need a manual check in the window.
+- Keyboard controls (speeds, fast forward, pause, add/remove vehicle): checked by hand in the window
+  on Windows (2026-11-22, `-- 32 50000 2026 --unlock-fast-forward`), on top of the unit tests of the
+  runner and commands.
+- Fast-forward rate (SC-003, ≥ ×20 at ≥ 30 FPS on `-- 128 50000`): not measured yet; the estimate
+  from tick timings is ≥ ×100.
