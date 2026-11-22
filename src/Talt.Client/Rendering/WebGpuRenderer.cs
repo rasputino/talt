@@ -6,18 +6,27 @@ using Silk.NET.Maths;
 using Silk.NET.WebGPU;
 using Silk.NET.Windowing;
 using Talt.Core.Meshing;
+using Talt.Core.Voxels;
 using Buffer = Silk.NET.WebGPU.Buffer;
 using Color = Silk.NET.WebGPU.Color;
 
 namespace Talt.Client.Rendering;
 
 /// <summary>
-/// Minimal WebGPU renderer for voxel chunk meshes. WebGPU maps to Vulkan, Metal or DirectX 12
+/// WebGPU renderer: owns the device, the pipelines and the frame; the voxel world is drawn by
+/// <see cref="WorldRenderer"/> and vehicles by instancing. WebGPU maps to Vulkan, Metal or DirectX 12
 /// depending on the platform.
 /// </summary>
 internal sealed unsafe class WebGpuRenderer : IDisposable
 {
     private const TextureFormat DepthFormat = TextureFormat.Depth32float;
+
+    /// <summary>
+    /// Frames the CPU may submit before waiting for the GPU. Without this limit, when vertical sync
+    /// does not throttle (window hidden behind others, some drivers) the CPU queues frames and buffer
+    /// uploads faster than the GPU finishes them until memory runs out.
+    /// </summary>
+    private const int MaxFramesInFlight = 2;
 
     private static readonly Vector3 SkyColor = new(0.55f, 0.75f, 0.95f);
 
@@ -26,7 +35,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
     private static readonly PfnErrorCallback OnErrorPfn = new(OnError);
 
     private readonly WebGPU _wgpu;
-    private readonly List<GpuMesh> _meshes = [];
+    private WorldRenderer? _worldRenderer;
 
     private Instance* _instance;
     private Surface* _surface;
@@ -55,11 +64,14 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
     private Texture* _depthTexture;
     private TextureView* _depthView;
     private Vector2D<int> _size;
+    private readonly ulong[] _submissions = new ulong[MaxFramesInFlight];
+    private long _frameNumber;
     private bool _disposed;
 
-    public WebGpuRenderer(IWindow window)
+    public WebGpuRenderer(IWindow window, VoxelWorld world)
     {
         ArgumentNullException.ThrowIfNull(window);
+        ArgumentNullException.ThrowIfNull(world);
 
         _wgpu = WebGPU.GetApi();
 
@@ -76,33 +88,37 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         Resize(window.FramebufferSize);
         CreatePipeline();
         CreateVehiclePipeline();
+        _worldRenderer = new WorldRenderer(_wgpu, _device, _queue, world);
     }
 
     public string AdapterDescription { get; private set; } = "unknown";
 
-    public int TriangleCount { get; private set; }
+    /// <summary>Counters of the last drawn frame.</summary>
+    public RenderStatistics Statistics => _worldRenderer?.Statistics ?? default;
 
-    public void UploadMeshes(IEnumerable<ChunkMesh> meshes)
+    /// <summary>Where the last <see cref="Draw"/> spent its time, for diagnosing long frames.</summary>
+    public DrawTimings LastDrawTimings { get; private set; }
+
+    /// <inheritdoc cref="WorldRenderer.NotifyVoxelsChanged"/>
+    public int NotifyVoxelsChanged(IReadOnlyList<(int X, int Y, int Z)> voxels, long timestamp) =>
+        _worldRenderer?.NotifyVoxelsChanged(voxels, timestamp) ?? 0;
+
+    /// <inheritdoc cref="WorldRenderer.TryTakeCompletedEdit"/>
+    public bool TryTakeCompletedEdit(out long timestamp, out int chunks)
     {
-        ArgumentNullException.ThrowIfNull(meshes);
-
-        foreach (var mesh in meshes)
-        {
-            if (mesh.IsEmpty)
-            {
-                continue;
-            }
-
-            var vertexBuffer = CreateBuffer<VoxelVertex>(mesh.Vertices, BufferUsage.Vertex | BufferUsage.CopyDst);
-            var indexBuffer = CreateBuffer<uint>(mesh.Indices, BufferUsage.Index | BufferUsage.CopyDst);
-            _meshes.Add(new GpuMesh(vertexBuffer, indexBuffer, (ulong)(mesh.Vertices.Length * VoxelVertex.SizeInBytes), (uint)mesh.Indices.Length));
-            TriangleCount += mesh.Indices.Length / 3;
-        }
+        timestamp = 0;
+        chunks = 0;
+        return _worldRenderer is not null && _worldRenderer.TryTakeCompletedEdit(out timestamp, out chunks);
     }
 
     /// <summary>Replaces the vehicles drawn in the next frames. Grows the GPU buffer when needed.</summary>
     public void UpdateVehicles(ReadOnlySpan<VehicleInstance> instances)
     {
+        if (_disposed || _size.X <= 0 || _size.Y <= 0)
+        {
+            return; // Minimized: nothing is submitted, so uploads would only pile up.
+        }
+
         if (instances.Length > _instanceCapacity)
         {
             if (_instanceBuffer != null)
@@ -172,8 +188,10 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             return;
         }
 
+        var start = System.Diagnostics.Stopwatch.GetTimestamp();
         SurfaceTexture surfaceTexture;
         _wgpu.SurfaceGetCurrentTexture(_surface, &surfaceTexture);
+        var acquired = System.Diagnostics.Stopwatch.GetTimestamp();
         if (surfaceTexture.Status != SurfaceGetCurrentTextureStatus.Success)
         {
             if (surfaceTexture.Texture != null)
@@ -185,17 +203,26 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             return;
         }
 
+        var viewProjection = camera.ViewProjection(_size.X / (float)_size.Y);
+        var fogDistance = camera.Distance * 2.5f;
         var uniforms = new Uniforms
         {
-            ViewProjection = camera.ViewProjection(_size.X / (float)_size.Y),
+            ViewProjection = viewProjection,
             LightDirection = new Vector4(Vector3.Normalize(new Vector3(-0.45f, -1f, -0.3f)), 0f),
-            CameraPosition = new Vector4(camera.Position, camera.Distance * 2.5f),
+            CameraPosition = new Vector4(camera.Position, fogDistance),
             SkyColor = new Vector4(SkyColor, 1f),
         };
+        for (var m = 0; m < Uniforms.PaletteSize; m++)
+        {
+            uniforms.Palette[m] = new Vector4(MaterialPalette.BaseColor((VoxelMaterial)m), 1f);
+        }
+
         _wgpu.QueueWriteBuffer(_queue, _uniformBuffer, 0, &uniforms, (nuint)sizeof(Uniforms));
 
         var colorView = _wgpu.TextureCreateView(surfaceTexture.Texture, null);
         var encoder = _wgpu.DeviceCreateCommandEncoder(_device, null);
+        _worldRenderer!.Prepare(encoder, viewProjection, camera.Position, fogDistance, _size.Y, camera.FieldOfView);
+        var prepared = System.Diagnostics.Stopwatch.GetTimestamp();
 
         var colorAttachment = new RenderPassColorAttachment
         {
@@ -226,12 +253,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _wgpu.RenderPassEncoderSetPipeline(pass, _pipeline);
         _wgpu.RenderPassEncoderSetBindGroup(pass, 0, _bindGroup, 0, null);
 
-        foreach (var mesh in _meshes)
-        {
-            _wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, mesh.VertexBuffer, 0, mesh.VertexBytes);
-            _wgpu.RenderPassEncoderSetIndexBuffer(pass, mesh.IndexBuffer, IndexFormat.Uint32, 0, mesh.IndexCount * sizeof(uint));
-            _wgpu.RenderPassEncoderDrawIndexed(pass, mesh.IndexCount, 1, 0, 0, 0);
-        }
+        _worldRenderer.Encode(pass);
 
         if (_instanceCount > 0)
         {
@@ -246,8 +268,16 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _wgpu.RenderPassEncoderRelease(pass);
 
         var commands = _wgpu.CommandEncoderFinish(encoder, null);
-        _wgpu.QueueSubmit(_queue, 1, &commands);
+        var encoded = System.Diagnostics.Stopwatch.GetTimestamp();
+        WaitForFrameSlot();
+        var waited = System.Diagnostics.Stopwatch.GetTimestamp();
+        _submissions[_frameNumber % MaxFramesInFlight] = NativeWgpu.QueueSubmitForIndex(_queue, 1, &commands);
+        _frameNumber++;
+        _worldRenderer.AfterSubmit();
         _wgpu.SurfacePresent(_surface);
+        var presented = System.Diagnostics.Stopwatch.GetTimestamp();
+        LastDrawTimings = new DrawTimings(
+            Ms(start, acquired), Ms(acquired, prepared), Ms(prepared, encoded), Ms(encoded, waited), Ms(waited, presented));
 
         _wgpu.CommandBufferRelease(commands);
         _wgpu.CommandEncoderRelease(encoder);
@@ -263,13 +293,8 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         }
 
         _disposed = true;
-        foreach (var mesh in _meshes)
-        {
-            _wgpu.BufferRelease(mesh.VertexBuffer);
-            _wgpu.BufferRelease(mesh.IndexBuffer);
-        }
-
-        _meshes.Clear();
+        _worldRenderer?.Dispose();
+        _worldRenderer = null;
         ReleaseDepthTexture();
 
         if (_instanceBuffer != null)
@@ -297,6 +322,24 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         // Do not call _wgpu.Dispose(): it unloads wgpu-native while the library's internal threads
         // may still be shutting down, which crashes the process on exit (access violation). The OS
         // frees the library when the process ends.
+    }
+
+    private static double Ms(long from, long to) => System.Diagnostics.Stopwatch.GetElapsedTime(from, to).TotalMilliseconds;
+
+    /// <summary>Blocks until the frame submitted <see cref="MaxFramesInFlight"/> frames ago is finished.</summary>
+    private void WaitForFrameSlot()
+    {
+        if (_frameNumber < MaxFramesInFlight)
+        {
+            return;
+        }
+
+        var index = new NativeWgpu.WrappedSubmissionIndex
+        {
+            Queue = _queue,
+            SubmissionIndex = _submissions[_frameNumber % MaxFramesInFlight],
+        };
+        _ = NativeWgpu.DevicePoll(_device, 1, &index); // Returns whether the queue is empty; not needed.
     }
 
     private void RequestAdapter()
@@ -406,19 +449,14 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         var bindGroupDescriptor = new BindGroupDescriptor { Layout = _bindGroupLayout, EntryCount = 1, Entries = &bindGroupEntry };
         _bindGroup = _wgpu.DeviceCreateBindGroup(_device, &bindGroupDescriptor);
 
-        var attributes = stackalloc VertexAttribute[3];
-        attributes[0] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 0, ShaderLocation = 0 };
-        attributes[1] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 12, ShaderLocation = 1 };
-        attributes[2] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 24, ShaderLocation = 2 };
-        var vertexLayout = new VertexBufferLayout
-        {
-            ArrayStride = VoxelVertex.SizeInBytes,
-            StepMode = VertexStepMode.Vertex,
-            AttributeCount = 3,
-            Attributes = attributes,
-        };
+        // Buffer 0: packed vertices (contracts/meshing-api.md). Buffer 1: region origin per instance.
+        var vertexAttribute = new VertexAttribute { Format = VertexFormat.Uint32x2, Offset = 0, ShaderLocation = 0 };
+        var originAttribute = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 0, ShaderLocation = 1 };
+        var layouts = stackalloc VertexBufferLayout[2];
+        layouts[0] = new VertexBufferLayout { ArrayStride = PackedVertex.SizeInBytes, StepMode = VertexStepMode.Vertex, AttributeCount = 1, Attributes = &vertexAttribute };
+        layouts[1] = new VertexBufferLayout { ArrayStride = (ulong)sizeof(Vector4), StepMode = VertexStepMode.Instance, AttributeCount = 1, Attributes = &originAttribute };
 
-        _pipeline = CreateRenderPipeline(_shader, &vertexLayout, 1);
+        _pipeline = CreateRenderPipeline(_shader, layouts, 2);
     }
 
     /// <summary>Pipeline for vehicles: a unit cube drawn once per vehicle (instancing).</summary>
@@ -565,16 +603,15 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         public Vector4 LightDirection;
         public Vector4 CameraPosition;
         public Vector4 SkyColor;
+        public PaletteColors Palette;
+
+        public const int PaletteSize = 8;
     }
 
-    private readonly struct GpuMesh(Buffer* vertexBuffer, Buffer* indexBuffer, ulong vertexBytes, uint indexCount)
+    /// <summary>Linear base colour per <see cref="VoxelMaterial"/> value (index 0, air, is unused).</summary>
+    [System.Runtime.CompilerServices.InlineArray(Uniforms.PaletteSize)]
+    private struct PaletteColors
     {
-        public Buffer* VertexBuffer { get; } = vertexBuffer;
-
-        public Buffer* IndexBuffer { get; } = indexBuffer;
-
-        public ulong VertexBytes { get; } = vertexBytes;
-
-        public uint IndexCount { get; } = indexCount;
+        private Vector4 _element;
     }
 }

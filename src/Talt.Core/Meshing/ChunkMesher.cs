@@ -1,5 +1,4 @@
 using System.Numerics;
-using Talt.Core.Terrain;
 using Talt.Core.Voxels;
 
 namespace Talt.Core.Meshing;
@@ -9,32 +8,19 @@ namespace Talt.Core.Meshing;
 /// Applies per-vertex ambient occlusion and a small per-voxel color variation.
 /// </summary>
 /// <remarks>
-/// Before meshing, the chunk plus a one-voxel border from its neighbours is copied into a padded
+/// This is the original naive mesher (one quad per visible face, 36-byte vertices). The game draws
+/// <see cref="GreedyMesher"/> output; this class is kept as the reference that tests and benchmarks
+/// compare against. Before meshing, the chunk plus a one-voxel border from its neighbours is copied into a padded
 /// buffer. This makes neighbour lookups cheap array reads and lets faces on chunk borders be culled
-/// correctly. Greedy meshing (merging coplanar faces) is a possible future optimization.
+/// correctly.
 /// </remarks>
 public static class ChunkMesher
 {
     private const int Padded = Chunk.Size + 2;
 
-    /// <summary>Brightness for 0..3 unoccluded neighbours around a vertex.</summary>
-    private static readonly float[] AoBrightness = [0.55f, 0.72f, 0.86f, 1f];
-
-    /// <summary>
-    /// The six faces of a cube. U × V = Normal, so corners (0,0), (1,0), (1,1), (0,1) in (U, V)
-    /// are counter-clockwise when seen from outside.
-    /// </summary>
-    private static readonly Face[] Faces =
-    [
-        new(new(1, 0, 0), new(0, 1, 0), new(0, 0, 1)),
-        new(new(-1, 0, 0), new(0, 0, 1), new(0, 1, 0)),
-        new(new(0, 1, 0), new(0, 0, 1), new(1, 0, 0)),
-        new(new(0, -1, 0), new(1, 0, 0), new(0, 0, 1)),
-        new(new(0, 0, 1), new(1, 0, 0), new(0, 1, 0)),
-        new(new(0, 0, -1), new(0, 1, 0), new(1, 0, 0)),
-    ];
-
-    private static readonly (int U, int V)[] Corners = [(0, 0), (1, 0), (1, 1), (0, 1)];
+    private static readonly FaceDirections.Face[] Faces = FaceDirections.Faces;
+    private static readonly (int U, int V)[] Corners = FaceDirections.Corners;
+    private static readonly float[] AoBrightness = FaceDirections.AoBrightness;
 
     public static ChunkMesh Build(VoxelWorld world, Chunk chunk)
     {
@@ -85,7 +71,7 @@ public static class ChunkMesher
         List<VoxelVertex> vertices,
         List<uint> indices,
         VoxelMaterial[] padded,
-        Face face,
+        FaceDirections.Face face,
         int x, int y, int z,
         int ax, int ay, int az,
         (int X, int Y, int Z) origin,
@@ -162,15 +148,7 @@ public static class ChunkMesher
 
     private static int B(bool value) => value ? 1 : 0;
 
-    /// <summary>Base material color with a deterministic ±5% brightness variation per voxel.</summary>
-    private static Vector3 VoxelColor(VoxelMaterial material, int x, int y, int z)
-    {
-        var hash = ValueNoise.Hash(x * 31 + y, z, 0x9e3779b9u);
-        var variation = 0.95f + (hash & 0xff) / 255f * 0.10f;
-        return MaterialPalette.BaseColor(material) * variation;
-    }
-
-    private readonly record struct Int3(int X, int Y, int Z);
-
-    private readonly record struct Face(Int3 Normal, Int3 U, Int3 V);
+    /// <summary>Base material color with the deterministic per-voxel brightness variation.</summary>
+    private static Vector3 VoxelColor(VoxelMaterial material, int x, int y, int z) =>
+        MaterialPalette.BaseColor(material) * MaterialPalette.Variation(x, y, z);
 }

@@ -30,5 +30,13 @@
   "command.rejected.invalid-speed": "invalid speed",
   "command.rejected.invalid-start-edge": "invalid starting point",
   "command.rejected.vehicle-not-found": "that vehicle does not exist",
-  "command.rejected.unknown": "unknown reason"
+  "command.rejected.unknown": "unknown reason",
+  "stats.frame": "frame {average} ms (worst {worst} ms)",
+  "stats.draws": "{count} draws",
+  "stats.triangles": "{count} triangles",
+  "stats.regions": "regions by detail {lod0}/{lod1}/{lod2}/{lod3}",
+  "stats.memory": "world {mb} MB",
+  "stats.jobs": "{count} mesh jobs",
+  "stats.allocated": "{bytes} B allocated per frame",
+  "edit.visible": "Edit visible after {ms} ms ({chunks} chunks rebuilt)."
 }

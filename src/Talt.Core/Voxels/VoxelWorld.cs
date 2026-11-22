@@ -3,6 +3,13 @@ namespace Talt.Core.Voxels;
 /// <summary>
 /// Sparse collection of chunks. Missing chunks are treated as air.
 /// </summary>
+/// <remarks>
+/// Threading: the renderer's mesh workers read voxels while the main thread may change them. That is
+/// safe as long as chunks are only written inside existing chunks (<see cref="SetVoxel"/> on a
+/// position whose chunk exists): a mesh built during a write may be stale and is rebuilt. Creating
+/// chunks (<see cref="GetOrCreateChunk"/>, or <see cref="SetVoxel"/> in a missing chunk) must not
+/// happen while meshes are being built, because the chunk dictionary is not thread-safe.
+/// </remarks>
 public sealed class VoxelWorld
 {
     private readonly Dictionary<ChunkCoord, Chunk> _chunks = [];

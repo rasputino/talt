@@ -30,10 +30,13 @@ Example: `dotnet run --project src/Talt.Client -c Release -- 16 20000` shows a 5
 20 000 vehicles.
 
 Client options: `--start-year <year>`, `--language en|es`, `--unlock-fast-forward` /
-`--lock-fast-forward` (saved in your settings), `--record [file]`, `--print-fingerprint-at <tick>`.
+`--lock-fast-forward` (saved in your settings), `--record [file]`, `--print-fingerprint-at <tick>`,
+`--stats` (render statistics from the start), `--zoom <distance|max>` (initial camera distance).
 
 In-game keys: Space pause, `1`/`2`/`3` speed ×1/×3/×8, `F` fast forward (once unlocked), `N` add a
-vehicle, `Delete` remove the last vehicle you added, mouse and WASD/arrows/Q/E for the camera.
+vehicle, `Delete` remove the last vehicle you added, `F3` render statistics, `PageUp`/`PageDown`
+raise/lower the tile under the camera (debug; Shift for a 32 × 32 area), mouse and WASD/arrows/Q/E
+for the camera.
 
 `Talt.Headless` runs and replays simulations without a window (`run`, `replay`); see
 [the headless runner contract](specs/001-simulation-foundation/contracts/headless-cli.md).

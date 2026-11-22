@@ -8,9 +8,10 @@ This document describes how the code is organized today. Update it whenever the 
 Talt.slnx
 ├── src/
 │   ├── Talt.Core/          Game logic. No graphics, no window, no platform code.
-│   │   ├── Voxels/         Chunk, ChunkCoord, VoxelWorld, VoxelMaterial
-│   │   ├── Terrain/        ValueNoise, TerrainGenerator, Heightmap
-│   │   ├── Meshing/        ChunkMesher, ChunkMesh, VoxelVertex, MaterialPalette
+│   │   ├── Voxels/         Chunk, ChunkCoord, RegionCoord, VoxelWorld, VoxelMaterial
+│   │   ├── Terrain/        ValueNoise, TerrainGenerator, Heightmap, TerrainEditor (debug edits)
+│   │   ├── Meshing/        GreedyMesher, LodVolume, PackedVertex, PackedMesh, FaceDirections,
+│   │   │                   MaterialPalette; ChunkMesher/ChunkMesh/VoxelVertex (naive reference)
 │   │   ├── Network/        TransportNetwork (+ builder), GridPoint, PathFinder (A*),
 │   │   │                   GridNetworkGenerator, NetworkTerrainPainter
 │   │   ├── Simulation/     GameSimulation, GameClock/GameDate, SimulationEvents, SimulationRunner,
@@ -23,15 +24,17 @@ Talt.slnx
 │       ├── GameWindow.cs   Window lifecycle, camera, speed keys, pose interpolation, title status
 │       ├── PlayerSettings.cs  Persisted player settings (fast-forward unlock)
 │       ├── Localization/   Minimal en/es string table (Strings.cs + JSON resources)
-│       └── Rendering/      WebGpuRenderer, OrbitCamera, UnitCube, Shaders/*.wgsl
+│       └── Rendering/      WebGpuRenderer, WorldRenderer, ChunkMeshScheduler, Frustum,
+│                           LodSelector, RenderStatistics, OrbitCamera, UnitCube, Shaders/*.wgsl
 ├── tools/
 │   └── Talt.Headless/      Console runner: run and replay simulations without a window
 ├── tests/
 │   ├── Talt.Core.Tests/    xUnit tests for Talt.Core (determinism, calendar, runner, commands...)
-│   ├── Talt.Client.Tests/  String table tests
+│   ├── Talt.Client.Tests/  String table, frustum, LOD selection, camera, frame-time tests
 │   └── Talt.Headless.Tests/ Command-line parsing tests
 └── benchmarks/
-    └── Talt.Benchmarks/    BenchmarkDotNet: full tick, vehicle tick, pathfinding, SoA vs Arch ECS
+    └── Talt.Benchmarks/    BenchmarkDotNet: full tick, vehicle tick, pathfinding, SoA vs Arch ECS,
+                            chunk meshing (naive vs greedy, LOD)
 ```
 
 **Rule:** `Talt.Core` must never reference graphics or windowing libraries. Everything in it must be
@@ -60,6 +63,12 @@ Same seed, same terrain. This is prototype quality and will be replaced by a pro
 
 ## Meshing
 
+Feature 003 replaced the naive mesher in the game with `GreedyMesher`
+(`specs/003-large-map-rendering/research.md` R1–R5). `ChunkMesher` stays as the reference that the
+tests and benchmarks compare against.
+
+### Reference mesher (`ChunkMesher`)
+
 `ChunkMesher` turns a chunk into triangles:
 
 1. Copies the chunk plus a one-voxel border from neighbours into a padded 34³ buffer, so
@@ -69,11 +78,33 @@ Same seed, same terrain. This is prototype quality and will be replaced by a pro
    each quad along its brighter diagonal to avoid artifacts.
 4. Applies a deterministic ±5% brightness variation per voxel for the voxel art look.
 
-Vertices are in world space (`VoxelVertex`: position, normal, color = 36 bytes). Chunks can be meshed
-in parallel because meshing only reads the world.
+Vertices are in world space (`VoxelVertex`: position, normal, color = 36 bytes), plus 32-bit indices:
+168 bytes per face.
 
-Possible future optimizations: greedy meshing (merge coplanar faces), chunk-relative positions with
-compressed vertices, LOD meshes for distant chunks.
+### Greedy mesher (`GreedyMesher`)
+
+- **Same surface, fewer quads.** Faces exist exactly where the reference mesher puts them, with the
+  same AO and diagonal rule, except faces pointing down at the bottom of the world (below the world
+  is a marker that hides faces without darkening AO). Per face direction and slice, a 2D mask of
+  faces keyed by material + four corner AO levels is merged into rectangles, but only where linear
+  AO interpolation stays exact (uniform AO: both directions; AO constant along one axis: that axis
+  only). Tests check that greedy and naive cover the same unit faces with the same AO, and that the
+  naive packed mesh equals the reference mesher face for face.
+- **Colour variation in the shader.** The ±5 % per-voxel variation (`MaterialPalette.Variation`) is
+  recomputed in `voxel.wgsl` from the voxel under each fragment with the same integer hash, so it
+  does not stop faces from merging.
+- **Packed vertices.** `PackedVertex` is 8 bytes: position relative to the region origin (8 bits
+  per axis), face direction, material, AO level. All quads use the index pattern 0-1-2 / 0-2-3 (the
+  mesher rotates the corners to pick the diagonal), so one shared index buffer serves every draw:
+  32 bytes per quad instead of 168.
+- **Levels of detail.** `LodVolume` downsamples a 128³ region by 2, 4 or 8: a block is solid when at
+  least half its voxels are; surface blocks take the material of the real surface, and roads win
+  when at least half a block width of columns is road, so the road network stays continuous. Outside
+  the region is air, so simplified meshes carry their own side walls ("skirts") that close cracks to
+  neighbours drawn at another level.
+- **Threading.** Scratch buffers are per thread; meshing only reads the world. Voxel writes inside
+  existing chunks while meshing only make a mesh stale (it is rebuilt); creating chunks is not
+  allowed while the renderer runs (see `VoxelWorld`).
 
 ## Transport network
 
@@ -222,14 +253,48 @@ default statistical job):
 - **Silk.NET** creates the window (GLFW) and provides the WebGPU bindings.
 - **WebGPU** through wgpu-native, which uses Vulkan, Metal or DirectX 12 depending on the platform.
   On the development machine (Windows, AMD) it runs on Vulkan.
-- `WebGpuRenderer` owns all GPU objects: a terrain pipeline with one vertex + index buffer per
-  chunk, a vehicle pipeline, and one uniform buffer (view-projection, light, camera, sky color)
-  shared by both.
-- `voxel.wgsl`: directional light plus sky light, baked ambient occlusion, distance fog.
+- `WebGpuRenderer` owns the device, the terrain and vehicle pipelines and one uniform buffer
+  (view-projection, light, camera, sky colour, material palette) shared by both, and runs the frame.
+- `voxel.wgsl`: unpacks `PackedVertex`, adds the region origin (per-instance attribute), applies
+  palette colour × per-voxel variation × interpolated AO, then directional light plus sky light and
+  distance fog (unchanged look).
+
+### World rendering (feature 003)
+
+- **Regions.** `WorldRenderer` groups chunks into regions of 4 × 4 × 4 chunks (128³ voxels): 1 024
+  regions on a 4096 map, 16 on a 512 map. Each region has one GPU vertex buffer per level of detail;
+  each visible region is one `DrawIndexed` (`firstInstance` = region slot selects its origin).
+- **Full-detail buffers** are the concatenation of the region's chunk meshes. When chunks change, a
+  new buffer is assembled on the GPU: unchanged chunk ranges are copied buffer-to-buffer from the
+  old one and only rebuilt chunks are uploaded, so no mesh copy stays in main memory.
+- **Culling** per frame on the CPU: regions beyond the full-fog distance are skipped (they would be
+  drawn in sky colour), then a frustum test on the region box and on the mesh bounds.
+- **Level of detail** per region from the screen-space error of its nearest point
+  (`LodSelector`: the coarsest level whose cells stay under 2 px, 10 % hysteresis). While a level is
+  not built yet the nearest built level is drawn (coarser first); a region with nothing built is
+  not drawn (the map fills in at start).
+- **Background meshing.** `ChunkMeshScheduler` runs dedicated below-normal-priority workers
+  (processor count − 2). Each frame the render thread lists missing or stale meshes for regions
+  within the fog distance, sorts them by distance (visible first; simplified levels first because
+  they are cheap and fill the view), and keeps at most two jobs per worker in flight. Finished meshes
+  are uploaded within 4 MB or 2 ms per frame. Nothing is meshed before the window opens.
+- **Edits.** `NotifyVoxelsChanged` bumps the version of every chunk within one voxel of a change
+  (`ChunkCoord.TouchedBy`) and of their regions' simplified levels; stale meshes are drawn until
+  their replacement arrives. The client reports when an edit is on screen (PageUp/PageDown debug
+  edits print "Edit visible after … ms").
+- **Statistics.** F3 (or `--stats`) shows frame time average/worst, FPS, draw calls, triangles,
+  regions per level, world GPU memory, pending mesh jobs and managed bytes allocated per frame by
+  the draw path (0 in steady state) in the title bar and the console.
 - `vehicles.wgsl`: **instancing**. A single unit cube is drawn once per vehicle in one draw call;
   each instance carries position, heading and color, uploaded every frame.
 - Colors are linear. The renderer prefers an sRGB surface format so the GPU converts them.
 - GPU resources are released after the window loop has finished, never inside window events.
+- **At most two frames in flight.** Each frame is submitted with `wgpuQueueSubmitForIndex`, and before
+  submitting a new frame the renderer waits (`wgpuDevicePoll`) for the frame two submissions back.
+  Vertical sync alone does not throttle when the window is hidden behind others: during the first
+  hand test of feature 003 the client ran at ~480 FPS, queued uploads faster than the integrated GPU
+  finished them, and exhausted shared memory until wgpu-native aborted. Vehicle instances are also
+  uploaded only in frames that are drawn (never while minimized).
 
 ## Camera and controls
 
@@ -240,19 +305,99 @@ inside the map, and the camera tilts up automatically so it never goes inside a 
 |---|---|
 | Left mouse drag | Rotate |
 | Right mouse drag, WASD, arrows | Pan |
-| Mouse wheel | Zoom |
+| Mouse wheel | Zoom (the farthest zoom shows the whole map: up to 2 × the map side) |
 | Q / E | Rotate |
 | Space | Pause / resume |
 | 1 / 2 / 3 | Speed ×1 / ×3 / ×8 |
 | F | Fast forward on / off (only when unlocked: `--unlock-fast-forward`) |
 | N | Add a vehicle to a random line |
 | Delete | Remove the last vehicle you added |
+| F3 | Render statistics in the title bar and console (on / off) |
+| PageUp / PageDown | Raise / lower the tile under the camera target (debug edit; Shift: 32 × 32 area) |
 | Esc | Quit |
+
+Options for measurements: `--stats` shows the statistics from the start, `--zoom <distance|max>` sets
+the initial camera distance.
 
 The title bar shows the date, speed, effective speed, FPS, vehicles, average tick time and the
 result of the last command, in English or Spanish (`--language en|es`).
 
-## Current numbers (prototype, Windows, AMD Radeon integrated GPU)
+## Rendering performance (feature 003)
+
+Windows, AMD Ryzen 7 160 with integrated Radeon GPU over Vulkan, 1600 × 900 window, vertical sync
+(60 Hz), 50 000 vehicles at normal speed, Release build, 2026-11-22. Numbers from the client's render
+statistics (`--stats`): FPS and worst frame over one second, world GPU memory = vertex, index and
+origin buffers of the terrain.
+
+| Map | Zoom (camera distance) | FPS | Worst frame | Draws | Triangles | Regions by LOD 0/1/2/3 | World memory |
+|---|---|---|---|---|---|---|---|
+| 512 × 512 (`-- 16`) | 350 (default) | 60 | 20 ms | 15 | 268 k | 15/0/0/0 | 4 MB |
+| 512 × 512 | 2 000 (max) | 60 | 20 ms | 16 | 78 k | 0/16/0/0 | 1 MB |
+| 2048 × 2048 (`-- 64`) | 350 | 60 | 22 ms | 21 | 386 k | 21/0/0/0 | 66 MB |
+| 2048 × 2048 | 4 096 (max) | 60 | 21 ms | 256 | 366 k | 0/0/256/0 | 5 MB |
+| 4096 × 4096 (`-- 128`) | 350 | 60 | 20 ms | 21 | 379 k | 21/0/0/0 | 96 MB |
+| 4096 × 4096 | 1 000 | 60 | 21 ms | 94 | 1.6 M | 92/2/0/0 | 157 MB |
+| 4096 × 4096 | 2 500 | 60 | 22 ms | 472 | 1.7 M | 0/313/159/0 | 56 MB |
+| 4096 × 4096 | 4 500 | 60 | 21 ms | 906 | 1.3 M | 0/0/897/9 | 22 MB |
+| 4096 × 4096 | 8 192 (max, whole map) | 60 | 22 ms | 1 023 | 509 k | 0/0/0/1 023 | 8 MB |
+
+Before feature 003: 1024 map 4.8 M triangles at 36 FPS in fast forward, 2048 map 19.1 M triangles at
+14 FPS, 4096 map blank window (6.4 GB of buffers, out of GPU memory).
+
+**Hand test on the 4096 map** (developer, ~8 minutes of panning, rotating and zooming between the
+closest and the farthest zoom, with edits and fast forward; console log of the statistics):
+
+- Normal speed: 490 one-second samples, average FPS 56–60 in all of them (60 in 486). In 475 of them
+  no frame exceeded 33 ms; 15 had one longer frame (34–56 ms, typically 36–42 ms), also while the
+  camera was still and no meshing was pending, so they are not caused by mesh uploads. Up to
+  2.75 M triangles and 430 draws at medium zoom; world memory peaked at 292 MB after visiting much of
+  the map (all built levels are kept; no eviction yet). SC-001 is met on average frame rate; the
+  occasional single long frame is a follow-up (see below).
+- Edits (PageUp/PageDown): every single-tile edit was on screen after 29–34 ms (two frames; 1 or 4
+  chunks rebuilt), well under the 100 ms target (SC-002). 32 × 32 area edits also showed within a few
+  frames.
+- Startup: the window opens right after terrain generation (~4.7 s) and the view fills in within
+  ~3 s, nearest first. Creating the synthetic traffic before that still takes ~26–38 s (feature 001).
+- Managed allocations of the draw path: 0 B per frame in steady state.
+
+Meshing benchmark (`ChunkMeshingBenchmarks`, BenchmarkDotNet default job, terrain with roads, per
+chunk of 32³ voxels):
+
+| Benchmark | Mean | Allocated |
+|---|---|---|
+| Reference naive mesher (`ChunkMesher`) | 1.25 ms | 1 933 KB |
+| Greedy mesher, full detail | 0.62 ms | 19 KB |
+| Region LOD 1 (per chunk of the region) | 0.22 ms | 154 KB |
+| Region LOD 2 | 0.12 ms | 20 KB |
+| Region LOD 3 | 0.10 ms | 3 KB |
+
+Memory per face: 168 bytes before (36-byte vertices + 32-bit indices) vs 32 bytes per merged quad now
+(8-byte vertices, shared index buffer), and far fewer quads after merging.
+
+**Long frames.** While statistics are shown, every frame over 33.4 ms prints where its time went:
+`Long frame … ms: update (simulation, ticks), vehicles, acquire, prepare, encode, wait GPU, submit; GC
+gen0/gen1/gen2 (pause)`. First diagnosis (2026-11-22), measured while two other Claude sessions were
+running builds, tests and 4096 headless runs on the same machine: the render phases (prepare,
+encode, wait GPU, submit) stayed under 1 ms almost always; the long frames came from the simulation
+tick (normally ~1.6 ms, here 20–290 ms) and from building vehicle instances (normally ~2–4 ms, here
+up to 85 ms), both `Parallel.For` work on the shared thread pool that is starved when other
+processes load the CPU. No garbage collection happened in any long frame. The hand test above also
+ran while another session was benchmarking, so the isolated 34–56 ms frames are most likely the same
+CPU contention.
+
+**Confirmed on an idle machine** (same day, no other session running, 4096 map, 50 000 vehicles,
+default zoom, 226 one-second samples): 60 FPS in 222 samples and 56–59 in 4; worst frame ≤ 29 ms in
+223 samples. Simulation ticks took ~1.5 ms and vehicle instances < 2 ms. The only three long frames
+(~210 ms, about 200 s into the run) were spent entirely inside `wgpuSurfaceGetCurrentTexture`
+(waiting for a swap-chain image from the driver/compositor) with everything else under 2 ms: a
+presentation stall outside the game's code, not reproduced in the other runs. Conclusion: simulation
+and drawing stay within the frame budget; long frames seen during testing came from other processes
+loading the CPU, plus rare presentation stalls.
+
+**Follow-ups:** evicting full-detail buffers of regions far from the camera if memory ever matters
+(292 MB peak today); watch for presentation stalls on other machines (the long-frame log names them).
+
+## Current numbers (prototype before feature 003, Windows, AMD Radeon integrated GPU)
 
 | Map | Chunks | Generation | Meshing | Triangles | Vehicles | Tick | FPS |
 |---|---|---|---|---|---|---|---|
@@ -301,6 +446,12 @@ terrain triangles are drawn every frame with no culling or level of detail yet).
   frame simulating, so 30 FPS also needs drawing to take under about 8 ms per frame. The 2048 and
   4096 maps fail on drawing, not on simulation; those checks move to feature 003 (large-map
   rendering), whose budget is 2 GB of rendering memory.
+
+  **Re-checked after feature 003** (2026-11-22, hand test, `-- 128 50000 --unlock-fast-forward
+  --stats`): on the 4096 map fast forward ran at **×140–×228 effective speed at 35–36 FPS** while the
+  camera moved (frames ~28 ms: up to 25 ms of simulation plus drawing). Seconds in which fast forward
+  was switched on or off, or many regions were being loaded at once, dipped to ×34–×110 at 26–31 FPS.
+  **SC-003 passes on the 4096 reference map.**
 
 ## Continuous integration
 

@@ -43,6 +43,9 @@ public sealed class Chunk
     /// <summary>Sets the voxel at local coordinates (0 ≤ x, y, z &lt; Size).</summary>
     public void Set(int x, int y, int z, VoxelMaterial material) => _voxels[Index(x, y, z)] = material;
 
+    /// <summary>All voxels in index order (see the class remarks), for fast bulk reads.</summary>
+    internal ReadOnlySpan<VoxelMaterial> Voxels => _voxels;
+
     internal static int Index(int x, int y, int z)
     {
         if ((uint)x >= Size || (uint)y >= Size || (uint)z >= Size)
