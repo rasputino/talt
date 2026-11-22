@@ -22,7 +22,8 @@ internal sealed record PrototypeScene(
     PlayerSettings Settings,
     SessionRecorder? Recorder = null,
     string? RecordPath = null,
-    long? PrintFingerprintAtTick = null);
+    long? PrintFingerprintAtTick = null,
+    bool ExitAfterFingerprint = false);
 
 /// <summary>
 /// Owns the window, the renderer, the camera controls and the fixed-step simulation loop.
@@ -287,6 +288,10 @@ internal sealed class GameWindow : IDisposable
         if (_scene.PrintFingerprintAtTick == simulation.CurrentTick)
         {
             Console.WriteLine($"fingerprint at tick {simulation.CurrentTick}: {StateHasher.Format(simulation.ComputeFingerprint())}");
+            if (_scene.ExitAfterFingerprint)
+            {
+                _window.Close();
+            }
         }
     }
 

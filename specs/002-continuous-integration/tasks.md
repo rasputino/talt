@@ -33,7 +33,7 @@
 - [X] T007 [US1] Add the `ci-result` aggregate job (`if: always()`, fails when any `build-and-test` job did not succeed) to `.github/workflows/ci.yml`
 - [X] T008 [US1] Ask the user before committing and pushing; with approval push the branch, open the run and fix failures until the three platforms are green; record run times against the 15 minute budget (SC-003)
 - [X] T009 [US1] Probe ARM64 availability: add `ubuntu-24.04-arm` and `windows-11-arm` matrix entries to `.github/workflows/ci.yml`; keep those that schedule on this private repository, remove the rest and note the gap
-- [ ] T010 [US1] Prove blocking: push a throwaway change with a failing test (and one with a changed golden value) to confirm the platform and `ci-result` fail with expected/actual values visible; revert it
+- [X] T010 [US1] Prove blocking: push a throwaway change with a failing test (and one with a changed golden value) to confirm the platform and `ci-result` fail with expected/actual values visible; revert it
 - [X] T011 [US1] Try enabling branch protection or a ruleset requiring `ci-result` on `main` with `gh api`; if the plan refuses, record the gap for the docs
 
 **Checkpoint**: US1 delivers verification on all available platforms, including the macOS/ARM64 results.
@@ -65,7 +65,7 @@
 - [X] T020 Add a "Continuous integration" section to `docs/ARCHITECTURE.md` (workflows, scripts, golden file regeneration rule, baseline update procedure, covered and not covered platforms, branch-protection status)
 - [X] T021 Update "Verification status" in `docs/ARCHITECTURE.md` with the macOS and ARM64 CI results (fingerprints, test counts, run date) and any gap
 - [X] T022 Update the T062 status note in `specs/001-simulation-foundation/tasks.md` (and the cross-platform step in `specs/001-simulation-foundation/quickstart.md`) with the CI results; mark T062 done only if macOS and ARM64 are covered or the gap is explicitly accepted
-- [ ] T023 Add a CI badge or short CI note to `README.md` if it documents building; run the full quickstart validation and mark this feature's tasks complete
+- [X] T023 Add a CI badge or short CI note to `README.md` if it documents building; run the full quickstart validation and mark this feature's tasks complete
 - [ ] T024 Ask the user whether to commit and whether to open a pull request (no commit, push or PR without their yes)
 
 ## Dependencies and execution order
@@ -90,3 +90,5 @@ MVP is Phase 1-3 (US1): it already closes the macOS/ARM64 verification gap. Then
 - T011 result: branch protection and rulesets return 403 on this plan (private repository, Free); gap documented in ARCHITECTURE.md.
 - T015 result: the first benchmark run took about 9.5 minutes; its JSON is committed as the baseline; a second run produced the comparison report (3 of 12 rows over 10% with no code change, i.e. noise).
 - T019 result: publish artifacts verified and a test prerelease received three assets; the start-by-hand check of the Linux and macOS builds remains with the user.
+- T010 result: a throwaway branch with a failing test turned all five platforms and `ci-result` red and skipped `publish`; a wrong golden value makes `ci/check-fingerprints.ps1` exit 1 (checked locally). Branch deleted.
+- T023 result: CI badge added to `README.md`. Follow-up (not in the original plan): `--exit-after-fingerprint` in the client and a `client-smoke` job that starts the real client on every platform with a virtual display and a software GPU driver.

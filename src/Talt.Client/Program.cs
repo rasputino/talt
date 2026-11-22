@@ -19,12 +19,14 @@ using Talt.Core.Voxels;
 //   --lock-fast-forward          lock it again (saved in settings)
 //   --record [file]              record the session (default session.talt-session.json)
 //   --print-fingerprint-at <n>   print the state fingerprint after tick n
+//   --exit-after-fingerprint     close the window right after that fingerprint is printed (smoke test)
 var positional = new List<int>();
 var startYear = 1950;
 string? language = null;
 bool? unlockFastForward = null;
 string? recordPath = null;
 long? printFingerprintAt = null;
+var exitAfterFingerprint = false;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -49,6 +51,9 @@ for (var i = 0; i < args.Length; i++)
             break;
         case "--print-fingerprint-at":
             printFingerprintAt = long.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        case "--exit-after-fingerprint":
+            exitAfterFingerprint = true;
             break;
         default:
             positional.Add(int.Parse(args[i], CultureInfo.InvariantCulture));
@@ -99,7 +104,7 @@ if (recordPath is not null)
 }
 
 using var window = new GameWindow(new PrototypeScene(
-    meshes, heightmap, simulation, strings, playerSettings, recorder, recordPath, printFingerprintAt));
+    meshes, heightmap, simulation, strings, playerSettings, recorder, recordPath, printFingerprintAt, exitAfterFingerprint));
 window.Run();
 
 void Report(string message)

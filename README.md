@@ -1,5 +1,7 @@
 # Transit & Logistics Tycoon (TALT)
 
+[![CI](https://github.com/rasputino/talt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rasputino/talt/actions/workflows/ci.yml)
+
 An original transport management game with a voxel art style and support for very large maps.
 
 ## Status
