@@ -178,7 +178,7 @@ its own.
 - [X] T060 [P] Update `docs/VISION.md` (decision log: fixed-point simulation, 40 ticks/day, unlockable fast forward) and `README.md` (new controls, headless tool usage)
 - [X] T061 Remove obsolete code paths (per-frame `dt` ticking, float simulation constants, unused helpers) and ensure the build has no warnings, across `src/Talt.Core/` and `src/Talt.Client/`
 - [ ] T062 Run the full [quickstart.md](quickstart.md) validation on Windows and, at least once, the tests and `replay` on Linux and macOS (FR-013, SC-002); note any platform not yet checked in `docs/ARCHITECTURE.md`
-  - Status 2026-11-22: Windows validation done (tests, headless run/replay, client fingerprint = headless fingerprint, clean exit). Linux x64 verified under WSL 2 (Ubuntu 26.04): 151 tests pass, headless fingerprints equal Windows, a Windows-recorded session replays OK. macOS and ARM64 not run yet (no machine; left to feature 002 CI). Keyboard controls checked by hand on Windows (32 chunks, 50 000 vehicles, fast forward unlocked): all keys work.
+  - Status 2026-11-22: Windows validation done (tests, headless run/replay, client fingerprint = headless fingerprint, clean exit). Linux x64 verified under WSL 2 (Ubuntu 26.04): 151 tests pass, headless fingerprints equal Windows, a Windows-recorded session replays OK. macOS arm64 verified by CI (feature 002, 2026-11-22: 151 tests pass, fingerprints equal Windows, Windows-recorded session replays OK); Windows and Linux ARM64 pending the ARM64 runner probe. Keyboard controls checked by hand on Windows (32 chunks, 50 000 vehicles, fast forward unlocked): all keys work.
 
 ---
 

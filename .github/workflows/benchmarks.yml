@@ -3,6 +3,8 @@ name: Benchmarks
 # Not run on every push: shared runners are too noisy. Manual or nightly only.
 # Regressions above 10% are flagged in the report and as warnings, and never fail the run.
 on:
+  push:
+    branches: [claude/002-continuous-integration-77a7e0] # TEMP: branch trigger for verification, remove before merge
   workflow_dispatch:
     inputs:
       job:

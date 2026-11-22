@@ -31,7 +31,7 @@
 
 - [X] T006 [US1] Create `.github/workflows/ci.yml` with triggers, concurrency cancellation, `permissions: contents: read`, and the `build-and-test` matrix (windows-latest, ubuntu-latest, macos-latest), `fail-fast: false`, timeouts, steps: checkout, setup-dotnet 10.0.x with NuGet cache, environment log (`dotnet --info`, OS version), restore, build Release, `dotnet test -c Release --no-build --filter "Category!=Gpu"` with TRX logger, always-upload TRX artifact, `ci/check-fingerprints.ps1`
 - [X] T007 [US1] Add the `ci-result` aggregate job (`if: always()`, fails when any `build-and-test` job did not succeed) to `.github/workflows/ci.yml`
-- [ ] T008 [US1] Ask the user before committing and pushing; with approval push the branch, open the run and fix failures until the three platforms are green; record run times against the 15 minute budget (SC-003)
+- [X] T008 [US1] Ask the user before committing and pushing; with approval push the branch, open the run and fix failures until the three platforms are green; record run times against the 15 minute budget (SC-003)
 - [ ] T009 [US1] Probe ARM64 availability: add `ubuntu-24.04-arm` and `windows-11-arm` matrix entries to `.github/workflows/ci.yml`; keep those that schedule on this private repository, remove the rest and note the gap
 - [ ] T010 [US1] Prove blocking: push a throwaway change with a failing test (and one with a changed golden value) to confirm the platform and `ci-result` fail with expected/actual values visible; revert it
 - [ ] T011 [US1] Try enabling branch protection or a ruleset requiring `ci-result` on `main` with `gh api`; if the plan refuses, record the gap for the docs
@@ -63,7 +63,7 @@
 ## Phase 6: Polish and documentation
 
 - [X] T020 Add a "Continuous integration" section to `docs/ARCHITECTURE.md` (workflows, scripts, golden file regeneration rule, baseline update procedure, covered and not covered platforms, branch-protection status)
-- [ ] T021 Update "Verification status" in `docs/ARCHITECTURE.md` with the macOS and ARM64 CI results (fingerprints, test counts, run date) and any gap
+- [X] T021 Update "Verification status" in `docs/ARCHITECTURE.md` with the macOS and ARM64 CI results (fingerprints, test counts, run date) and any gap
 - [ ] T022 Update the T062 status note in `specs/001-simulation-foundation/tasks.md` (and the cross-platform step in `specs/001-simulation-foundation/quickstart.md`) with the CI results; mark T062 done only if macOS and ARM64 are covered or the gap is explicitly accepted
 - [ ] T023 Add a CI badge or short CI note to `README.md` if it documents building; run the full quickstart validation and mark this feature's tasks complete
 - [ ] T024 Ask the user whether to commit and whether to open a pull request (no commit, push or PR without their yes)
@@ -85,3 +85,4 @@ MVP is Phase 1-3 (US1): it already closes the macOS/ARM64 verification gap. Then
 - T002: names confirmed with a local cross-publish: win-x64 `wgpu_native.dll`, `glfw3.dll`, `Talt.Client.exe`; linux-x64 `libwgpu_native.so`, `libglfw.so.3`, `Talt.Client`; osx-arm64 `libwgpu_native.dylib`, `libglfw.3.dylib`, `Talt.Client`.
 - T009 design change: ARM64 lives in `ci-arm64.yml` (not in the required matrix), because a runner unavailable to a private repo queues instead of failing. Shared steps are in the composite action `.github/actions/build-test`.
 - T020 done with a "Continuous integration" section; T021, T022 and the GitHub-run tasks (T008-T011, T015, T019) wait for the first pushed runs.
+- T008 result (run 45055058151): windows-x64, linux-x64 and macos-arm64 all green in under 3 minutes; fingerprints equal the golden values on all three. T021 recorded macOS arm64; ARM64 Linux/Windows, T010, T011, T015, T019 and T022 (final T062 status) remain.

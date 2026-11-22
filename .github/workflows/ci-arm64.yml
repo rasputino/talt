@@ -6,7 +6,7 @@ name: CI ARM64
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, claude/002-continuous-integration-77a7e0] # TEMP: branch trigger for the probe, remove before merge
 
 permissions:
   contents: read

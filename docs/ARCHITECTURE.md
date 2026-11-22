@@ -275,8 +275,13 @@ terrain triangles are drawn every frame with no culling or level of detail yet).
   golden fingerprints included. Headless fingerprints equal the Windows ones (default scenario at
   5000 ticks `C9F573FD7DE5CBE3`, parallel and sequential; reference load at 10 000 ticks
   `C0C656C5AB2D3302`), and a session recorded on Windows replays on Linux with every checkpoint OK.
-- macOS and ARM64 (all systems): **not run yet**. Continuous integration (feature 002) will run
-  `dotnet test` and a headless `replay` there.
+- Continuous integration (feature 002, GitHub Actions run of 2026-11-22; images ubuntu-26.04,
+  windows-2025 and macos-26 arm64; .NET 10 SDK): on **Windows x64, Linux x64 and macOS arm64** all
+  151 tests pass and the headless fingerprints equal the golden values (default scenario at 5000
+  ticks `C9F573FD7DE5CBE3`, parallel and sequential; reference load `C0C656C5AB2D3302`), and the
+  session recorded on Windows replays with every checkpoint OK. The whole matrix took under 3 minutes.
+- Windows ARM64 and Linux ARM64: **not run yet** (`ci-arm64.yml`; whether ARM64 runners are available
+  to this private repository is still to be probed). macOS Intel is not covered.
 - Keyboard controls (speeds, fast forward, pause, add/remove vehicle): checked by hand in the window
   on Windows (2026-11-22, `-- 32 50000 2026 --unlock-fast-forward`), on top of the unit tests of the
   runner and commands.

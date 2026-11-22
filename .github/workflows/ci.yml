@@ -45,7 +45,8 @@ jobs:
   publish:
     name: publish (${{ matrix.rid }})
     needs: ci-result
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # TEMP: the feature branch is allowed for verification; remove before merge.
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/claude/002-continuous-integration-77a7e0')
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -101,8 +102,9 @@ jobs:
       - name: Replace the nightly prerelease
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref == 'refs/heads/main' && 'nightly' || 'nightly-test' }} # TEMP: nightly-test off main
         run: |
-          gh release delete nightly --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
-          gh release create nightly dist/* --repo "$GITHUB_REPOSITORY" --prerelease \
+          gh release delete "$TAG" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --prerelease \
             --target "$GITHUB_SHA" --title "Nightly build" \
             --notes "Unsigned development build of commit $GITHUB_SHA, for testing only."
