@@ -43,4 +43,19 @@ public class VoxelWorldTests
         Assert.Throws<ArgumentOutOfRangeException>(() => chunk.Get(Chunk.Size, 0, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => chunk.Get(0, -1, 0));
     }
+
+    [Theory]
+    [InlineData(10, 10, 10, 1)]  // Interior.
+    [InlineData(31, 10, 10, 2)]  // Face of a chunk.
+    [InlineData(32, 10, 31, 4)]  // Edge between four chunks.
+    [InlineData(31, 31, 32, 8)]  // Corner of eight chunks.
+    [InlineData(0, 0, 0, 8)]     // World corner: neighbours below and beside may not exist.
+    public void TouchedBy_ListsEveryChunkWithinOneVoxel(int x, int y, int z, int expected)
+    {
+        var touched = ChunkCoord.TouchedBy(x, y, z);
+
+        Assert.Equal(expected, touched.Count);
+        Assert.Contains(ChunkCoord.FromVoxel(x, y, z), touched);
+        Assert.Equal(touched.Count, touched.Distinct().Count());
+    }
 }

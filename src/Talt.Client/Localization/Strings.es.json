@@ -30,5 +30,13 @@
   "command.rejected.invalid-speed": "velocidad no válida",
   "command.rejected.invalid-start-edge": "punto de salida no válido",
   "command.rejected.vehicle-not-found": "ese vehículo no existe",
-  "command.rejected.unknown": "motivo desconocido"
+  "command.rejected.unknown": "motivo desconocido",
+  "stats.frame": "fotograma {average} ms (peor {worst} ms)",
+  "stats.draws": "{count} llamadas de dibujo",
+  "stats.triangles": "{count} triángulos",
+  "stats.regions": "regiones por detalle {lod0}/{lod1}/{lod2}/{lod3}",
+  "stats.memory": "mundo {mb} MB",
+  "stats.jobs": "{count} trabajos de mallado",
+  "stats.allocated": "{bytes} B reservados por fotograma",
+  "edit.visible": "Edición visible tras {ms} ms ({chunks} chunks reconstruidos)."
 }

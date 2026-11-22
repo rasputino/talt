@@ -10,10 +10,16 @@ internal sealed class OrbitCamera
     private const float MinPitch = 0.25f;
     private const float MaxPitch = 1.45f;
     private const float MinDistance = 10f;
-    private const float MaxDistance = 2000f;
+
+    /// <summary>Farthest zoom on small maps; larger maps allow more (see <see cref="FitMap"/>).</summary>
+    public const float DefaultMaxDistance = 2000f;
+
+    /// <summary>Camera distance per tile of map side that shows the whole map at the farthest zoom.</summary>
+    public const float WholeMapDistancePerTile = 2f;
 
     private float _pitch = 0.85f;
     private float _distance = 350f;
+    private float _maxDistance = DefaultMaxDistance;
 
     public Vector3 Target { get; set; }
 
@@ -30,8 +36,21 @@ internal sealed class OrbitCamera
     public float Distance
     {
         get => _distance;
-        set => _distance = Math.Clamp(value, MinDistance, MaxDistance);
+        set => _distance = Math.Clamp(value, MinDistance, _maxDistance);
     }
+
+    /// <summary>Farthest zoom allowed.</summary>
+    public float MaxDistance => _maxDistance;
+
+    /// <summary>Near clipping plane: scales with the distance to keep depth precision when zoomed out.</summary>
+    public float NearPlane => MathF.Max(0.5f, Distance * 0.02f);
+
+    /// <summary>
+    /// Lets the camera zoom out far enough to show the whole map (FR-015). The fog (full at 3.75 ×
+    /// the distance, see voxel.wgsl) then lies beyond the far side of the map.
+    /// </summary>
+    public void FitMap(int mapSideTiles) =>
+        _maxDistance = MathF.Max(DefaultMaxDistance, mapSideTiles * WholeMapDistancePerTile);
 
     public float FieldOfView { get; set; } = 35f * MathF.PI / 180f;
 
@@ -45,7 +64,7 @@ internal sealed class OrbitCamera
         var view = Matrix4x4.CreateLookAt(Position, Target, Vector3.UnitY);
         var far = Distance * 4f + 1000f;
         // System.Numerics produces a [0, 1] depth range, which is what WebGPU expects.
-        var projection = Matrix4x4.CreatePerspectiveFieldOfView(FieldOfView, aspectRatio, 1f, far);
+        var projection = Matrix4x4.CreatePerspectiveFieldOfView(FieldOfView, aspectRatio, NearPlane, far);
         return view * projection;
     }
 

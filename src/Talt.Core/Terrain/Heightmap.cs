@@ -36,6 +36,16 @@ public sealed class Heightmap
         return new Heightmap(width, depth, heights);
     }
 
+    /// <summary>Recomputes one column from the world after it changed. Columns outside the map are ignored.</summary>
+    public void Refresh(VoxelWorld world, int x, int z)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        if ((uint)x < Width && (uint)z < Depth)
+        {
+            _heights[x + z * Width] = world.GetSurfaceHeight(x, z);
+        }
+    }
+
     /// <summary>Surface height at a column. Positions outside the map use the nearest edge column.</summary>
     public int Get(int x, int z) =>
         _heights[Math.Clamp(x, 0, Width - 1) + Math.Clamp(z, 0, Depth - 1) * Width];

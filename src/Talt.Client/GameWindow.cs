@@ -7,22 +7,24 @@ using Talt.Client.Localization;
 using Talt.Client.Rendering;
 using Talt.Core.Commands;
 using Talt.Core.Determinism;
-using Talt.Core.Meshing;
 using Talt.Core.Simulation;
 using Talt.Core.Terrain;
+using Talt.Core.Voxels;
 
 namespace Talt.Client;
 
 /// <summary>Everything the prototype window needs.</summary>
 internal sealed record PrototypeScene(
-    IReadOnlyList<ChunkMesh> Meshes,
+    VoxelWorld World,
     Heightmap Heightmap,
     GameSimulation Simulation,
     Strings Strings,
     PlayerSettings Settings,
     SessionRecorder? Recorder = null,
     string? RecordPath = null,
-    long? PrintFingerprintAtTick = null);
+    long? PrintFingerprintAtTick = null,
+    bool ShowStatistics = false,
+    float? InitialZoom = null);
 
 /// <summary>
 /// Owns the window, the renderer, the camera controls and the fixed-step simulation loop.
@@ -30,7 +32,9 @@ internal sealed record PrototypeScene(
 /// <remarks>
 /// Controls: left drag rotates, right drag pans, wheel zooms, WASD/arrows pan, Q/E rotate,
 /// Space pauses, 1/2/3 select ×1/×3/×8, F toggles fast forward (only when unlocked in the
-/// settings), N adds a vehicle, Delete removes the last vehicle you added, Esc quits.
+/// settings), N adds a vehicle, Delete removes the last vehicle you added, F3 shows render
+/// statistics, PageUp/PageDown raise/lower the tile under the camera target (Shift: a 32 x 32 area),
+/// Esc quits.
 /// </remarks>
 internal sealed class GameWindow : IDisposable
 {
@@ -40,6 +44,8 @@ internal sealed class GameWindow : IDisposable
     private const float CameraClearance = 4f;       // Minimum height of the camera above the ground.
     private const float LaneOffset = 0.22f;         // Vehicles drive on the right half of the road.
     private const double MessageSeconds = 4;
+    private const double LongFrameMilliseconds = 33.4; // Two refreshes at 60 Hz.
+    private const int EditAreaSize = 32;            // Shift + PageUp/PageDown edits this many tiles per side.
 
     private static readonly Vector4[] VehicleColors =
     [
@@ -62,6 +68,8 @@ internal sealed class GameWindow : IDisposable
     private readonly Stopwatch _messageTimer = new();
     private readonly Random _uiRandom = new(); // Never the simulation's generator (I1): choices travel inside commands.
     private readonly Stack<int> _playerAddedVehicles = new();
+    private readonly FrameTimeTracker _frameTimes = new();
+    private readonly List<(int X, int Y, int Z)> _editedVoxels = [];
 
     // Two pose snapshots for interpolation (research R4), indexed by slot, with the ids in each slot.
     private VehiclePose[] _previousPoses = [];
@@ -83,6 +91,18 @@ internal sealed class GameWindow : IDisposable
     private int _ticksThisSecond;
     private double _tickMilliseconds;
     private string _message = string.Empty;
+    private bool _showStatistics;
+    private long _lastFrameTimestamp;
+    private long _renderAllocatedBytes;
+    private int _renderAllocationFrames;
+    private double _allocatedBytesPerFrame;
+    private double _updateMs;
+    private double _simulationMs;
+    private int _ticksThisFrame;
+    private int _gen0;
+    private int _gen1;
+    private int _gen2;
+    private TimeSpan _gcPause;
 
     public GameWindow(PrototypeScene scene)
     {
@@ -92,8 +112,15 @@ internal sealed class GameWindow : IDisposable
         _runner.SetFastForwardUnlocked(scene.Settings.FastForwardUnlocked);
         _simulation.CommandProcessed += OnCommandProcessed;
         _buildInstancesBatch = BuildInstancesBatch;
+        _showStatistics = scene.ShowStatistics;
 
         var map = scene.Heightmap;
+        _camera.FitMap(Math.Max(map.Width, map.Depth));
+        if (scene.InitialZoom is { } zoom)
+        {
+            _camera.Distance = zoom;
+        }
+
         var center = new Vector2(map.Width / 2f, map.Depth / 2f);
         _camera.Target = new Vector3(center.X, map.Get(center.X, center.Y), center.Y);
 
@@ -127,10 +154,8 @@ internal sealed class GameWindow : IDisposable
 
     private void OnLoad()
     {
-        _renderer = new WebGpuRenderer(_window);
-        _renderer.UploadMeshes(_scene.Meshes);
+        _renderer = new WebGpuRenderer(_window, _scene.World);
         Console.WriteLine($"GPU: {_renderer.AdapterDescription}");
-        Console.WriteLine($"Uploaded {_renderer.TriangleCount:N0} triangles.");
 
         _input = _window.CreateInput();
         foreach (var mouse in _input.Mice)
@@ -141,13 +166,13 @@ internal sealed class GameWindow : IDisposable
 
         foreach (var keyboard in _input.Keyboards)
         {
-            keyboard.KeyDown += (_, key, _) => OnKeyDown(key);
+            keyboard.KeyDown += (k, key, _) => OnKeyDown(k, key);
         }
 
         _statsTimer.Start();
     }
 
-    private void OnKeyDown(Key key)
+    private void OnKeyDown(IKeyboard keyboard, Key key)
     {
         switch (key)
         {
@@ -175,6 +200,45 @@ internal sealed class GameWindow : IDisposable
             case Key.Delete:
                 SubmitRemoveVehicle();
                 break;
+            case Key.F3:
+                _showStatistics = !_showStatistics;
+                break;
+            case Key.PageUp:
+            case Key.PageDown:
+                EditTerrain(raise: key == Key.PageUp, area: keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight));
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Debug terrain edit at the camera target (FR-009). Terrain is not simulation state, so this does
+    /// not go through the command queue and does not affect determinism.
+    /// </summary>
+    private void EditTerrain(bool raise, bool area)
+    {
+        if (_renderer is null)
+        {
+            return;
+        }
+
+        var timestamp = Stopwatch.GetTimestamp();
+        var size = area ? EditAreaSize : 1;
+        var x0 = (int)MathF.Floor(_camera.Target.X) - size / 2;
+        var z0 = (int)MathF.Floor(_camera.Target.Z) - size / 2;
+        _editedVoxels.Clear();
+        for (var z = z0; z < z0 + size; z++)
+        {
+            for (var x = x0; x < x0 + size; x++)
+            {
+                _editedVoxels.AddRange(raise
+                    ? TerrainEditor.Raise(_scene.World, _scene.Heightmap, x, z)
+                    : TerrainEditor.Lower(_scene.World, _scene.Heightmap, x, z));
+            }
+        }
+
+        if (_editedVoxels.Count > 0)
+        {
+            _renderer.NotifyVoxelsChanged(_editedVoxels, timestamp);
         }
     }
 
@@ -241,6 +305,7 @@ internal sealed class GameWindow : IDisposable
             return;
         }
 
+        var updateStart = Stopwatch.GetTimestamp();
         var dt = (float)deltaSeconds;
         foreach (var keyboard in _input.Keyboards)
         {
@@ -255,6 +320,7 @@ internal sealed class GameWindow : IDisposable
 
         FollowTerrain(dt);
 
+        var simulationStart = Stopwatch.GetTimestamp();
         var stats = _runner.Advance(deltaSeconds, _simulation, _time, PromoteCurrentToPrevious, AfterEachTick);
         if (stats.TicksRun > 0)
         {
@@ -263,7 +329,9 @@ internal sealed class GameWindow : IDisposable
 
         _ticksThisSecond += stats.TicksRun;
         _tickMilliseconds += stats.TickMilliseconds;
-        UploadVehicles();
+        _ticksThisFrame += stats.TicksRun;
+        _simulationMs += Stopwatch.GetElapsedTime(simulationStart).TotalMilliseconds;
+        _updateMs += Stopwatch.GetElapsedTime(updateStart).TotalMilliseconds;
     }
 
     /// <summary>
@@ -402,7 +470,40 @@ internal sealed class GameWindow : IDisposable
 
     private void OnRender(double deltaSeconds)
     {
+        var renderStart = Stopwatch.GetTimestamp();
+        UploadVehicles(); // Once per drawn frame, so uploads never outpace submissions.
+        var vehiclesMs = Stopwatch.GetElapsedTime(renderStart).TotalMilliseconds;
+
+        // Managed allocations of the draw path (constitution II: none expected in steady state).
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         _renderer?.Draw(_camera);
+        _renderAllocatedBytes += GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        _renderAllocationFrames++;
+
+        // Frame time = time between two presented frames.
+        var now = Stopwatch.GetTimestamp();
+        if (_lastFrameTimestamp != 0)
+        {
+            var frameMs = Stopwatch.GetElapsedTime(_lastFrameTimestamp, now).TotalMilliseconds;
+            _frameTimes.Record(frameMs);
+            if (_showStatistics && frameMs > LongFrameMilliseconds)
+            {
+                ReportLongFrame(frameMs, vehiclesMs);
+            }
+        }
+
+        _lastFrameTimestamp = now;
+        _updateMs = 0;
+        _simulationMs = 0;
+        _ticksThisFrame = 0;
+        (_gen0, _gen1, _gen2, _gcPause) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2), GC.GetTotalPauseDuration());
+
+        while (_renderer is not null && _renderer.TryTakeCompletedEdit(out var editTimestamp, out var chunks))
+        {
+            Console.WriteLine(_strings.Format("edit.visible",
+                ("ms", Math.Round(Stopwatch.GetElapsedTime(editTimestamp).TotalMilliseconds, 1)),
+                ("chunks", chunks)));
+        }
 
         _frames++;
         var seconds = _statsTimer.Elapsed.TotalSeconds;
@@ -419,8 +520,19 @@ internal sealed class GameWindow : IDisposable
     private void UpdateTitle(double seconds)
     {
         var s = _strings;
+        _allocatedBytesPerFrame = _renderAllocationFrames > 0 ? _renderAllocatedBytes / (double)_renderAllocationFrames : 0;
+        _renderAllocatedBytes = 0;
+        _renderAllocationFrames = 0;
         var fps = _frames / seconds;
         var effective = _ticksThisSecond / seconds / GameClock.TicksPerSecondAtNormalSpeed;
+        if (_showStatistics && _renderer is not null)
+        {
+            var statistics = StatisticsText(_renderer.Statistics, effective);
+            _window.Title = statistics;
+            Console.WriteLine(statistics);
+            return;
+        }
+
         var tick = _ticksThisSecond > 0 ? _tickMilliseconds / _ticksThisSecond : 0;
         var parts = new List<string>
         {
@@ -439,6 +551,34 @@ internal sealed class GameWindow : IDisposable
         }
 
         _window.Title = string.Join(" — ", parts);
+    }
+
+    /// <summary>Prints where a frame longer than the budget spent its time (shown with the statistics).</summary>
+    private void ReportLongFrame(double frameMs, double vehiclesMs)
+    {
+        var d = _renderer!.LastDrawTimings;
+        var pause = (GC.GetTotalPauseDuration() - _gcPause).TotalMilliseconds;
+        Console.WriteLine(
+            $"Long frame {frameMs:F1} ms: update {_updateMs:F1} (simulation {_simulationMs:F1}, {_ticksThisFrame} ticks), " +
+            $"vehicles {vehiclesMs:F1}, acquire {d.Acquire:F1}, prepare {d.Prepare:F1}, encode {d.Encode:F1}, " +
+            $"wait GPU {d.WaitGpu:F1}, submit {d.Submit:F1}; GC {GC.CollectionCount(0) - _gen0}/{GC.CollectionCount(1) - _gen1}/{GC.CollectionCount(2) - _gen2} " +
+            $"(pause {pause:F1} ms)");
+    }
+
+    private string StatisticsText(RenderStatistics r, double effectiveSpeed)
+    {
+        var s = _strings;
+        return string.Join(" — ",
+            s.FormatSpeed(_runner.Speed),
+            s.Format("status.effectiveSpeed", ("speed", Math.Round(effectiveSpeed, 1))),
+            s.Format("stats.frame", ("average", Math.Round(_frameTimes.AverageMs, 1)), ("worst", Math.Round(_frameTimes.WorstMs, 1))),
+            s.Format("status.fps", ("fps", Math.Round(_frameTimes.FramesPerSecond))),
+            s.Format("stats.draws", ("count", r.DrawCalls)),
+            s.Format("stats.triangles", ("count", r.Triangles)),
+            s.Format("stats.regions", ("lod0", r.RegionsLod0), ("lod1", r.RegionsLod1), ("lod2", r.RegionsLod2), ("lod3", r.RegionsLod3)),
+            s.Format("stats.memory", ("mb", r.WorldGpuBytes / (1024 * 1024))),
+            s.Format("stats.jobs", ("count", r.PendingJobs + r.JobsInFlight)),
+            s.Format("stats.allocated", ("bytes", (long)_allocatedBytesPerFrame)));
     }
 
     private void SaveRecording()

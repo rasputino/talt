@@ -12,5 +12,31 @@ public readonly record struct ChunkCoord(int X, int Y, int Z)
     public static ChunkCoord FromVoxel(int x, int y, int z) =>
         new(FloorDiv(x), FloorDiv(y), FloorDiv(z));
 
+    /// <summary>
+    /// Every chunk whose mesh can change when the voxel at a world position changes: faces and
+    /// ambient occlusion read voxels up to one voxel across a chunk border, so this is the voxel's
+    /// chunk plus every chunk within one voxel of it (1, 2, 4 or 8 chunks).
+    /// </summary>
+    public static IReadOnlyList<ChunkCoord> TouchedBy(int x, int y, int z)
+    {
+        var result = new List<ChunkCoord>(8);
+        for (var dy = -1; dy <= 1; dy++)
+        {
+            for (var dz = -1; dz <= 1; dz++)
+            {
+                for (var dx = -1; dx <= 1; dx++)
+                {
+                    var coord = FromVoxel(x + dx, y + dy, z + dz);
+                    if (!result.Contains(coord))
+                    {
+                        result.Add(coord);
+                    }
+                }
+            }
+        }
+
+        return result;
+    }
+
     private static int FloorDiv(int value) => value >> Chunk.SizeBits;
 }

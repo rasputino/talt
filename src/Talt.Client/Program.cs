@@ -3,7 +3,6 @@ using System.Globalization;
 using Talt.Client;
 using Talt.Client.Localization;
 using Talt.Core.Commands;
-using Talt.Core.Meshing;
 using Talt.Core.Network;
 using Talt.Core.Scenarios;
 using Talt.Core.Simulation;
@@ -19,12 +18,16 @@ using Talt.Core.Voxels;
 //   --lock-fast-forward          lock it again (saved in settings)
 //   --record [file]              record the session (default session.talt-session.json)
 //   --print-fingerprint-at <n>   print the state fingerprint after tick n
+//   --stats                      show render statistics from the start (same as pressing F3)
+//   --zoom <distance>            initial camera distance ("max" for the farthest zoom)
 var positional = new List<int>();
 var startYear = 1950;
 string? language = null;
 bool? unlockFastForward = null;
 string? recordPath = null;
 long? printFingerprintAt = null;
+var showStatistics = false;
+float? zoom = null;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -46,6 +49,13 @@ for (var i = 0; i < args.Length; i++)
             recordPath = i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)
                 ? args[++i]
                 : "session.talt-session.json";
+            break;
+        case "--zoom":
+            i++;
+            zoom = args[i] == "max" ? float.MaxValue : float.Parse(args[i], CultureInfo.InvariantCulture);
+            break;
+        case "--stats":
+            showStatistics = true;
             break;
         case "--print-fingerprint-at":
             printFingerprintAt = long.Parse(args[++i], CultureInfo.InvariantCulture);
@@ -83,14 +93,7 @@ NetworkTerrainPainter.PaintRoads(world, simulation.Network);
 var heightmap = Heightmap.FromWorld(world, settings.MapSizeTiles, settings.MapSizeTiles);
 Report($"Generated {settings.MapSizeTiles}×{settings.MapSizeTiles} terrain ({world.ChunkCount} chunks)");
 
-// The world is only read while meshing, so chunks can be meshed in parallel.
-var meshes = world.Chunks
-    .AsParallel()
-    .Select(chunk => ChunkMesher.Build(world, chunk))
-    .Where(mesh => !mesh.IsEmpty)
-    .ToList();
-Report($"Meshed {meshes.Sum(m => m.FaceCount):N0} faces");
-
+// No meshing here: the window opens now and the renderer fills the map in, nearest first (FR-012).
 SessionRecorder? recorder = null;
 if (recordPath is not null)
 {
@@ -99,7 +102,7 @@ if (recordPath is not null)
 }
 
 using var window = new GameWindow(new PrototypeScene(
-    meshes, heightmap, simulation, strings, playerSettings, recorder, recordPath, printFingerprintAt));
+    world, heightmap, simulation, strings, playerSettings, recorder, recordPath, printFingerprintAt, showStatistics, zoom));
 window.Run();
 
 void Report(string message)
