@@ -92,3 +92,5 @@ MVP is Phase 1-3 (US1): it already closes the macOS/ARM64 verification gap. Then
 - T019 result: publish artifacts verified and a test prerelease received three assets; the start-by-hand check of the Linux and macOS builds remains with the user.
 - T010 result: a throwaway branch with a failing test turned all five platforms and `ci-result` red and skipped `publish`; a wrong golden value makes `ci/check-fingerprints.ps1` exit 1 (checked locally). Branch deleted.
 - T023 result: CI badge added to `README.md`. Follow-up (not in the original plan): `--exit-after-fingerprint` in the client and a `client-smoke` job that starts the real client on every platform with a virtual display and a software GPU driver.
+- Smoke test result: `client-smoke` passes on Linux x64, Linux arm64 (llvmpipe) and macOS arm64 (Metal) against the published build, with the Windows fingerprint; Windows runners cannot run the renderer. This replaces the manual Linux/macOS start check of T019.
+- Branch protection: enabled after the repository became public (requires `ci-result`, administrators not enforced). Baseline re-recorded with the `default` job.

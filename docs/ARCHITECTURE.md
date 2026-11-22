@@ -321,16 +321,25 @@ scripts in `ci/` that also run locally (`pwsh ci/check-fingerprints.ps1`).
 - **GPU:** runners have no GPU, so the client is only built. Any future GPU test must carry the trait
   `Category=Gpu`; CI excludes it.
 - **Baselines:** updated by hand (see `benchmarks/baselines/README.md`), never by the workflow.
-- **Not covered:** macOS Intel (x64) and any hardware with a real GPU. A downloaded build has to be
-  started by hand on Linux and macOS at least once.
-- **Merge blocking (gap):** branch protection and rulesets are not available for private repositories
-  on the GitHub Free plan (the API answers 403, checked 2026-11-22), so GitHub cannot refuse a merge
-  by itself. The checks and the single `ci-result` check are published anyway; merge only when it is
-  green. Making the repository public or upgrading the plan lets you require `ci-result`.
-- **Benchmark noise:** two runs of the same code on `ubuntu-latest` differed by up to 13% on one
-  benchmark (3 rows flagged out of 12 with no code change), which is why regressions only warn and
-  benchmarks do not run on every push. Treat a single flagged row as a hint and repeat the run.
+- **Client smoke test:** job `client-smoke` publishes the client for the runner's RID, starts the
+  published executable (`ci/smoke-client.ps1`, option `--exit-after-fingerprint`), lets it simulate 20
+  ticks and requires exit code 0. On Linux it uses a virtual display (xvfb) and the software Vulkan
+  driver llvmpipe; on macOS the runner's Metal device. It passed on Linux x64, Linux arm64 and macOS
+  arm64 with the same fingerprint as Windows (`1475835573081C3A`, tick 20 of `4 1000 1`), so the
+  downloaded builds start there. It is informational (not part of `ci-result`). Windows runners have no
+  usable GPU (the renderer crashes creating its pipeline), so Windows is checked by hand.
+  Finding: on Ubuntu 26.04, `dotnet run` of the client (not self-contained) cannot find the GLFW
+  library under `runtimes/`; the published build, which carries it next to the executable, works.
+- **Not covered:** macOS Intel (x64), the Windows client under CI, and any real GPU (all rendering in
+  CI is software or virtualised).
+- **Merge blocking:** the repository is public (since 2026-11-22), so branch protection on `main`
+  requires the `ci-result` check. The owner can still push directly (administrators are not
+  enforced), which is how direct merges are done.
+- **Benchmark noise:** two runs of the same code on `ubuntu-latest` with the quick job differed by up to
+  13% on one benchmark (3 rows flagged out of 12 with no code change), which is why regressions only
+  warn and benchmarks do not run on every push. The baseline was recorded with the precise `default`
+  job (about 14 minutes); a later `default` run showed no regression over it. Treat a single flagged
+  row as a hint and repeat the run.
 - **Verified on GitHub (2026-11-22):** the `publish` jobs produce self-contained builds that pass
   `verify-publish.ps1` for win-x64, linux-x64 and osx-arm64 (about 35-40 MB each), and the release
-  step replaces the prerelease assets. Starting the downloaded builds by hand on Linux and macOS is
-  still to be done by a person with a display.
+  step replaces the prerelease `nightly` assets.
