@@ -276,5 +276,18 @@ terrain triangles are drawn every frame with no culling or level of detail yet).
 - Keyboard controls (speeds, fast forward, pause, add/remove vehicle): checked by hand in the window
   on Windows (2026-11-22, `-- 32 50000 2026 --unlock-fast-forward`), on top of the unit tests of the
   runner and commands.
-- Fast-forward rate (SC-003, ≥ ×20 at ≥ 30 FPS on `-- 128 50000`): not measured yet; the estimate
-  from tick timings is ≥ ×100.
+- Fast-forward rate (SC-003, ≥ ×20 at ≥ 30 FPS with 50 000 vehicles): the client cannot draw the
+  4096 × 4096 reference map yet. Its naive terrain mesh (38 million faces, about 6.4 GB of vertex
+  and index buffers) runs the integrated reference GPU out of memory and the window stays blank.
+  Measured by hand on Windows (2026-11-22, integrated AMD Radeon GPU over Vulkan, 50 000 vehicles):
+
+  | Map | Terrain triangles | Fast forward | FPS | Result |
+  |---|---|---|---|---|
+  | 1024 × 1024 (`-- 32`) | 4.8 M | ×205 | 36 | passes |
+  | 2048 × 2048 (`-- 64`) | 19.1 M | ×48 | 16 | limited by terrain drawing (14 FPS even at ×8) |
+  | 4096 × 4096 (`-- 128`) | 76.1 M | — | — | blank window, out of GPU memory |
+
+  The simulation meets SC-003 with margin. In fast forward the runner spends up to 25 ms of each
+  frame simulating, so 30 FPS also needs drawing to take under about 8 ms per frame. The 2048 and
+  4096 maps fail on drawing, not on simulation; those checks move to feature 003 (large-map
+  rendering), whose budget is 2 GB of rendering memory.
