@@ -44,7 +44,8 @@ jobs:
           echo "build-and-test result: ${{ needs.build-and-test.result }}"
           [ "${{ needs.build-and-test.result }}" = "success" ]
 
-  # Starts the real client on each platform with a virtual display and a software GPU driver. Kept out of
+  # Starts the real client on Linux (virtual display, software Vulkan) and macOS (Metal). Windows runners have no usable
+  # GPU (the renderer crashes creating its pipeline), so Windows is checked by hand. Kept out of
   # `ci-result` until it has proven stable on every runner type; its result is still visible on the run.
   client-smoke:
     name: client-smoke (${{ matrix.name }})
@@ -55,11 +56,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: windows-x64, runner: windows-latest }
           - { name: linux-x64, runner: ubuntu-latest }
           - { name: macos-arm64, runner: macos-latest }
           - { name: linux-arm64, runner: ubuntu-24.04-arm }
-          - { name: windows-arm64, runner: windows-11-arm }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -76,7 +75,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb mesa-vulkan-drivers libvulkan1
+          sudo apt-get install -y xvfb mesa-vulkan-drivers libvulkan1 libx11-6 libxrandr2 libxi6 libxcursor1 libxinerama1 libxxf86vm1 libgl1
+      - name: Diagnose GLFW (Linux)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          f=$(find src/Talt.Client/bin -name libglfw.so.3 | head -1); echo "$f"; ldd "$f" | grep -i "not found" || echo "no missing libs"
+          xvfb-run -a sh -c 'echo DISPLAY=$DISPLAY; ls /usr/share/vulkan/icd.d'
       - name: Smoke test (Linux, virtual display)
         if: runner.os == 'Linux'
         run: xvfb-run -a pwsh ci/smoke-client.ps1
