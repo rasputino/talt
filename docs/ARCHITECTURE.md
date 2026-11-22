@@ -280,8 +280,9 @@ terrain triangles are drawn every frame with no culling or level of detail yet).
   151 tests pass and the headless fingerprints equal the golden values (default scenario at 5000
   ticks `C9F573FD7DE5CBE3`, parallel and sequential; reference load `C0C656C5AB2D3302`), and the
   session recorded on Windows replays with every checkpoint OK. The whole matrix took under 3 minutes.
-- Windows ARM64 and Linux ARM64: **not run yet** (`ci-arm64.yml`; whether ARM64 runners are available
-  to this private repository is still to be probed). macOS Intel is not covered.
+- ARM64 (same run, hosted `ubuntu-24.04-arm` and `windows-11-arm` runners, which are available to this
+  private repository): **Linux arm64 and Windows arm64** also pass all 151 tests with identical
+  fingerprints and replay. macOS Intel (x64) is not covered.
 - Keyboard controls (speeds, fast forward, pause, add/remove vehicle): checked by hand in the window
   on Windows (2026-11-22, `-- 32 50000 2026 --unlock-fast-forward`), on top of the unit tests of the
   runner and commands.
@@ -308,10 +309,9 @@ scripts in `ci/` that also run locally (`pwsh ci/check-fingerprints.ps1`).
 
 | Workflow | When | What |
 |---|---|---|
-| `ci.yml` job `build-and-test` | every push and pull request | On `windows-latest` (x64), `ubuntu-latest` (x64), `macos-latest` (arm64): restore, build Release with warnings as errors, `dotnet test` (TRX files uploaded), then `ci/check-fingerprints.ps1` |
+| `ci.yml` job `build-and-test` | every push and pull request | On `windows-latest`, `ubuntu-latest` (x64), `macos-latest`, `ubuntu-24.04-arm` and `windows-11-arm` (arm64): restore, build Release with warnings as errors, `dotnet test` (TRX files uploaded), then `ci/check-fingerprints.ps1` |
 | `ci.yml` job `ci-result` | after the matrix | Single aggregate check; require this one in branch protection |
 | `ci.yml` jobs `publish`, `nightly-release` | push to `main` | Self-contained builds of `src/Talt.Client` for win-x64, linux-x64, osx-arm64, each checked for the wgpu-native and GLFW native libraries (`ci/verify-publish.ps1`); uploaded as artifacts and attached to the prerelease `nightly` (replaced on every run, unsigned, testing only) |
-| `ci-arm64.yml` | manual and push to `main` | Same build, test and fingerprint steps on `ubuntu-24.04-arm` and `windows-11-arm`; kept outside `ci-result` because a runner unavailable to a private repository queues instead of failing |
 | `benchmarks.yml` | manual and nightly | BenchmarkDotNet on `ubuntu-latest`, compared with `benchmarks/baselines/ubuntu-latest.json`; regressions above 10% are flagged in the run summary and as warnings but never fail the run |
 
 - **Determinism gate:** `ci/golden-fingerprints.json` holds the expected fingerprints (default scenario
