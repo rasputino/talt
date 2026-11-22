@@ -1,6 +1,6 @@
 # Benchmark baselines
 
-`ubuntu-latest.json` holds the BenchmarkDotNet results (merged JSON, one entry per benchmark) that the
+`ubuntu-latest.json` (recorded 2026-11-22 with job `default`, about 14 minutes) holds the BenchmarkDotNet results (merged JSON, one entry per benchmark) that the
 **Benchmarks** workflow compares against. Only `ubuntu-latest` is used because timings of different
 runner types are not comparable.
 
