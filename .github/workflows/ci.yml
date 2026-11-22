@@ -82,6 +82,7 @@ jobs:
         run: |
           f=$(find src/Talt.Client/bin -name libglfw.so.3 | head -1); echo "$f"; ldd "$f" | grep -i "not found" || echo "no missing libs"
           xvfb-run -a sh -c 'echo DISPLAY=$DISPLAY; ls /usr/share/vulkan/icd.d'
+          xvfb-run -a python3 ci/glfw-probe.py
           xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +extension RANDR +render" sh -c 'xdpyinfo -display $DISPLAY | head -5 || true; ldconfig -p | grep -E "libX11|libXrandr|libGL.so" | head'
       - name: Smoke test (Linux, virtual display)
         if: runner.os == 'Linux'
