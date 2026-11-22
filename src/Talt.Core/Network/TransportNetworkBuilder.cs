@@ -1,5 +1,3 @@
-using System.Numerics;
-
 namespace Talt.Core.Network;
 
 /// <summary>
@@ -7,18 +5,21 @@ namespace Talt.Core.Network;
 /// </summary>
 public sealed class TransportNetworkBuilder
 {
-    private readonly List<Vector2> _nodes = [];
+    private readonly List<GridPoint> _nodes = [];
     private readonly List<int> _edgeFrom = [];
     private readonly List<int> _edgeTo = [];
 
     public int NodeCount => _nodes.Count;
 
-    /// <summary>Adds a node at a ground position (in tiles) and returns its index.</summary>
-    public int AddNode(Vector2 position)
+    /// <summary>Adds a node at a ground position (in units) and returns its index.</summary>
+    public int AddNode(GridPoint position)
     {
         _nodes.Add(position);
         return _nodes.Count - 1;
     }
+
+    /// <summary>Adds a node at the corner of a tile and returns its index.</summary>
+    public int AddNodeAtTile(int x, int z) => AddNode(GridPoint.FromTiles(x, z));
 
     /// <summary>Adds a one-way edge and returns its index.</summary>
     public int AddEdge(int from, int to)

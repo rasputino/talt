@@ -22,16 +22,16 @@ public class VehicleTickBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        var network = GridNetworkGenerator.Generate(257, 257, spacing: 16, seed: 1);
+        var network = GridNetworkGenerator.Generate(257, 257, spacingTiles: 16, seed: 1);
         _fleet = SyntheticTraffic.Create(network, lineCount: 2_000, vehicleCount: Vehicles, seed: 1);
 
         // Let vehicles spread out along their lines before measuring.
         for (var i = 0; i < 2_000; i++)
         {
-            _fleet.Tick(0.05f);
+            _fleet.Tick();
         }
     }
 
     [Benchmark]
-    public void Tick() => _fleet.Tick(0.05f, Parallel);
+    public void Tick() => _fleet.Tick(Parallel);
 }

@@ -289,6 +289,9 @@ Out of scope: saving and loading (feature 014), any user interface beyond showin
 
 - Tick rate: fixed simulation step (propose 20 ticks per second at normal speed); speed multiplies
   ticks per second, never the step size.
+- Speeds: normal ×1, fast ×3 and very fast ×8 are always available. Unlimited fast forward is
+  locked by default, unlocked from the game settings, and then has its own separate control
+  (decided in feature 001 clarification).
 - One in-game day ≈ 2 seconds at normal speed; month and year boundaries trigger events.
 - Commands are queued and applied at the start of the next tick.
 - Rendering interpolates between the last two simulation states for smooth motion.

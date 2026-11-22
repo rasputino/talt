@@ -100,6 +100,15 @@ The game is developed mostly through AI-assisted coding. To keep the project man
 - **Measure performance from day one**, with a large test map, to catch regressions early.
 - **Readable, idiomatic C#**, so every change can be reviewed and debugged by a human.
 
+## Decision log
+
+| Date | Decision | Where |
+|---|---|---|
+| 2026-11-22 | Simulation state uses integer fixed-point arithmetic (no floats) so results are bit-identical on Windows, Linux and macOS, x64 and ARM64. | specs/001 research R1 |
+| 2026-11-22 | 40 simulation ticks per in-game day, 20 per second at normal speed (one day ≈ 2 s). | specs/001 research R2 |
+| 2026-11-22 | Speeds ×1, ×3, ×8 always available; unlimited fast forward is unlocked in the settings and has its own control. | specs/001 clarifications |
+| 2026-11-22 | Player actions are commands applied at the next tick; sessions can be recorded and replayed. | specs/001 research R7 |
+
 ## Next steps
 
 1. ~~Technical prototype: open a window and render voxel terrain.~~ Done on Windows (see [ARCHITECTURE.md](ARCHITECTURE.md)).

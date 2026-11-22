@@ -8,4 +8,9 @@
     <InternalsVisibleTo Include="Talt.Core.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- State fingerprint (XxHash3). See specs/001-simulation-foundation/research.md R9. -->
+    <PackageReference Include="System.IO.Hashing" />
+  </ItemGroup>
+
 </Project>

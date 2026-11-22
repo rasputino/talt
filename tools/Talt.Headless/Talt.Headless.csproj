@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Talt.Headless</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Talt.Headless.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Headless: Talt.Core only, never window or GPU libraries. -->
+    <ProjectReference Include="..\..\src\Talt.Core\Talt.Core.csproj" />
+  </ItemGroup>
+
+</Project>

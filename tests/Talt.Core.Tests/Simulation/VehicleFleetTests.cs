@@ -1,4 +1,5 @@
 using System.Numerics;
+using Talt.Core.Determinism;
 using Talt.Core.Network;
 using Talt.Core.Simulation;
 
@@ -6,13 +7,15 @@ namespace Talt.Core.Tests.Simulation;
 
 public class VehicleFleetTests
 {
+    private static readonly int Tile = FixedMath.UnitsPerTile;
+
     /// <summary>Straight line A — B — C, 10 tiles per segment, two-way.</summary>
-    private static (TransportNetwork Network, int[] Outbound, int[] Inbound) StraightLine()
+    internal static (TransportNetwork Network, int[] Outbound, int[] Inbound) StraightLine()
     {
         var builder = new TransportNetworkBuilder();
-        var a = builder.AddNode(new Vector2(0, 0));
-        var b = builder.AddNode(new Vector2(10, 0));
-        var c = builder.AddNode(new Vector2(20, 0));
+        var a = builder.AddNodeAtTile(0, 0);
+        var b = builder.AddNodeAtTile(10, 0);
+        var c = builder.AddNodeAtTile(20, 0);
         var ab = builder.AddEdge(a, b);
         var bc = builder.AddEdge(b, c);
         var cb = builder.AddEdge(c, b);
@@ -26,18 +29,42 @@ public class VehicleFleetTests
         var (network, outbound, inbound) = StraightLine();
         var fleet = new VehicleFleet(network);
         var line = fleet.AddLine(outbound, inbound);
-        var vehicle = fleet.AddVehicle(line, maxSpeed: 5f);
+        var id = fleet.AddVehicle(line, FixedMath.SpeedFromTilesPerSecond(5));
+        var slot = fleet.SlotOf(id);
 
-        // Run until the vehicle reaches the far stop (20 tiles away).
-        for (var t = 0; t < 2000 && !fleet.IsAtStop(vehicle); t++)
+        for (var t = 0; t < 2000 && !fleet.IsAtStop(slot); t++)
         {
-            fleet.Tick(0.05f);
+            fleet.Tick();
         }
 
-        Assert.True(fleet.IsAtStop(vehicle));
-        Assert.Equal(new Vector2(20, 0), fleet.GetPose(vehicle).Position);
-        Assert.Equal(new Vector2(-1, 0), fleet.GetPose(vehicle).Direction); // Ready to go back.
-        Assert.Equal(20.0, fleet.TotalDistance, 3);
+        Assert.True(fleet.IsAtStop(slot));
+        Assert.Equal(new Vector2(20, 0), fleet.GetPose(slot).Position);
+        Assert.Equal(new Vector2(-1, 0), fleet.GetPose(slot).Direction); // Ready to go back.
+        Assert.Equal(20L * Tile, fleet.TotalDistance); // Exact: integer units.
+    }
+
+    [Fact]
+    public void Vehicle_WaitsExactlyTheDwellTime()
+    {
+        var (network, outbound, inbound) = StraightLine();
+        var fleet = new VehicleFleet(network);
+        var id = fleet.AddVehicle(fleet.AddLine(outbound, inbound), FixedMath.SpeedFromTilesPerSecond(8));
+        var slot = fleet.SlotOf(id);
+
+        while (!fleet.IsAtStop(slot))
+        {
+            fleet.Tick();
+        }
+
+        var waited = 0;
+        while (fleet.IsAtStop(slot))
+        {
+            fleet.Tick();
+            waited++;
+        }
+
+        Assert.Equal(VehicleFleet.DwellTicks, waited);
+        Assert.Equal(60, VehicleFleet.DwellTicks); // 3 s × 20 ticks.
     }
 
     [Fact]
@@ -45,12 +72,13 @@ public class VehicleFleetTests
     {
         var (network, outbound, inbound) = StraightLine();
         var fleet = new VehicleFleet(network);
-        var vehicle = fleet.AddVehicle(fleet.AddLine(outbound, inbound), maxSpeed: 3f);
+        var max = FixedMath.SpeedFromTilesPerSecond(3);
+        var slot = fleet.SlotOf(fleet.AddVehicle(fleet.AddLine(outbound, inbound), max));
 
-        for (var t = 0; t < 500; t++)
+        for (var t = 0; t < 1000; t++)
         {
-            fleet.Tick(0.05f);
-            Assert.InRange(fleet.GetSpeed(vehicle), 0f, 3f);
+            fleet.Tick();
+            Assert.InRange(fleet.GetSpeed(slot), 0, max);
         }
     }
 
@@ -59,24 +87,77 @@ public class VehicleFleetTests
     {
         var (network, outbound, inbound) = StraightLine();
         var fleet = new VehicleFleet(network);
-        var vehicle = fleet.AddVehicle(fleet.AddLine(outbound, inbound), maxSpeed: 8f);
+        var slot = fleet.SlotOf(fleet.AddVehicle(fleet.AddLine(outbound, inbound), FixedMath.SpeedFromTilesPerSecond(8)));
         var stopsReached = 0;
         var wasAtStop = false;
 
         for (var t = 0; t < 5000 && stopsReached < 2; t++)
         {
-            fleet.Tick(0.05f);
-            if (fleet.IsAtStop(vehicle) && !wasAtStop)
+            fleet.Tick();
+            if (fleet.IsAtStop(slot) && !wasAtStop)
             {
                 stopsReached++;
             }
 
-            wasAtStop = fleet.IsAtStop(vehicle);
+            wasAtStop = fleet.IsAtStop(slot);
         }
 
         Assert.Equal(2, stopsReached);
-        Assert.Equal(Vector2.Zero, fleet.GetPose(vehicle).Position);
-        Assert.Equal(40.0, fleet.TotalDistance, 3);
+        Assert.Equal(Vector2.Zero, fleet.GetPose(slot).Position);
+        Assert.Equal(40L * Tile, fleet.TotalDistance);
+    }
+
+    [Fact]
+    public void ArrivalTick_MatchesTheFloatPrototypeWithinOneTick()
+    {
+        // The integer model must keep the float prototype's behaviour (FR-021): same constants
+        // (1.5 / 2.5 tiles/s², 5 tiles/s, 20 Hz), same arrival tick within rounding.
+        var (network, outbound, inbound) = StraightLine();
+        var fleet = new VehicleFleet(network);
+        var slot = fleet.SlotOf(fleet.AddVehicle(fleet.AddLine(outbound, inbound), FixedMath.SpeedFromTilesPerSecond(5)));
+
+        var ticks = 0;
+        while (!fleet.IsAtStop(slot))
+        {
+            fleet.Tick();
+            ticks++;
+        }
+
+        Assert.InRange(ticks, ExpectedFloatArrivalTicks() - 1, ExpectedFloatArrivalTicks() + 1);
+    }
+
+    [Fact]
+    public void AddAndRemove_KeepSlotsDenseAndIdsStable()
+    {
+        var (network, outbound, inbound) = StraightLine();
+        var fleet = new VehicleFleet(network);
+        var line = fleet.AddLine(outbound, inbound);
+        var speed = FixedMath.SpeedFromTilesPerSecond(5);
+        var a = fleet.AddVehicle(line, speed);
+        var b = fleet.AddVehicle(line, speed);
+        var c = fleet.AddVehicle(line, speed);
+
+        Assert.True(fleet.RemoveVehicle(a));
+
+        Assert.Equal(2, fleet.VehicleCount);
+        Assert.False(fleet.ContainsVehicle(a));
+        Assert.Equal(0, fleet.SlotOf(c)); // Last vehicle moved into the free slot.
+        Assert.Equal(1, fleet.SlotOf(b));
+        Assert.False(fleet.RemoveVehicle(a));
+        Assert.Equal(c + 1, fleet.AddVehicle(line, speed)); // Ids are never reused.
+    }
+
+    [Fact]
+    public void AddVehicle_ValidatesArguments()
+    {
+        var (network, outbound, inbound) = StraightLine();
+        var fleet = new VehicleFleet(network);
+        var line = fleet.AddLine(outbound, inbound);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => fleet.AddVehicle(line + 1, 100));
+        Assert.Throws<ArgumentOutOfRangeException>(() => fleet.AddVehicle(line, 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => fleet.AddVehicle(line, VehicleFleet.MaxAllowedSpeed + 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => fleet.AddVehicle(line, 100, startEdge: 4));
     }
 
     [Fact]
@@ -89,35 +170,62 @@ public class VehicleFleetTests
     }
 
     [Fact]
-    public void ParallelAndSequentialTicks_GiveIdenticalResults()
+    public void ParallelAndSequentialTicks_GiveIdenticalState()
     {
-        var network = GridNetworkGenerator.Generate(40, 40, spacing: 8, seed: 5);
+        var network = GridNetworkGenerator.Generate(40, 40, spacingTiles: 8, seed: 5);
         var parallel = SyntheticTraffic.Create(network, lineCount: 200, vehicleCount: 20_000, seed: 7);
         var sequential = SyntheticTraffic.Create(network, lineCount: 200, vehicleCount: 20_000, seed: 7);
 
-        for (var t = 0; t < 200; t++)
+        for (var t = 0; t < 400; t++)
         {
-            parallel.Tick(0.05f, parallel: true);
-            sequential.Tick(0.05f, parallel: false);
+            parallel.Tick(parallel: true);
+            sequential.Tick(parallel: false);
         }
 
-        for (var v = 0; v < parallel.VehicleCount; v++)
-        {
-            Assert.Equal(sequential.GetPose(v), parallel.GetPose(v));
-        }
+        Assert.Equal(Fingerprint(sequential), Fingerprint(parallel));
+        Assert.Equal(sequential.TotalDistance, parallel.TotalDistance);
     }
 
     [Fact]
     public void Tick_DoesNotAllocatePerVehicle()
     {
-        var network = GridNetworkGenerator.Generate(40, 40, spacing: 8, seed: 5);
+        var network = GridNetworkGenerator.Generate(40, 40, spacingTiles: 8, seed: 5);
         var fleet = SyntheticTraffic.Create(network, lineCount: 100, vehicleCount: 50_000, seed: 3);
-        fleet.Tick(0.05f, parallel: false); // Warm up.
+        fleet.Tick(parallel: false); // Warm up.
 
         var before = GC.GetAllocatedBytesForCurrentThread();
-        fleet.Tick(0.05f, parallel: false);
+        fleet.Tick(parallel: false);
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Assert.Equal(0, allocated);
+    }
+
+    private static ulong Fingerprint(VehicleFleet fleet)
+    {
+        var hasher = new StateHasher();
+        hasher.Append(fleet);
+        return hasher.GetFingerprint();
+    }
+
+    /// <summary>Replays the old float model for the straight-line scenario.</summary>
+    private static int ExpectedFloatArrivalTicks()
+    {
+        const float dt = 0.05f, acceleration = 1.5f, deceleration = 2.5f, creep = 0.5f, max = 5f;
+        float distance = 0, speed = 0;
+        var ticks = 0;
+        while (true)
+        {
+            ticks++;
+            var remaining = 20f - distance;
+            speed = speed * speed / (2f * deceleration) >= remaining
+                ? MathF.Max(speed - deceleration * dt, creep)
+                : MathF.Min(speed + acceleration * dt, max);
+            if (speed * dt >= remaining)
+            {
+                return ticks;
+            }
+
+            distance += speed * dt;
+        }
     }
 }

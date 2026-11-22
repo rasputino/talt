@@ -19,12 +19,22 @@ Metal or DirectX 12 support.
 ```
 dotnet build
 dotnet test
-dotnet run --project src/Talt.Client -c Release -- [chunks-per-side] [vehicles] [seed]
+dotnet run --project src/Talt.Client -c Release -- [chunks-per-side] [vehicles] [seed] [options]
+dotnet run --project tools/Talt.Headless -c Release -- run --ticks 10000
 dotnet run --project benchmarks/Talt.Benchmarks -c Release -- --filter * --job short
 ```
 
 Example: `dotnet run --project src/Talt.Client -c Release -- 16 20000` shows a 512 × 512 map with
 20 000 vehicles.
+
+Client options: `--start-year <year>`, `--language en|es`, `--unlock-fast-forward` /
+`--lock-fast-forward` (saved in your settings), `--record [file]`, `--print-fingerprint-at <tick>`.
+
+In-game keys: Space pause, `1`/`2`/`3` speed ×1/×3/×8, `F` fast forward (once unlocked), `N` add a
+vehicle, `Delete` remove the last vehicle you added, mouse and WASD/arrows/Q/E for the camera.
+
+`Talt.Headless` runs and replays simulations without a window (`run`, `replay`); see
+[the headless runner contract](specs/001-simulation-foundation/contracts/headless-cli.md).
 
 ## Inspiration
 

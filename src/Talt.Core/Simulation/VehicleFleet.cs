@@ -1,10 +1,11 @@
 using System.Numerics;
+using Talt.Core.Determinism;
 using Talt.Core.Network;
 
 namespace Talt.Core.Simulation;
 
 /// <summary>
-/// Position and heading of a vehicle on the ground plane, in tiles.
+/// Rendering only: position and heading of a vehicle on the ground plane, in tiles.
 /// </summary>
 public readonly record struct VehiclePose(Vector2 Position, Vector2 Direction);
 
@@ -15,43 +16,58 @@ public readonly record struct VehiclePose(Vector2 Position, Vector2 Direction);
 /// <para>
 /// A <b>line</b> is a closed loop of edges with two stops: the start of the route (index 0) and the
 /// start of the way back (<c>returnIndex</c>). Vehicles accelerate, cruise, brake before each stop,
-/// wait there for <see cref="DwellSeconds"/> and continue.
+/// wait there for <see cref="DwellTicks"/> and continue.
 /// </para>
 /// <para>
-/// State is stored as a structure of arrays (one array per field), which keeps the per-tick loop
-/// cache friendly. Vehicles do not interact yet, so each one is updated independently and the tick
-/// runs in parallel batches. <see cref="Tick"/> allocates nothing per vehicle.
+/// State is stored in flat arrays of integer fixed-point values (distances in units, speeds in units
+/// per tick, see <see cref="FixedMath"/>), so the result is bit-identical on every platform. The hot
+/// fields of each vehicle are packed in one <see cref="VehicleState"/> for cache locality.
+/// Vehicles occupy dense slots <c>0..VehicleCount-1</c>; each has a stable <c>VehicleId</c> that never
+/// changes or gets reused. Removing a vehicle moves the last one into its slot.
+/// </para>
+/// <para>
+/// Vehicles do not interact yet, so each one is updated independently and <see cref="Tick"/> runs in
+/// parallel batches. It allocates nothing per vehicle, and parallel and sequential ticks give
+/// identical results because all arithmetic is integer.
 /// </para>
 /// </remarks>
-public sealed class VehicleFleet
+public sealed class VehicleFleet : IStateHashable
 {
-    public const float Acceleration = 1.5f;  // tiles/s²
-    public const float Deceleration = 2.5f;  // tiles/s²
-    public const float DwellSeconds = 3f;
-    private const float CreepSpeed = 0.5f;   // Minimum speed while braking, so stops are always reached.
+    /// <summary>Acceleration, units per tick² (1.5 tiles/s²).</summary>
+    public static readonly int Acceleration = FixedMath.AccelerationFromTilesPerSecondSquared(1.5);
+
+    /// <summary>Braking deceleration, units per tick² (2.5 tiles/s²).</summary>
+    public static readonly int Deceleration = FixedMath.AccelerationFromTilesPerSecondSquared(2.5);
+
+    /// <summary>Minimum speed while braking, so stops are always reached (0.5 tiles/s).</summary>
+    public static readonly int CreepSpeed = FixedMath.SpeedFromTilesPerSecond(0.5);
+
+    /// <summary>Highest maximum speed a vehicle may have (40 tiles/s).</summary>
+    public static readonly int MaxAllowedSpeed = FixedMath.SpeedFromTilesPerSecond(40);
+
+    /// <summary>Ticks a vehicle waits at each stop (3 seconds).</summary>
+    public static readonly int DwellTicks = FixedMath.SecondsToTicks(3);
+
     private const int BatchSize = 4096;
 
     private readonly TransportNetwork _network;
     private readonly Action<int> _tickBatch;
+    private readonly Dictionary<int, int> _slotById = [];
 
     // Lines: edges of all lines in one flat array.
     private int[] _lineEdges = new int[1024];
-    private float[] _distanceToStop = new float[1024]; // From the end of each line edge to the next stop.
+    private long[] _distanceToStop = new long[1024]; // From the end of each line edge to the next stop.
     private int _lineEdgeCount;
     private int[] _lineStart = new int[64];
     private int[] _lineLength = new int[64];
     private int[] _lineReturn = new int[64];
 
-    // Vehicles: structure of arrays.
-    private int[] _line = new int[1024];
-    private int[] _routeIndex = new int[1024];
-    private float[] _distance = new float[1024];
-    private float[] _speed = new float[1024];
-    private float[] _maxSpeed = new float[1024];
-    private float[] _dwell = new float[1024];
+    // Vehicles: stable ids plus packed hot state, all integer (data-model.md VehicleFleet.*).
+    private int[] _id = new int[1024];
+    private VehicleState[] _state = new VehicleState[1024];
 
-    private float _tickDelta;
-    private double _totalDistance;
+    private int _nextVehicleId = 1;
+    private long _totalDistance;
 
     public VehicleFleet(TransportNetwork network)
     {
@@ -60,12 +76,14 @@ public sealed class VehicleFleet
         _tickBatch = TickBatch;
     }
 
+    public TransportNetwork Network => _network;
+
     public int VehicleCount { get; private set; }
 
     public int LineCount { get; private set; }
 
-    /// <summary>Total distance travelled by all vehicles, in tiles. Handy to check the simulation runs.</summary>
-    public double TotalDistance => Volatile.Read(ref _totalDistance);
+    /// <summary>Total distance travelled by all vehicles, in units.</summary>
+    public long TotalDistance => Interlocked.Read(ref _totalDistance);
 
     /// <summary>
     /// Adds a line made of an outbound route followed by the route back.
@@ -109,11 +127,11 @@ public sealed class VehicleFleet
 
     /// <summary>Adds a vehicle at the start of an edge of a line, standing still.</summary>
     /// <param name="line">Line the vehicle runs on.</param>
-    /// <param name="maxSpeed">Cruise speed, in tiles per second.</param>
-    /// <param name="initialDwell">Seconds to wait before departing.</param>
+    /// <param name="maxSpeed">Cruise speed, in units per tick (1 to <see cref="MaxAllowedSpeed"/>).</param>
+    /// <param name="initialDwellTicks">Ticks to wait before departing.</param>
     /// <param name="startEdge">Index of the line edge where the vehicle starts (0 = first stop).</param>
-    /// <returns>The new vehicle's index.</returns>
-    public int AddVehicle(int line, float maxSpeed, float initialDwell = 0f, int startEdge = 0)
+    /// <returns>The new vehicle's stable id.</returns>
+    public int AddVehicle(int line, int maxSpeed, int initialDwellTicks = 0, int startEdge = 0)
     {
         if ((uint)line >= (uint)LineCount)
         {
@@ -121,6 +139,8 @@ public sealed class VehicleFleet
         }
 
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxSpeed);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(maxSpeed, MaxAllowedSpeed);
+        ArgumentOutOfRangeException.ThrowIfNegative(initialDwellTicks);
         if ((uint)startEdge >= (uint)_lineLength[line])
         {
             throw new ArgumentOutOfRangeException(nameof(startEdge));
@@ -128,23 +148,55 @@ public sealed class VehicleFleet
 
         EnsureVehicleCapacity(VehicleCount + 1);
 
-        var v = VehicleCount++;
-        _line[v] = line;
-        _routeIndex[v] = startEdge;
-        _distance[v] = 0f;
-        _speed[v] = 0f;
-        _maxSpeed[v] = maxSpeed;
-        _dwell[v] = initialDwell;
-        return v;
+        var slot = VehicleCount++;
+        var id = _nextVehicleId++;
+        _id[slot] = id;
+        _state[slot] = new VehicleState
+        {
+            Line = line,
+            RouteIndex = startEdge,
+            MaxSpeed = maxSpeed,
+            DwellTicks = initialDwellTicks,
+        };
+        _slotById.Add(id, slot);
+        return id;
     }
 
-    /// <summary>Advances the simulation by <paramref name="deltaSeconds"/>.</summary>
-    /// <param name="deltaSeconds">Simulated time step.</param>
-    /// <param name="parallel">Use all CPU cores. Single-threaded mode exists for benchmarks and tests.</param>
-    public void Tick(float deltaSeconds, bool parallel = true)
+    /// <summary>Removes a vehicle. The last vehicle moves into its slot.</summary>
+    /// <returns>False when no vehicle has this id.</returns>
+    public bool RemoveVehicle(int vehicleId)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(deltaSeconds);
-        _tickDelta = deltaSeconds;
+        if (!_slotById.Remove(vehicleId, out var slot))
+        {
+            return false;
+        }
+
+        var last = VehicleCount - 1;
+        if (slot != last)
+        {
+            _id[slot] = _id[last];
+            _state[slot] = _state[last];
+            _slotById[_id[slot]] = slot;
+        }
+
+        VehicleCount--;
+        return true;
+    }
+
+    public bool ContainsVehicle(int vehicleId) => _slotById.ContainsKey(vehicleId);
+
+    /// <summary>Id given to the most recently added vehicle (0 if none was ever added).</summary>
+    public int LastCreatedVehicleId => _nextVehicleId - 1;
+
+    /// <summary>Slot currently used by a vehicle, or -1.</summary>
+    public int SlotOf(int vehicleId) => _slotById.GetValueOrDefault(vehicleId, -1);
+
+    public int VehicleIdAt(int slot) => _id[slot];
+
+    /// <summary>Advances every vehicle by one tick.</summary>
+    /// <param name="parallel">Use all CPU cores. Results are identical either way.</param>
+    public void Tick(bool parallel = true)
+    {
         var batches = (VehicleCount + BatchSize - 1) / BatchSize;
 
         if (parallel && batches > 1)
@@ -160,21 +212,24 @@ public sealed class VehicleFleet
         }
     }
 
-    public VehiclePose GetPose(int vehicle)
+    /// <summary>Rendering only: pose of the vehicle in a slot, in tiles.</summary>
+    public VehiclePose GetPose(int slot)
     {
-        var edge = _lineEdges[_lineStart[_line[vehicle]] + _routeIndex[vehicle]];
-        var from = _network.NodePosition(_network.EdgeFrom(edge));
-        var to = _network.NodePosition(_network.EdgeTo(edge));
-        var length = _network.EdgeLength(edge);
+        ref readonly var state = ref _state[slot];
+        var edge = _lineEdges[_lineStart[state.Line] + state.RouteIndex];
+        var from = _network.NodePositionTiles(_network.EdgeFrom(edge));
+        var to = _network.NodePositionTiles(_network.EdgeTo(edge));
+        var length = FixedMath.UnitsToTiles(_network.EdgeLength(edge));
         var direction = (to - from) / length;
-        return new VehiclePose(from + direction * _distance[vehicle], direction);
+        return new VehiclePose(from + direction * FixedMath.UnitsToTiles(state.Distance), direction);
     }
 
-    public float GetSpeed(int vehicle) => _speed[vehicle];
+    /// <summary>Speed of the vehicle in a slot, in units per tick.</summary>
+    public int GetSpeed(int slot) => _state[slot].Speed;
 
-    public bool IsAtStop(int vehicle) => _dwell[vehicle] > 0f;
+    public bool IsAtStop(int slot) => _state[slot].DwellTicks > 0;
 
-    /// <summary>Copies all vehicle poses into <paramref name="poses"/> (length ≥ VehicleCount).</summary>
+    /// <summary>Rendering only: copies all vehicle poses into <paramref name="poses"/>.</summary>
     public void CopyPoses(Span<VehiclePose> poses)
     {
         if (poses.Length < VehicleCount)
@@ -188,57 +243,99 @@ public sealed class VehicleFleet
         }
     }
 
+    /// <summary>
+    /// Rendering only: copies all vehicle poses into <paramref name="poses"/>, splitting the work over
+    /// all cores for large fleets. Poses are read-only views, so order of work does not matter.
+    /// </summary>
+    public void CopyPoses(VehiclePose[] poses, bool parallel)
+    {
+        ArgumentNullException.ThrowIfNull(poses);
+        if (!parallel || VehicleCount <= BatchSize)
+        {
+            CopyPoses(poses.AsSpan());
+            return;
+        }
+
+        if (poses.Length < VehicleCount)
+        {
+            throw new ArgumentException("The destination is smaller than the number of vehicles.", nameof(poses));
+        }
+
+        var batches = (VehicleCount + BatchSize - 1) / BatchSize;
+        Parallel.For(0, batches, batch =>
+        {
+            var end = Math.Min((batch + 1) * BatchSize, VehicleCount);
+            for (var v = batch * BatchSize; v < end; v++)
+            {
+                poses[v] = GetPose(v);
+            }
+        });
+    }
+
+    /// <summary>Copies the vehicle id of every slot into <paramref name="ids"/>.</summary>
+    public void CopyIds(Span<int> ids) => _id.AsSpan(0, VehicleCount).CopyTo(ids);
+
+    public void AppendTo(StateHasher hasher)
+    {
+        ArgumentNullException.ThrowIfNull(hasher);
+        hasher.Append<int>(_lineEdges.AsSpan(0, _lineEdgeCount));
+        hasher.Append<long>(_distanceToStop.AsSpan(0, _lineEdgeCount));
+        hasher.Append<int>(_lineStart.AsSpan(0, LineCount));
+        hasher.Append<int>(_lineLength.AsSpan(0, LineCount));
+        hasher.Append<int>(_lineReturn.AsSpan(0, LineCount));
+        hasher.Append<int>(_id.AsSpan(0, VehicleCount));
+        hasher.Append<VehicleState>(_state.AsSpan(0, VehicleCount));
+        hasher.Append(_nextVehicleId);
+        hasher.Append(TotalDistance);
+    }
+
     private void TickBatch(int batch)
     {
-        var dt = _tickDelta;
         var end = Math.Min((batch + 1) * BatchSize, VehicleCount);
-        var travelled = 0.0;
+        var travelled = 0L;
 
         for (var v = batch * BatchSize; v < end; v++)
         {
-            travelled += TickVehicle(v, dt);
+            travelled += TickVehicle(v);
         }
 
-        // Rarely contended: one interlocked add per batch, not per vehicle.
-        AddDistance(travelled);
+        // Integer addition is associative, so the batch order does not change the total.
+        Interlocked.Add(ref _totalDistance, travelled);
     }
 
-    /// <returns>Distance travelled during this step.</returns>
-    private float TickVehicle(int v, float dt)
+    /// <returns>Distance travelled during this tick, in units.</returns>
+    private long TickVehicle(int v)
     {
-        if (_dwell[v] > 0f)
+        ref var state = ref _state[v];
+        if (state.DwellTicks > 0)
         {
-            _dwell[v] -= dt;
-            return 0f;
+            state.DwellTicks--;
+            return 0;
         }
 
-        var line = _line[v];
+        var line = state.Line;
         var start = _lineStart[line];
-        var lineLength = _lineLength[line];
-        var index = _routeIndex[v];
+        var index = state.RouteIndex;
         var edgeLength = _network.EdgeLength(_lineEdges[start + index]);
-        var distance = _distance[v];
-        var speed = _speed[v];
 
         // Brake when the stopping distance reaches the next stop, otherwise accelerate.
-        var remaining = edgeLength - distance + _distanceToStop[start + index];
-        var brakingDistance = speed * speed / (2f * Deceleration);
-        speed = brakingDistance >= remaining
-            ? MathF.Max(speed - Deceleration * dt, CreepSpeed)
-            : MathF.Min(speed + Acceleration * dt, _maxSpeed[v]);
+        var remaining = (long)edgeLength - state.Distance + _distanceToStop[start + index];
+        var speed = FixedMath.BrakingDistance(state.Speed, Deceleration) >= remaining
+            ? Math.Max(state.Speed - Deceleration, CreepSpeed)
+            : Math.Min(state.Speed + Acceleration, state.MaxSpeed);
 
-        var move = speed * dt;
-        if (move >= remaining)
+        if (speed >= remaining)
         {
             // Arrived: snap to the stop and wait.
-            _routeIndex[v] = index < _lineReturn[line] ? _lineReturn[line] : 0;
-            _distance[v] = 0f;
-            _speed[v] = 0f;
-            _dwell[v] = DwellSeconds;
+            state.RouteIndex = index < _lineReturn[line] ? _lineReturn[line] : 0;
+            state.Distance = 0;
+            state.Speed = 0;
+            state.DwellTicks = DwellTicks;
             return remaining;
         }
 
-        distance += move;
+        var lineLength = _lineLength[line];
+        var distance = state.Distance + speed;
         while (distance >= edgeLength)
         {
             distance -= edgeLength;
@@ -246,20 +343,10 @@ public sealed class VehicleFleet
             edgeLength = _network.EdgeLength(_lineEdges[start + index]);
         }
 
-        _routeIndex[v] = index;
-        _distance[v] = distance;
-        _speed[v] = speed;
-        return move;
-    }
-
-    private void AddDistance(double value)
-    {
-        double current;
-        do
-        {
-            current = _totalDistance;
-        }
-        while (Interlocked.CompareExchange(ref _totalDistance, current + value, current) != current);
+        state.RouteIndex = index;
+        state.Distance = distance;
+        state.Speed = speed;
+        return speed;
     }
 
     private void ComputeDistanceToStop(int start, int length, int returnIndex)
@@ -270,7 +357,7 @@ public sealed class VehicleFleet
         {
             var next = i + 1 == length ? 0 : i + 1;
             _distanceToStop[start + i] = next == 0 || next == returnIndex
-                ? 0f
+                ? 0
                 : _network.EdgeLength(_lineEdges[start + next]) + _distanceToStop[start + next];
         }
     }
@@ -299,15 +386,11 @@ public sealed class VehicleFleet
 
     private void EnsureVehicleCapacity(int required)
     {
-        if (required > _line.Length)
+        if (required > _id.Length)
         {
-            var size = Math.Max(required, _line.Length * 2);
-            Array.Resize(ref _line, size);
-            Array.Resize(ref _routeIndex, size);
-            Array.Resize(ref _distance, size);
-            Array.Resize(ref _speed, size);
-            Array.Resize(ref _maxSpeed, size);
-            Array.Resize(ref _dwell, size);
+            var size = Math.Max(required, _id.Length * 2);
+            Array.Resize(ref _id, size);
+            Array.Resize(ref _state, size);
         }
     }
 }
