@@ -21,21 +21,32 @@ Talt.slnx
 │   │   │                   RecordedSession, SessionRecorder, SessionReplayer, CommandSerializer
 │   │   ├── Determinism/    FixedMath, DeterministicRandom (xoshiro256**), StateHasher (XxHash3)
 │   │   └── Scenarios/      ScenarioSettings, ScenarioBuilder (shared by client and headless runner)
-│   └── Talt.Client/        Executable: window, input, rendering, runs the simulation.
-│       ├── GameWindow.cs   Window lifecycle, camera, speed keys, pose interpolation, title status
-│       ├── PlayerSettings.cs  Persisted player settings (fast-forward unlock)
-│       ├── Localization/   Minimal en/es string table (Strings.cs + JSON resources)
-│       └── Rendering/      WebGpuRenderer, WorldRenderer, ChunkMeshScheduler, Frustum,
-│                           LodSelector, RenderStatistics, OrbitCamera, UnitCube, Shaders/*.wgsl
+│   └── Talt.Client/        Executable: window, input, rendering, interface, runs the simulation.
+│       ├── GameWindow.cs   Window lifecycle, screens, input routing, settings, UI pass, title status
+│       ├── GameSetup.cs    Builds simulation + world + heightmap from NewGameOptions (background task)
+│       ├── GameSession.cs  A running game: runner, pose interpolation, vehicle instances, commands
+│       ├── PlayerSettings.cs  Persisted settings (language, currency, scale, display, bindings...)
+│       ├── DataFiles.cs    Embedded JSON data files with validation errors
+│       ├── Ui/             Retained-mode interface: UiContext, widgets, windows, SDF font, icons, theme
+│       ├── Screens/        Main menu, new game, in-game HUD and pause menu, settings, key bindings,
+│       │                   object information and sample windows; INewGameOptionsSource
+│       ├── Input/          KeyBindings (data-driven actions), InputRouter
+│       ├── Picking/        Ray, MapPicker and pick layers (terrain, road, vehicle)
+│       ├── Localization/   Strings (en/es, plurals), MoneyFormatter and currencies
+│       └── Rendering/      WebGpuRenderer, WorldRenderer, UiRenderer, HighlightRenderer,
+│                           ChunkMeshScheduler, Frustum, LodSelector, RenderStatistics, OrbitCamera,
+│                           UnitCube, Shaders/*.wgsl
 ├── tools/
 │   └── Talt.Headless/      Console runner: run and replay simulations without a window
 ├── tests/
 │   ├── Talt.Core.Tests/    xUnit tests for Talt.Core (determinism, calendar, runner, commands...)
-│   ├── Talt.Client.Tests/  String table, frustum, LOD selection, camera, frame-time tests
+│   ├── Talt.Client.Tests/  Strings and localization coverage, money, layout, draw list, input
+│   │                       routing, windows, tooltips, key bindings, settings, picking, screens,
+│   │                       frustum, LOD selection, camera, frame-time tests
 │   └── Talt.Headless.Tests/ Command-line parsing tests
 └── benchmarks/
     └── Talt.Benchmarks/    BenchmarkDotNet: full tick, vehicle tick, pathfinding, SoA vs Arch ECS,
-                            chunk meshing (naive vs greedy, LOD)
+                            chunk meshing (naive vs greedy, LOD), UI frame cost, picking
 ```
 
 **Rule:** `Talt.Core` must never reference graphics or windowing libraries. Everything in it must be
@@ -108,16 +119,18 @@ testable without a GPU. The client depends on the core, never the other way arou
 ### New game in the client (command line only for now)
 
 `Talt.Client` accepts `--map <N|WxD>`, `--seed`, `--roughness`, `--max-height`, `--water`, `--sea-level`
-and `--map-text`; without a seed a random one is chosen and printed with the map text. Progress is
-printed per stage (`[ 37%] Carving rivers`, localized en/es). `Talt.Headless map ...` generates without a
+and `--map-text` (any of them starts a game straight away); the map settings text is printed so the map
+can be shared. Progress is printed per stage (`[ 37%] Rivers`). `Talt.Headless map ...` generates without a
 window and prints stage timings, counts and the fingerprint (`--build-world` also times the voxel world;
 `--threads n` limits workers).
 
-**Deferred until after feature 005 (UI foundation)**: the in-window new-game screen (settings form with
-a progress bar) and the overview preview of the map before starting. The screen will build a
-`MapSettings`, call `MapGenerator.Generate` with an `IProgress` bound to its progress bar and then
-`WorldBuilder.Build`; the overview can be derived from `MapData` (terrain, heights, water level) without
-touching voxels. Drawing trees as instances is deferred to the rendering features.
+**Follow-up (feature 005's new-game screen exists)**: the screen (`NewGameScreen`, built from
+`INewGameOptionsSource` descriptors) still offers only map size, vehicles and seed. Adding roughness,
+maximum height, water amount and sea level means new descriptors and a source that fills
+`NewGameOptions.Map` (a `MapSettings`); the overview preview of the map before starting can be derived
+from `MapData` (terrain, heights, water level) without touching voxels. `GameSetup.Create` already
+generates through `MapGenerator` and reports stage progress through its `report` callback. Drawing trees
+as instances is deferred to the rendering features.
 
 ### Known limits
 
@@ -197,7 +210,11 @@ Vertices are in world space (`VoxelVertex`: position, normal, color = 36 bytes),
 - Adjacency is stored in compressed sparse row (CSR) form: flat arrays, no per-node objects, so
   traversals are cache friendly and allocation free. `TransportNetworkBuilder` assembles it.
 - `PathFinder` runs A* with a straight-line heuristic. It reuses its buffers between searches (a
-  "visit stamp" avoids clearing them) and is not thread safe: one instance per thread.
+  "visit stamp" avoids clearing them) and is not thread safe: one instance per thread. The heuristic
+  of each node is computed once per search and cached (its integer square root was the costliest
+  step), and the open set is a small binary heap ordered by (priority, node). Within one search those
+  keys are unique, so the expansion order, and therefore every route, is fixed by the algorithm and
+  not by the queue implementation.
 - `GridNetworkGenerator` builds a synthetic road grid with some roads removed, for tests,
   benchmarks and the prototype. `NetworkTerrainPainter` turns the top voxel under each road into
   road material so the terrain mesher draws it.
@@ -279,6 +296,10 @@ junctions and there are no signals or blocks. Interactions are the next big step
 threat to parallelism, because neighbouring vehicles depend on each other.
 
 `SyntheticTraffic` creates random lines between junctions and spreads vehicles evenly along them.
+Pairs are drawn in batches no larger than the number of lines still missing, so no batch draws a pair
+the sequential loop would not have drawn and the random state afterwards is the same. The routes of
+a batch are searched in parallel (one `PathFinder` per worker, each route written to its own slot)
+and accepted in attempt order, so the fleet is identical with `parallel: false` (unit test).
 
 ## Benchmarks
 
@@ -299,15 +320,33 @@ Results on the development machine (AMD Ryzen 7 160, 8 cores / 16 threads), feat
 | Full `GameSimulation.Tick`, 1 000 000 vehicles | 23 ms | 5.5 ms | 6.0 ms (vehicles only) |
 | A* across the whole map (random pairs) | 1.27 ms per search | — | — |
 
+Scenario setup speed-up (same machine, 2026-11-22). `ScenarioSetupBenchmarks` builds
+the reference network and its 5 000 lines (10 000 A* routes) and 50 000 vehicles:
+
+| Measurement | Before | After |
+|---|---|---|
+| `PathFinderBenchmarks` A* across the whole map (in-process job) | 2.49 ms per search | 1.68 ms per search |
+| `ScenarioSetupBenchmarks.CreateSyntheticTraffic`, sequential | — | 22.6 s |
+| `ScenarioSetupBenchmarks.CreateSyntheticTraffic`, parallel | — | 2.0 s (92 MB allocated) |
+| `ScenarioSetupBenchmarks.GenerateNetwork` | — | 52 ms |
+| Headless reference run, `setup-ms` | 38.6 s and 56.7 s (two runs) | 2.4–2.7 s |
+
+Fingerprints are unchanged (`C0C656C5AB2D3302`, `C9F573FD7DE5CBE3`; `ci/check-fingerprints.ps1`
+passes, replay included). Timings on this laptop vary a lot between runs (the same A* benchmark gave
+1.27 ms in feature 001), so compare only numbers measured in the same session. Before and after the
+change were measured back to back. The "before" setup benchmark could not run: BenchmarkDotNet
+failed to build its boilerplate from a temporary folder, so the headless `setup-ms` is the "before"
+reference.
+
 No regression against the previous float prototype (constitution II): the integer simulation is as
 fast or faster. The full tick allocates only what `Parallel.For` itself needs (~2–5 KB per tick,
 independent of vehicle count).
 
 **Headless reference run:** `Talt.Headless run --map 4096 --vehicles 50000 --ticks 10000` simulates
 10 000 ticks in 2.7 s (0.27 ms per tick) with identical fingerprints in parallel and sequential mode.
-Scenario setup takes ~31 s, dominated by computing 5 000 long A* routes for the synthetic lines; real
-games will build lines from player actions, and cached hierarchical pathfinding (feature 007) will cut
-this further. Total run time stays under the 60 s target (SC-008).
+Scenario setup takes ~2.5 s (it took 26–57 s before the synthetic lines' 10 000 A* routes were
+searched in parallel with a faster A*); real games will build lines from player actions, and cached
+hierarchical pathfinding (feature 007) will cut this further. Total run time stays under the 60 s target (SC-008).
 
 ### Entity storage decision (research R5)
 
@@ -350,6 +389,14 @@ default statistical job):
 - **Full-detail buffers** are the concatenation of the region's chunk meshes. When chunks change, a
   new buffer is assembled on the GPU: unchanged chunk ranges are copied buffer-to-buffer from the
   old one and only rebuilt chunks are uploaded, so no mesh copy stays in main memory.
+- **Releasing full detail.** Full-detail buffers are the bulk of world memory, so a region's LOD 0
+  buffer is released (and its chunk bookkeeping reset) once the region has not chosen LOD 0 for 5 s
+  and is farther than 1.5 × the nearer of the farthest LOD 0 distance (`LodSelector.FullDetailDistance`)
+  and the full-fog distance (`Lod0Eviction`). LOD 0 is only rebuilt inside both, so hovering near the
+  threshold does not thrash. If no simplified level is built yet, one is built first and the release
+  waits for it, so a region never drops to nothing; it also waits while a chunk mesh of the region is
+  in flight. Simplified levels (LOD 1–3) are small and kept. Edits keep working: a released region
+  rebuilds every chunk at its current version when it wants full detail again.
 - **Culling** per frame on the CPU: regions beyond the full-fog distance are skipped (they would be
   drawn in sky colour), then a frustum test on the region box and on the mesh bounds.
 - **Level of detail** per region from the screen-space error of its nearest point
@@ -366,8 +413,8 @@ default statistical job):
   their replacement arrives. The client reports when an edit is on screen (PageUp/PageDown debug
   edits print "Edit visible after … ms").
 - **Statistics.** F3 (or `--stats`) shows frame time average/worst, FPS, draw calls, triangles,
-  regions per level, world GPU memory, pending mesh jobs and managed bytes allocated per frame by
-  the draw path (0 in steady state) in the title bar and the console.
+  regions per level, world GPU memory (and full-detail buffers released so far), pending mesh jobs
+  and managed bytes allocated per frame by the draw path (0 in steady state) in the title bar and the console.
 - `vehicles.wgsl`: **instancing**. A single unit cube is drawn once per vehicle in one draw call;
   each instance carries position, heading and color, uploaded every frame.
 - Colors are linear. The renderer prefers an sRGB surface format so the GPU converts them.
@@ -384,26 +431,116 @@ default statistical job):
 `OrbitCamera` orbits a target point on the ground. The target follows the terrain height and stays
 inside the map, and the camera tilts up automatically so it never goes inside a hill.
 
+Default controls (feature 005 makes every key rebindable in Settings → Key bindings; the defaults
+live in `src/Talt.Client/Input/Data/actions.json`):
+
 | Input | Action |
 |---|---|
-| Left mouse drag | Rotate |
+| Left mouse drag on the map | Rotate |
 | Right mouse drag, WASD, arrows | Pan |
-| Mouse wheel | Zoom (the farthest zoom shows the whole map: up to 2 × the map side) |
+| Mouse wheel, `=` / `-` | Zoom (the farthest zoom shows the whole map: up to 2 × the map side) |
 | Q / E | Rotate |
+| Left click on the map (no drag) | Select the object under the cursor and open its information window |
 | Space | Pause / resume |
 | 1 / 2 / 3 | Speed ×1 / ×3 / ×8 |
-| F | Fast forward on / off (only when unlocked: `--unlock-fast-forward`) |
+| F | Fast forward on / off (only when unlocked in Settings or with `--unlock-fast-forward`) |
 | N | Add a vehicle to a random line |
 | Delete | Remove the last vehicle you added |
+| Shift+Delete | Close all windows except pinned ones |
+| F10 | Settings |
 | F3 | Render statistics in the title bar and console (on / off) |
 | PageUp / PageDown | Raise / lower the tile under the camera target (debug edit; Shift: 32 × 32 area) |
-| Esc | Quit |
+| Esc | Close the front window; then clear the selection; then open / close the pause menu |
 
 Options for measurements: `--stats` shows the statistics from the start, `--zoom <distance|max>` sets
-the initial camera distance.
+the initial camera distance, `--ui-test-windows <n>` opens n sample windows.
 
-The title bar shows the date, speed, effective speed, FPS, vehicles, average tick time and the
-result of the last command, in English or Spanish (`--language en|es`).
+The date, money and speed are in the top bar (feature 005); the window title shows the game name, or
+the render statistics with `--stats`/F3, including the interface time per frame and the window count.
+
+## User interface (feature 005)
+
+The client draws its own interface on top of the world (research in `specs/005-ui-foundation/research.md`).
+
+- **Framework (`Ui/`)**: a retained widget tree with two-pass layout (measure, arrange) in logical
+  pixels multiplied by the interface scale (75–200 %). `UiContext` holds the layers drawn back to front
+  (screen, overlay such as the pause menu, windows, popup such as an open drop-down, tooltip), hover,
+  mouse capture, keyboard focus and the tooltip timer. Widgets: panel, stack, spacer, label, button,
+  icon, check box, drop-down, text input, slider, scroll area, list, tabs, window. Widgets only take
+  `TextRef` (a localization key, or a dynamic text composed from localized formats), never literals.
+  `WindowManager` keeps z-order, cascades windows of the same kind, focuses an open window with the same
+  key (one window per map object), pins, closes all unpinned, keeps title bars on screen, at most 64.
+- **Drawing**: `UiContext.Draw` fills a `UiDrawList` (44-byte vertices, four per quad, a draw command
+  per clip rectangle) with no allocations in steady frames. `UiRenderer` uploads it and draws it in a
+  second render pass (`LoadOp.Load`, premultiplied alpha) with one pipeline and one 1024 × 1024 atlas:
+  rounded rectangles are exact signed-distance shapes in the shader, text is an SDF font atlas generated
+  at startup from the bundled Noto Sans (OFL) with StbTrueTypeSharp (395 glyphs in ~140 ms: Latin-1,
+  Latin Extended-A, typography and currency symbols), icons are original 16 × 16 pixel art from
+  `Ui/Data/icons.json`. Theme colours and sizes are in `Ui/Data/theme.json`.
+- **Input (`Input/`)**: `InputRouter` gives each event to the owner of the current drag, then the
+  interface (front to back), then the focused text input, then the key bindings, then the world (camera
+  and picking). A press and release within 4 logical pixels on the map is a click; a drag that started
+  on the map never clicks the interface.
+- **Picking (`Picking/`)**: CPU ray from the cursor each frame. The terrain is a 2D walk over the tile
+  columns the ray crosses (exact for voxel columns at any zoom), roads are tiles whose top voxel is road,
+  and vehicles are ray/box tests against the instances drawn this frame, pre-filtered by their distance
+  to the ray's ground footprint. `IPickLayer` lets later features add stations or buildings with a
+  priority. Hits behind the terrain are ignored. `HighlightRenderer` outlines the hovered and selected
+  objects with wire boxes in the world pass.
+- **Screens (`Screens/`)**: the window opens on the main menu with no world; a new game is generated on
+  a background task while the new-game screen shows "Generating…", then the renderer receives the world
+  (`SetWorld`; `ClearWorld` when going back to the menu). Game arguments on the command line skip the
+  menu, so the CI smoke test is unchanged.
+- **Localization**: `Strings` (en/es tables, English fallback, `key.one`/`key.other` plurals, culture
+  numbers and dates) and `MoneyFormatter` (21 display currencies with fixed rates from
+  `Localization/Data/currencies.json`; the internal unit is one US dollar; default USD in English, EUR in
+  Spanish). Until the finances feature exists, the top bar shows `startingCapital` from
+  `Ui/Data/company.json`. Tests check both languages have the same keys, every key in the code exists,
+  every text of every screen resolves in both languages and fixed-width labels fit.
+- **Settings**: `PlayerSettings` reads each property on its own (invalid values fall back alone and are
+  reported once), saves after every change through a temporary file, and keeps the feature 001 file.
+
+**Pending follow-up (T069):** once feature 004 is on `main`, bind an `INewGameOptionsSource` to its map
+generation settings record (size, seed, roughness, maximum height, water, sea level) and show its
+`IProgress<T>` on the generating screen. `Program.cs` will need a small merge with 004.
+
+**Hand test (developer, Windows, 2026-11-23):** main menu, settings in both languages (live switch, currency
+following the language, settings kept after restarting), new game, top bar and toolbar, hover outlines,
+one information window per tile, road and vehicle, pinning and closing all windows, tooltips with
+shortcuts, pause menu and rebinding a key all work. Found and fixed during the test, each with a
+regression test: the menu title and the Spanish subtitle were cut with an ellipsis; the menu background
+was almost black because this driver stores clear colours without the sRGB conversion (menus now draw
+their background as an interface rectangle); clicking the map selected nothing, because picking pauses
+while a button is held and the click looked at the cursor on release instead of at the press.
+
+### Interface cost (feature 005)
+
+BenchmarkDotNet, short job, AMD Ryzen 7 160, 2026-11-23 (`UiFrameBenchmarks`, `PickingBenchmarks`):
+
+| Benchmark | Time | Allocated |
+|---|---|---|
+| Interface frame (layout + draw list), in-game HUD, 0 windows | 0.002 ms | 0 B |
+| Interface frame, HUD + 20 sample windows (every widget kind) | 0.076 ms | 0 B |
+| Terrain pick, grazing ray across a 4096 map | 0.030 ms | 0 B |
+| Full pick with 50 000 vehicles, ray straight down | 0.073 ms | 0 B |
+| Full pick with 50 000 vehicles, default camera view | 0.076 ms (0.45 ms before the footprint rectangle test) | 0 B |
+
+The vehicle test first rejects vehicles outside the bounding rectangle of the ray's ground footprint
+with four comparisons combined with a non-short-circuit `&` (one well-predicted branch; with `||` the
+random positions mispredicted and cost 0.2 ms), then measures the distance to the footprint, and only
+then tests the box.
+
+**In the client** (`--stats`, 4096 × 4096 map, 50 000 vehicles, normal speed, 1600 × 900, 2026-11-23),
+"interface" = picking + layout + draw list + GPU upload and encoding:
+
+| Case | FPS | Worst frame per second | Interface per frame |
+|---|---|---|---|
+| Cursor over the map, 0 windows | 60 | 17.5–18.7 ms | 0.17–0.20 ms |
+| 20 sample windows open (`--ui-test-windows 20`) | 60 | 17.9–19.4 ms | 0.25–0.34 ms |
+
+SC-001 (20 windows add less than 1 ms) and SC-005 (4096 at 60 FPS with the interface, 0 B allocated per
+frame in steady state) hold. The main menu costs 0.1 ms per frame. The first in-game frame takes about
+9 ms of interface time once (texts and layouts are created).
 
 ## Rendering performance (feature 003)
 
@@ -434,8 +571,8 @@ closest and the farthest zoom, with edits and fast forward; console log of the s
   no frame exceeded 33 ms; 15 had one longer frame (34–56 ms, typically 36–42 ms), also while the
   camera was still and no meshing was pending, so they are not caused by mesh uploads. Up to
   2.75 M triangles and 430 draws at medium zoom; world memory peaked at 292 MB after visiting much of
-  the map (all built levels are kept; no eviction yet). SC-001 is met on average frame rate; the
-  occasional single long frame is a follow-up (see below).
+  the map (all built levels were kept then; full-detail buffers are now released, see below).
+  SC-001 is met on average frame rate; the occasional single long frame is a follow-up (see below).
 - Edits (PageUp/PageDown): every single-tile edit was on screen after 29–34 ms (two frames; 1 or 4
   chunks rebuilt), well under the 100 ms target (SC-002). 32 × 32 area edits also showed within a few
   frames.
@@ -477,8 +614,17 @@ presentation stall outside the game's code, not reproduced in the other runs. Co
 and drawing stay within the frame budget; long frames seen during testing came from other processes
 loading the CPU, plus rare presentation stalls.
 
-**Follow-ups:** evicting full-detail buffers of regions far from the camera if memory ever matters
-(292 MB peak today); watch for presentation stalls on other machines (the long-frame log names them).
+**Releasing full-detail buffers** (2026-11-22, 4096 map, 50 000 vehicles, `--stats`, hand test
+panning across the map and zooming out to the farthest zoom and back): world memory went back down
+after moving away, e.g. 245 → 143 MB, 183 → 164 MB and 245 → 223 MB within a few seconds, with 597
+full-detail buffers released in about 30 s of movement; peak 245 MB (292 MB before, with all levels
+kept). 60 FPS in 593 of 597 one-second samples, 0 B allocated per frame at rest. The
+memory that stays is the simplified levels of every region visited (small) plus full detail around
+the camera. `--zoom max` without input is unchanged: 1 023 draws, 8 MB, 60 FPS, 0 B per frame.
+`--zoom 1000` without input: 94 draws (92 at LOD 0), settles at 157 MB, 60 FPS, 0 B per frame and
+nothing released (every region within reach may still want full detail).
+
+**Follow-ups:** watch for presentation stalls on other machines (the long-frame log names them).
 
 ## Current numbers (prototype before feature 003, Windows, AMD Radeon integrated GPU)
 

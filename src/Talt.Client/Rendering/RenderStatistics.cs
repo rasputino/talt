@@ -21,6 +21,9 @@ internal struct RenderStatistics
     public int RegionsLod3;
     public int RegionsCulled;
     public long WorldGpuBytes;
+
+    /// <summary>Full-detail region buffers released since start-up (research R3).</summary>
+    public long Lod0Released;
     public int PendingJobs;
     public int JobsInFlight;
 

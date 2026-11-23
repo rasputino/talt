@@ -29,17 +29,26 @@ dotnet run --project benchmarks/Talt.Benchmarks -c Release -- --filter * --job s
 Example: `dotnet run --project src/Talt.Client -c Release -- 16 20000` shows a 512 × 512 map with
 20 000 vehicles.
 
+Without game arguments the client opens on the main menu (new game, settings, quit). Any game
+argument (map size, vehicles, seed, `--record`, `--print-fingerprint-at`, `--play`) starts a game
+straight away.
+
 New map from the command line (seed, size, roughness, height, water, sea level; the settings text is printed
 so a map can be shared): `dotnet run --project src/Talt.Client -c Release -- --map 1024x512 --seed 7 --water 35`.
 
-Client options: `--start-year <year>`, `--language en|es`, `--unlock-fast-forward` /
-`--lock-fast-forward` (saved in your settings), `--record [file]`, `--print-fingerprint-at <tick>`,
-`--stats` (render statistics from the start), `--zoom <distance|max>` (initial camera distance).
+Client options: `--start-year <year>`, `--language en|es` and `--ui-scale <0.75–2>` (for this run),
+`--unlock-fast-forward` / `--lock-fast-forward` (saved in your settings), `--record [file]`,
+`--print-fingerprint-at <tick>`, `--stats` (render statistics from the start), `--zoom <distance|max>`
+(initial camera distance), `--ui-test-windows <n>` (opens sample windows to measure the interface).
 
-In-game keys: Space pause, `1`/`2`/`3` speed ×1/×3/×8, `F` fast forward (once unlocked), `N` add a
-vehicle, `Delete` remove the last vehicle you added, `F3` render statistics, `PageUp`/`PageDown`
-raise/lower the tile under the camera (debug; Shift for a 32 × 32 area), mouse and WASD/arrows/Q/E
-for the camera.
+In game: the top bar shows money, date and speed buttons, the toolbar on the left opens settings and
+the other tools, and clicking the map selects the tile, road or vehicle under the cursor. Default keys:
+Space pause, `1`/`2`/`3` speed ×1/×3/×8, `F` fast forward (once unlocked), `N` add a vehicle, `Delete`
+remove the last vehicle you added, `Shift+Delete` close all windows, `F10` settings, `F3` render
+statistics, `PageUp`/`PageDown` raise/lower the tile under the camera (debug; Shift for a 32 × 32 area),
+`Esc` close window / pause menu, mouse and WASD/arrows/Q/E for the camera. All keys can be changed in
+Settings → Key bindings; settings (language, currency, interface size, full screen, vertical sync) are
+saved in your user profile.
 
 `Talt.Headless` runs and replays simulations without a window (`run`, `replay`); see
 [the headless runner contract](specs/001-simulation-foundation/contracts/headless-cli.md).
@@ -60,3 +69,11 @@ This project is **source-available, not open source**. It is licensed under the
 All rights not expressly granted are reserved by the author.
 
 Copyright © 2026 Pablo León Manzano. All rights reserved.
+
+### Third-party components
+
+- [Noto Sans](https://github.com/notofonts/noto-fonts) (interface font), Copyright 2018 The Noto
+  Project Authors, licensed under the [SIL Open Font License 1.1](src/Talt.Client/Ui/Font/OFL.txt).
+  The font is bundled with the game and is not covered by the PolyForm licence above.
+- [StbTrueTypeSharp](https://github.com/StbSharp/StbTrueTypeSharp) (font rasterizer), MIT or
+  Unlicense.

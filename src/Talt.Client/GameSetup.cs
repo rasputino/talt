@@ -1,0 +1,74 @@
+using System.Diagnostics;
+using Talt.Core.Maps;
+using Talt.Core.Network;
+using Talt.Core.Scenarios;
+using Talt.Core.Simulation;
+using Talt.Core.Terrain;
+using Talt.Core.Voxels;
+
+namespace Talt.Client;
+
+/// <summary>
+/// Options of a new game (the new-game screen or the command line). <paramref name="Map"/> holds the
+/// full map generation settings (feature 004); when null they derive from the map size and seed.
+/// The new-game screen builds this from <see cref="Screens.INewGameOptionsSource"/>.
+/// </summary>
+internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount = 20_000, int Seed = 2026, int StartYear = 1950, MapSettings? Map = null)
+{
+    public int MapSizeTiles => Map is null ? ChunksPerSide * Chunk.Size : Math.Min(Map.Width, Map.Depth);
+
+    /// <summary>The map settings: the given ones, or the defaults for the chosen size and seed.</summary>
+    public MapSettings MapSettings => Map ?? new MapSettings(ChunksPerSide * Chunk.Size, ChunksPerSide * Chunk.Size, Seed);
+
+    public ScenarioSettings ToScenario() => new(
+        Seed: Seed,
+        StartYear: StartYear,
+        MapSizeTiles: MapSizeTiles,
+        VehicleCount: VehicleCount);
+}
+
+/// <summary>A freshly generated game: simulation, voxel world and heightmap.</summary>
+internal sealed record GeneratedGame(NewGameOptions Options, ScenarioSettings Scenario, GameSimulation Simulation, VoxelWorld World, Heightmap Heightmap);
+
+/// <summary>Creates the simulation and the world of a new game (runs on a background thread).</summary>
+internal static class GameSetup
+{
+    public static GeneratedGame Create(NewGameOptions options, Action<string>? report = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var settings = options.ToScenario();
+        settings.Validate();
+        var stopwatch = Stopwatch.StartNew();
+
+        var simulation = GameSimulation.Create(settings);
+        report?.Invoke($"Created simulation ({simulation.Network.NodeCount:N0} junctions, {simulation.Vehicles.LineCount:N0} lines, {simulation.Vehicles.VehicleCount:N0} vehicles) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
+        stopwatch.Restart();
+
+        var mapSettings = options.MapSettings;
+        report?.Invoke($"Map settings: {mapSettings.ToText()}");
+        var map = MapGenerator.Generate(mapSettings, report is null ? null : new StageReporter(report));
+        var world = WorldBuilder.Build(map);
+        NetworkTerrainPainter.PaintRoads(world, simulation.Network);
+        var heightmap = Heightmap.FromMapData(map);
+        report?.Invoke(
+            $"Generated {map.Width}×{map.Depth} terrain ({world.ChunkCount} chunks, {map.Statistics.RiverTiles:N0} river tiles, {map.TownSites.Count()} town and {map.IndustrySites.Count()} industry sites) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
+
+        // No meshing here: the renderer fills the map in, nearest first (feature 003 FR-012).
+        return new GeneratedGame(options, settings, simulation, world, heightmap);
+    }
+
+    /// <summary>Prints one console line each time generation enters a new stage (progress for the future new-game screen).</summary>
+    private sealed class StageReporter(Action<string> report) : IProgress<MapGenerationProgress>
+    {
+        private MapGenerationStage? _last;
+
+        public void Report(MapGenerationProgress value)
+        {
+            if (_last != value.Stage)
+            {
+                _last = value.Stage;
+                report($"[{(int)(value.Fraction * 100),3}%] {value.Stage}");
+            }
+        }
+    }
+}

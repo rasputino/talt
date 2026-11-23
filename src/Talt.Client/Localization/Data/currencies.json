@@ -1,0 +1,28 @@
+{
+  // Display currencies (feature 005, FR-021a). The simulation counts money in one internal unit equal
+  // to one US dollar; "rate" is display units per internal unit. Rates are fixed, approximate game data,
+  // not live exchange rates, and only change how amounts are shown. Names: "currency.<code>" texts.
+  "currencies": [
+    { "code": "USD", "symbol": "$", "rate": 1, "decimals": 0 },
+    { "code": "EUR", "symbol": "€", "rate": 0.92, "decimals": 0 },
+    { "code": "GBP", "symbol": "£", "rate": 0.79, "decimals": 0 },
+    { "code": "JPY", "symbol": "¥", "rate": 150, "decimals": 0 },
+    { "code": "CNY", "symbol": "CN¥", "rate": 7.2, "decimals": 0 },
+    { "code": "INR", "symbol": "₹", "rate": 83, "decimals": 0 },
+    { "code": "CAD", "symbol": "CA$", "rate": 1.36, "decimals": 0 },
+    { "code": "AUD", "symbol": "A$", "rate": 1.52, "decimals": 0 },
+    { "code": "CHF", "symbol": "CHF", "rate": 0.88, "decimals": 0 },
+    { "code": "MXN", "symbol": "MX$", "rate": 17, "decimals": 0 },
+    { "code": "BRL", "symbol": "R$", "rate": 5, "decimals": 0 },
+    { "code": "KRW", "symbol": "₩", "rate": 1330, "decimals": 0 },
+    { "code": "SEK", "symbol": "kr", "rate": 10.5, "decimals": 0 },
+    { "code": "NOK", "symbol": "kr", "rate": 10.6, "decimals": 0 },
+    { "code": "PLN", "symbol": "zł", "rate": 4, "decimals": 0 },
+    { "code": "RUB", "symbol": "₽", "rate": 92, "decimals": 0 },
+    { "code": "TRY", "symbol": "₺", "rate": 32, "decimals": 0 },
+    { "code": "ZAR", "symbol": "R", "rate": 18.5, "decimals": 0 },
+    { "code": "ARS", "symbol": "AR$", "rate": 870, "decimals": 0 },
+    { "code": "CLP", "symbol": "CLP$", "rate": 950, "decimals": 0 },
+    { "code": "COP", "symbol": "COL$", "rate": 3900, "decimals": 0 }
+  ]
+}

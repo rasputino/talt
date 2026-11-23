@@ -1,20 +1,16 @@
-﻿using System.Diagnostics;
-using System.Globalization;
+﻿using System.Globalization;
 using Talt.Client;
-using Talt.Client.Localization;
-using Talt.Core.Commands;
 using Talt.Core.Maps;
-using Talt.Core.Network;
-using Talt.Core.Scenarios;
-using Talt.Core.Simulation;
-using Talt.Core.Terrain;
-using Talt.Core.Voxels;
 
-// Technical prototype: voxel terrain with a road grid and simulated vehicles, rendered with WebGPU.
+// Transit & Logistics Tycoon client. Without game arguments it opens on the main menu (feature 005);
+// game arguments start a game straight away (development and the CI smoke test).
 //
 // Usage: Talt.Client [chunks-per-side] [vehicles] [seed] [options]
 //   --start-year <year>          first in-game year (default 1950)
-//   --language en|es             interface language (default: system language)
+//   --language en|es             interface language for this run (default: saved setting or system language)
+//   --play                       start a game with the default options without showing the menu
+//   --ui-scale <0.75-2>          interface scale for this run
+//   --ui-test-windows <n>        open n sample windows in game (measures the interface cost)
 //   --unlock-fast-forward        unlock the separate fast-forward control (saved in settings)
 //   --lock-fast-forward          lock it again (saved in settings)
 //   --record [file]              record the session (default session.talt-session.json)
@@ -22,14 +18,14 @@ using Talt.Core.Voxels;
 //   --exit-after-fingerprint     close the window right after that fingerprint is printed (smoke test)
 //   --stats                      show render statistics from the start (same as pressing F3)
 //   --zoom <distance>            initial camera distance ("max" for the farthest zoom)
-// New-game options (feature 004; the in-window new-game screen comes after the UI foundation):
+// Map options (feature 004); any of them starts a game straight away:
 //   --map <N|WxD>                map size in tiles, multiples of 32, 256 to 16384 (default from chunks-per-side)
-//   --seed <number>              map seed (default: random, printed so the map can be shared)
+//   --seed <number>              map seed (default 2026; the map settings text is printed to share the map)
 //   --roughness <0-100>          terrain detail and relief (default 50)
 //   --max-height <8-127>         highest terrain in voxels (default 28)
 //   --water <0-90>               percent of the map under the sea (default 25)
 //   --sea-level <2..>            height of the sea surface in voxels (default 7)
-//   --map-text <text>            all map settings as one text (printed after generation)
+//   --map-text <text>            all map settings as one text
 var positional = new List<int>();
 var startYear = 1950;
 string? language = null;
@@ -39,6 +35,9 @@ long? printFingerprintAt = null;
 var exitAfterFingerprint = false;
 var showStatistics = false;
 float? zoom = null;
+var play = false;
+float? uiScale = null;
+var uiTestWindows = 0;
 var mapOptions = new List<(string Name, string Value)>();
 
 for (var i = 0; i < args.Length; i++)
@@ -69,6 +68,12 @@ for (var i = 0; i < args.Length; i++)
         case "--stats":
             showStatistics = true;
             break;
+        case "--print-fingerprint-at":
+            printFingerprintAt = long.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        case "--exit-after-fingerprint":
+            exitAfterFingerprint = true;
+            break;
         case "--map":
         case "--seed":
         case "--roughness":
@@ -78,11 +83,14 @@ for (var i = 0; i < args.Length; i++)
         case "--map-text":
             mapOptions.Add((args[i], args[++i]));
             break;
-        case "--print-fingerprint-at":
-            printFingerprintAt = long.Parse(args[++i], CultureInfo.InvariantCulture);
+        case "--play":
+            play = true;
             break;
-        case "--exit-after-fingerprint":
-            exitAfterFingerprint = true;
+        case "--ui-scale":
+            uiScale = float.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        case "--ui-test-windows":
+            uiTestWindows = int.Parse(args[++i], CultureInfo.InvariantCulture);
             break;
         default:
             positional.Add(int.Parse(args[i], CultureInfo.InvariantCulture));
@@ -92,48 +100,40 @@ for (var i = 0; i < args.Length; i++)
 
 var chunksPerSide = positional.Count > 0 ? positional[0] : 16;
 var vehicleCount = positional.Count > 1 ? positional[1] : 20_000;
-var strings = Strings.Load(language ?? Strings.DetectLanguage());
+var seed = positional.Count > 2 ? positional[2] : 2026;
 
-// Map settings: positional chunks-per-side gives the default size, options override.
-var mapBuilder = new MapSettingsBuilder(new MapSettings(
-    Width: chunksPerSide * Chunk.Size,
-    Depth: chunksPerSide * Chunk.Size,
-    Seed: positional.Count > 2 ? positional[2] : 0,
-    Roughness: 50,
-    MaxHeight: 28,
-    WaterAmount: 25,
-    SeaLevel: 7));
+// Map settings: the positional chunks-per-side and seed are the defaults, map options override them.
+var mapBuilder = new MapSettingsBuilder(new MapSettings(chunksPerSide * 32, chunksPerSide * 32, seed));
 foreach (var (name, value) in mapOptions)
 {
     if (!mapBuilder.TryApply(name, value, out var optionError))
     {
-        return FailMapSettings(optionError!);
+        Console.Error.WriteLine($"Invalid map settings: {optionError}");
+        return 2;
     }
 }
 
 var mapSettings = mapBuilder.Current;
-if (mapBuilder.SizeGiven && Math.Min(mapSettings.Width, mapSettings.Depth) < MapSettings.PlayerMinimumSize)
-{
-    return FailMapSettings($"Map sides must be at least {MapSettings.PlayerMinimumSize} tiles.");
-}
-
-if (positional.Count <= 2 && !mapBuilder.SeedGiven)
-{
-    // No seed given: pick one at random (outside the deterministic core) and show it below.
-    mapSettings = mapSettings with { Seed = Random.Shared.NextInt64(0, 1L << 40) };
-}
-
 try
 {
     mapSettings.Validate();
+    if (mapBuilder.SizeGiven && Math.Min(mapSettings.Width, mapSettings.Depth) < MapSettings.PlayerMinimumSize)
+    {
+        throw new ArgumentException($"Map sides must be at least {MapSettings.PlayerMinimumSize} tiles.");
+    }
 }
 catch (ArgumentException exception)
 {
-    return FailMapSettings(exception.Message);
+    Console.Error.WriteLine($"Invalid map settings: {exception.Message}");
+    return 2;
 }
 
-// The simulation seed keeps its old default so recorded sessions and fingerprints do not change.
-var seed = mapBuilder.SeedGiven || positional.Count > 2 ? (int)(mapSettings.Seed ^ (mapSettings.Seed >> 32)) : 2026;
+// The simulation seed keeps following the (small) seed so recorded sessions and fingerprints do not change.
+if (mapBuilder.SeedGiven)
+{
+    seed = (int)(mapSettings.Seed ^ (mapSettings.Seed >> 32));
+}
+
 var playerSettings = PlayerSettings.Load(PlayerSettings.DefaultPath);
 if (unlockFastForward is { } unlock)
 {
@@ -141,69 +141,26 @@ if (unlockFastForward is { } unlock)
     playerSettings.Save(PlayerSettings.DefaultPath);
 }
 
-var settings = new ScenarioSettings(
-    Seed: seed,
-    StartYear: startYear,
-    MapSizeTiles: Math.Min(mapSettings.Width, mapSettings.Depth),
-    VehicleCount: vehicleCount);
-var stopwatch = Stopwatch.StartNew();
-
-var simulation = GameSimulation.Create(settings);
-Report($"Created simulation ({simulation.Network.NodeCount:N0} junctions, {simulation.Vehicles.LineCount:N0} lines, {simulation.Vehicles.VehicleCount:N0} vehicles)");
-
-Console.WriteLine(strings.Format("map.settings", ("text", mapSettings.ToText())));
-var lastPercent = -1;
-var mapProgress = new SynchronousProgress<MapGenerationProgress>(p =>
+if (language is not null && !Talt.Client.Localization.Strings.SupportedLanguages.Contains(language))
 {
-    // World building is the last tenth of the bar; generation fills the first nine tenths.
-    var fraction = p.Stage == MapGenerationStage.World ? 0.9f + (0.1f * p.Fraction) : 0.9f * p.Fraction;
-    var percent = (int)(fraction * 100f);
-    if (percent != lastPercent && (percent - lastPercent >= 5 || percent == 100))
-    {
-        lastPercent = percent;
-        Console.WriteLine(strings.Format("map.progress", ("percent", percent.ToString("D3", CultureInfo.InvariantCulture)), ("stage", strings.Get($"stage.map.{p.Stage}"))));
-    }
-});
-var map = MapGenerator.Generate(mapSettings, mapProgress);
-var world = WorldBuilder.Build(map, mapProgress);
-NetworkTerrainPainter.PaintRoads(world, simulation.Network);
-var heightmap = Heightmap.FromMapData(map);
-Console.WriteLine(strings.Format(
-    "map.generated",
-    ("width", map.Width),
-    ("depth", map.Depth),
-    ("rivers", map.Statistics.RiverTiles),
-    ("towns", map.TownSites.Count()),
-    ("industries", map.IndustrySites.Count())));
-Report($"Generated {map.Width}×{map.Depth} terrain ({world.ChunkCount} chunks)");
-
-// No meshing here: the window opens now and the renderer fills the map in, nearest first (FR-012).
-SessionRecorder? recorder = null;
-if (recordPath is not null)
-{
-    recorder = new SessionRecorder(new RecordedSession(settings));
-    simulation.AttachRecorder(recorder);
+    throw new ArgumentException($"Unsupported language '{language}'.");
 }
 
-using var window = new GameWindow(new PrototypeScene(
-    world, heightmap, simulation, strings, playerSettings, recorder, recordPath, printFingerprintAt, exitAfterFingerprint, showStatistics, zoom));
+if (uiScale is { } scale && !PlayerSettings.IsValidScale(scale))
+{
+    throw new ArgumentException("--ui-scale must be one of 0.75, 1, 1.25, 1.5, 1.75 or 2.");
+}
+
+// Any game argument skips the menu (contracts/command-line.md).
+var startGame = play || positional.Count > 0 || mapOptions.Count > 0 || recordPath is not null || printFingerprintAt is not null;
+using var window = new GameWindow(new ClientOptions(
+    playerSettings,
+    LanguageOverride: language,
+    UiScaleOverride: uiScale,
+    StartGame: startGame ? new NewGameOptions(chunksPerSide, vehicleCount, seed, startYear, mapOptions.Count > 0 ? mapSettings : null) : null,
+    Session: new SessionOptions(recordPath, printFingerprintAt, exitAfterFingerprint),
+    ShowStatistics: showStatistics,
+    InitialZoom: zoom,
+    UiTestWindows: uiTestWindows));
 window.Run();
 return 0;
-
-int FailMapSettings(string message)
-{
-    Console.Error.WriteLine(strings.Format("map.error", ("message", message)));
-    return 2;
-}
-
-void Report(string message)
-{
-    Console.WriteLine($"{message} in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
-    stopwatch.Restart();
-}
-
-/// <summary>Progress sink that runs the callback on the reporting thread (the console printer needs no marshalling).</summary>
-internal sealed class SynchronousProgress<T>(Action<T> report) : IProgress<T>
-{
-    public void Report(T value) => report(value);
-}

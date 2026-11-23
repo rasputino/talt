@@ -3,144 +3,107 @@ using System.Numerics;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
+using Talt.Client.Input;
 using Talt.Client.Localization;
 using Talt.Client.Rendering;
-using Talt.Core.Commands;
-using Talt.Core.Determinism;
+using Talt.Client.Screens;
+using Talt.Client.Ui;
+using Talt.Client.Ui.Font;
+using Talt.Client.Ui.Widgets;
+using Talt.Client.Ui.Windows;
 using Talt.Core.Simulation;
-using Talt.Core.Terrain;
-using Talt.Core.Voxels;
 
 namespace Talt.Client;
 
-/// <summary>Everything the prototype window needs.</summary>
-internal sealed record PrototypeScene(
-    VoxelWorld World,
-    Heightmap Heightmap,
-    GameSimulation Simulation,
-    Strings Strings,
+/// <summary>Command-line options of the client (contracts/command-line.md).</summary>
+internal sealed record ClientOptions(
     PlayerSettings Settings,
-    SessionRecorder? Recorder = null,
-    string? RecordPath = null,
-    long? PrintFingerprintAtTick = null,
-    bool ExitAfterFingerprint = false,
+    string? LanguageOverride = null,
+    float? UiScaleOverride = null,
+    NewGameOptions? StartGame = null,
+    SessionOptions? Session = null,
     bool ShowStatistics = false,
-    float? InitialZoom = null);
+    float? InitialZoom = null,
+    int UiTestWindows = 0);
 
 /// <summary>
-/// Owns the window, the renderer, the camera controls and the fixed-step simulation loop.
+/// Owns the window, the renderer, the interface and the current screen (main menu, new game, game).
+/// Input goes through <see cref="InputRouter"/> (interface first, then key bindings, then the world);
+/// the game itself lives in <see cref="GameSession"/>.
 /// </summary>
-/// <remarks>
-/// Controls: left drag rotates, right drag pans, wheel zooms, WASD/arrows pan, Q/E rotate,
-/// Space pauses, 1/2/3 select ×1/×3/×8, F toggles fast forward (only when unlocked in the
-/// settings), N adds a vehicle, Delete removes the last vehicle you added, F3 shows render
-/// statistics, PageUp/PageDown raise/lower the tile under the camera target (Shift: a 32 x 32 area),
-/// Esc quits.
-/// </remarks>
-internal sealed class GameWindow : IDisposable
+internal sealed class GameWindow : IDisposable, IScreenHost
 {
-    private const float KeyboardPanSpeed = 1.2f;    // Fraction of the camera distance per second.
-    private const float KeyboardRotateSpeed = 1.5f; // Radians per second.
-    private const float MouseRotateSpeed = 0.005f;  // Radians per pixel.
-    private const float CameraClearance = 4f;       // Minimum height of the camera above the ground.
-    private const float LaneOffset = 0.22f;         // Vehicles drive on the right half of the road.
-    private const double MessageSeconds = 4;
     private const double LongFrameMilliseconds = 33.4; // Two refreshes at 60 Hz.
-    private const int EditAreaSize = 32;            // Shift + PageUp/PageDown edits this many tiles per side.
-
-    private static readonly Vector4[] VehicleColors =
-    [
-        new(0.80f, 0.10f, 0.08f, 1f),
-        new(0.95f, 0.60f, 0.05f, 1f),
-        new(0.10f, 0.35f, 0.85f, 1f),
-        new(0.95f, 0.95f, 0.95f, 1f),
-        new(0.15f, 0.60f, 0.25f, 1f),
-        new(0.55f, 0.15f, 0.65f, 1f),
-    ];
+    private const int AtlasSize = 1024;
 
     private readonly IWindow _window;
     private readonly OrbitCamera _camera = new();
-    private readonly PrototypeScene _scene;
-    private readonly GameSimulation _simulation;
-    private readonly Strings _strings;
-    private readonly SimulationRunner _runner = new();
-    private readonly StopwatchTimeSource _time = new();
+    private readonly ClientOptions _options;
     private readonly Stopwatch _statsTimer = new();
-    private readonly Stopwatch _messageTimer = new();
-    private readonly Random _uiRandom = new(); // Never the simulation's generator (I1): choices travel inside commands.
-    private readonly Stack<int> _playerAddedVehicles = new();
     private readonly FrameTimeTracker _frameTimes = new();
-    private readonly List<(int X, int Y, int Z)> _editedVoxels = [];
-
-    // Two pose snapshots for interpolation (research R4), indexed by slot, with the ids in each slot.
-    private VehiclePose[] _previousPoses = [];
-    private int[] _previousIds = [];
-    private int _previousCount;
-    private VehiclePose[] _currentPoses = [];
-    private int[] _currentIds = [];
-    private int _currentCount;
-    private long _currentCapturedAtTick = -1;
-    private VehicleInstance[] _instances = [];
-    private int _drawCount;
-    private float _drawFactor;
-    private readonly Action<int> _buildInstancesBatch;
+    private readonly UiDrawList _drawList = new();
+    private readonly DefaultNewGameOptionsSource _newGameSource = new();
+    private readonly Func<Key, bool> _isKeyDown;
 
     private WebGpuRenderer? _renderer;
     private IInputContext? _input;
-    private Vector2? _lastMouse;
+    private UiContext? _ui;
+    private InputRouter? _router;
+    private KeyBindings? _bindings;
+    private MoneyFormatter? _money;
+    private IScreen? _screen;
+    private GameSession? _session;
+    private Task<GeneratedGame>? _generation;
+    private string _language;
+    private bool _uiTestWindowsOpened;
     private int _frames;
     private int _ticksThisSecond;
-    private double _tickMilliseconds;
-    private string _message = string.Empty;
-    private bool _showStatistics;
     private long _lastFrameTimestamp;
     private long _renderAllocatedBytes;
     private int _renderAllocationFrames;
     private double _allocatedBytesPerFrame;
-    private double _updateMs;
-    private double _simulationMs;
-    private int _ticksThisFrame;
-    private int _gen0;
-    private int _gen1;
-    private int _gen2;
-    private TimeSpan _gcPause;
+    private double _uiCpuMs;
+    private double _uiMsSum;
+    private int _uiMsFrames;
+    private double _uiAverageMs;
 
-    public GameWindow(PrototypeScene scene)
+    public GameWindow(ClientOptions options)
     {
-        _scene = scene;
-        _simulation = scene.Simulation;
-        _strings = scene.Strings;
-        _runner.SetFastForwardUnlocked(scene.Settings.FastForwardUnlocked);
-        _simulation.CommandProcessed += OnCommandProcessed;
-        _buildInstancesBatch = BuildInstancesBatch;
-        _showStatistics = scene.ShowStatistics;
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        Settings = options.Settings;
+        _language = options.LanguageOverride ?? Settings.Language ?? Strings.DetectLanguage();
+        ShowStatistics = options.ShowStatistics;
+        _isKeyDown = IsKeyDown;
 
-        var map = scene.Heightmap;
-        _camera.FitMap(Math.Max(map.Width, map.Depth));
-        if (scene.InitialZoom is { } zoom)
-        {
-            _camera.Distance = zoom;
-        }
-
-        var center = new Vector2(map.Width / 2f, map.Depth / 2f);
-        _camera.Target = new Vector3(center.X, map.Get(center.X, center.Y), center.Y);
-
-        CaptureCurrentPoses();
-        CopyCurrentToPrevious();
-
-        var options = WindowOptions.Default with
+        var windowOptions = WindowOptions.Default with
         {
             Title = "Transit & Logistics Tycoon",
-            Size = new Vector2D<int>(1600, 900),
+            Size = new Vector2D<int>(Settings.WindowWidth, Settings.WindowHeight),
             API = GraphicsAPI.None, // WebGPU manages the surface itself.
-            VSync = true,
+            VSync = Settings.VSync,
+            WindowState = Settings.Fullscreen ? WindowState.Fullscreen : WindowState.Normal,
         };
-        _window = Window.Create(options);
+        _window = Window.Create(windowOptions);
         _window.Load += OnLoad;
         _window.Update += OnUpdate;
         _window.Render += OnRender;
         _window.FramebufferResize += size => _renderer?.Resize(size);
+        _window.Resize += OnWindowResize;
     }
+
+    public UiContext Ui => _ui ?? throw new InvalidOperationException("The interface is not loaded yet.");
+
+    public PlayerSettings Settings { get; }
+
+    public KeyBindings Bindings => _bindings ?? throw new InvalidOperationException("Bindings are not loaded yet.");
+
+    public MoneyFormatter Money => _money ?? throw new InvalidOperationException("Currencies are not loaded yet.");
+
+    public Currency Currency => Money.Resolve(Settings.Currency, _language);
+
+    public bool InGame => _session is not null;
+
+    public bool ShowStatistics { get; set; }
 
     public void Run() => _window.Run();
 
@@ -150,362 +113,328 @@ internal sealed class GameWindow : IDisposable
         // Release GPU resources after the render loop has stopped, never during it.
         _renderer?.Dispose();
         _window.Dispose();
-        SaveRecording();
+        _session?.SaveRecording();
+    }
+
+    public void ShowMainMenu()
+    {
+        LeaveGame();
+        SetScreen(new MainMenuScreen(this));
+    }
+
+    public void ShowNewGame() => SetScreen(new NewGameScreen(this, _newGameSource));
+
+    public void StartGame(NewGameOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (_generation is not null)
+        {
+            return;
+        }
+
+        if (_screen is not NewGameScreen newGame)
+        {
+            newGame = new NewGameScreen(this, _newGameSource);
+            SetScreen(newGame);
+        }
+
+        newGame.SetGenerating(true);
+        // Generation takes seconds on large maps: a background task keeps the window responsive.
+        _generation = Task.Run(() => GameSetup.Create(options, Console.WriteLine));
+    }
+
+    public void OpenSettings() => Ui.Windows.Open(SettingsWindow.Create(this));
+
+    public void OpenKeyBindings() => Ui.Windows.Open(KeyBindingsWindow.Create(this));
+
+    public void ApplySettings()
+    {
+        var ui = Ui;
+        var language = _options.LanguageOverride ?? Settings.Language ?? Strings.DetectLanguage();
+        if (language != _language || language != ui.Strings.Language)
+        {
+            _language = language;
+            ui.SetStrings(Strings.Load(language));
+        }
+
+        var scale = _options.UiScaleOverride ?? Settings.UiScale ?? SuggestedScale();
+        ui.Scale = scale;
+
+        var state = Settings.Fullscreen ? WindowState.Fullscreen : WindowState.Normal;
+        if (_window.WindowState != state && (Settings.Fullscreen || _window.WindowState == WindowState.Fullscreen))
+        {
+            _window.WindowState = state;
+        }
+
+        _window.VSync = Settings.VSync;
+        _renderer?.SetVerticalSync(Settings.VSync);
+        if (_screen is InGameScreen game)
+        {
+            game.ApplySettings(Settings);
+        }
+
+        SaveSettings();
+    }
+
+    public void Quit() => _window.Close();
+
+    private void SaveSettings()
+    {
+        try
+        {
+            Settings.Save(PlayerSettings.DefaultPath);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Could not save settings: {exception.Message}");
+        }
     }
 
     private void OnLoad()
     {
-        _renderer = new WebGpuRenderer(_window, _scene.World);
+        _renderer = new WebGpuRenderer(_window, Settings.VSync);
         Console.WriteLine($"GPU: {_renderer.AdapterDescription}");
 
+        var atlas = new UiAtlas(AtlasSize, AtlasSize);
+        var font = FontAtlas.Create(atlas);
+        Console.WriteLine($"Interface font: {font.GlyphCount} glyphs in {font.BuildMilliseconds:F0} ms.");
+        var icons = Icons.Load(atlas);
+        _money = MoneyFormatter.Load();
+        _bindings = new KeyBindings(KeyBindings.LoadDefinitions());
+        _bindings.ApplyOverrides(Settings.KeyBindings, problem => Settings.LoadProblems.Add(problem));
+        _ui = new UiContext(Theme.Load(), font, icons, atlas, Strings.Load(_language))
+        {
+            Scale = _options.UiScaleOverride ?? Settings.UiScale ?? SuggestedScale(),
+            ShortcutText = action => _bindings.Primary(action) is { } chord ? KeyNames.Display(_ui!.Strings, chord) : null,
+        };
+        _renderer.AttachUi(atlas);
+        UpdateViewport();
+
+        _router = new InputRouter(_ui, _bindings, new WorldInputProxy(this), OnAction);
         _input = _window.CreateInput();
         foreach (var mouse in _input.Mice)
         {
-            mouse.MouseMove += OnMouseMove;
-            mouse.Scroll += (_, wheel) => _camera.Distance *= MathF.Pow(0.88f, wheel.Y);
+            mouse.MouseMove += (_, position) => _router.MouseMove(ToFramebuffer(position));
+            mouse.MouseDown += (m, button) => _router.MouseDown(button, ToFramebuffer(m.Position));
+            mouse.MouseUp += (m, button) => _router.MouseUp(button, ToFramebuffer(m.Position));
+            mouse.Scroll += (_, wheel) => _router.Scroll(wheel.Y);
         }
 
         foreach (var keyboard in _input.Keyboards)
         {
-            keyboard.KeyDown += (k, key, _) => OnKeyDown(k, key);
+            keyboard.KeyDown += (k, key, _) => _router.KeyDown(key, k.IsKeyPressed(Key.ShiftLeft) || k.IsKeyPressed(Key.ShiftRight));
+            keyboard.KeyChar += (_, character) => _router.Char(character);
+        }
+
+        if (_options.StartGame is { } start)
+        {
+            StartGame(start); // Game arguments on the command line skip the menu (smoke test).
+        }
+        else
+        {
+            SetScreen(new MainMenuScreen(this));
+        }
+
+        if (Settings.LoadProblems.Count > 0)
+        {
+            ShowSettingsProblems();
         }
 
         _statsTimer.Start();
     }
 
-    private void OnKeyDown(IKeyboard keyboard, Key key)
+    private void ShowSettingsProblems()
     {
-        switch (key)
-        {
-            case Key.Escape:
-                _window.Close();
-                break;
-            case Key.Space:
-                _runner.TogglePause();
-                break;
-            case Key.Number1:
-                _runner.SetStandardSpeed(GameSpeed.Normal);
-                break;
-            case Key.Number2:
-                _runner.SetStandardSpeed(GameSpeed.Fast);
-                break;
-            case Key.Number3:
-                _runner.SetStandardSpeed(GameSpeed.VeryFast);
-                break;
-            case Key.F:
-                _runner.ToggleFastForward(); // Ignored while locked (FR-007a).
-                break;
-            case Key.N:
-                SubmitAddVehicle();
-                break;
-            case Key.Delete:
-                SubmitRemoveVehicle();
-                break;
-            case Key.F3:
-                _showStatistics = !_showStatistics;
-                break;
-            case Key.PageUp:
-            case Key.PageDown:
-                EditTerrain(raise: key == Key.PageUp, area: keyboard.IsKeyPressed(Key.ShiftLeft) || keyboard.IsKeyPressed(Key.ShiftRight));
-                break;
-        }
+        var window = new UiWindow("settings-problems", TextRef.Of("settings.problems.title"));
+        window.Content = new Label(TextRef.Of("settings.problems.text")) { Wrap = true, Width = 360 };
+        Ui.Windows.Open(window);
+        Settings.LoadProblems.Clear();
+        SaveSettings(); // Rewrites the file without the invalid values.
     }
 
-    /// <summary>
-    /// Debug terrain edit at the camera target (FR-009). Terrain is not simulation state, so this does
-    /// not go through the command queue and does not affect determinism.
-    /// </summary>
-    private void EditTerrain(bool raise, bool area)
+    private void SetScreen(IScreen screen)
     {
-        if (_renderer is null)
+        var ui = Ui;
+        ui.ResetInteraction();
+        if (_screen is InGameScreen previous && screen is not InGameScreen)
+        {
+            previous.Leave();
+        }
+
+        _screen = screen;
+        ui.Screen = screen.Root;
+    }
+
+    private void LeaveGame()
+    {
+        if (_session is null)
         {
             return;
         }
 
-        var timestamp = Stopwatch.GetTimestamp();
-        var size = area ? EditAreaSize : 1;
-        var x0 = (int)MathF.Floor(_camera.Target.X) - size / 2;
-        var z0 = (int)MathF.Floor(_camera.Target.Z) - size / 2;
-        _editedVoxels.Clear();
-        for (var z = z0; z < z0 + size; z++)
+        if (_screen is InGameScreen game)
         {
-            for (var x = x0; x < x0 + size; x++)
+            game.Leave();
+        }
+
+        _session.SaveRecording();
+        _session.Detach();
+        _session = null;
+        Ui.Windows.CloseEverything();
+        _renderer?.ClearWorld();
+    }
+
+    private void EnterGame(GeneratedGame game)
+    {
+        _session = new GameSession(game, _options.Session ?? new SessionOptions(), Settings.FastForwardUnlocked);
+        _session.ExitRequested += () => _window.Close();
+
+        var map = game.Heightmap;
+        _camera.FitMap(Math.Max(map.Width, map.Depth));
+        _camera.Distance = _options.InitialZoom ?? 350f;
+        var center = new Vector2(map.Width / 2f, map.Depth / 2f);
+        _camera.Target = new Vector3(center.X, map.Get(center.X, center.Y), center.Y);
+
+        _renderer?.SetWorld(game.World);
+        var screen = new InGameScreen(this, _session, _camera, OnTerrainEdited, _isKeyDown);
+        SetScreen(screen);
+        screen.ApplySettings(Settings);
+        if (_options.UiTestWindows > 0 && !_uiTestWindowsOpened)
+        {
+            _uiTestWindowsOpened = true;
+            for (var i = 1; i <= _options.UiTestWindows; i++)
             {
-                _editedVoxels.AddRange(raise
-                    ? TerrainEditor.Raise(_scene.World, _scene.Heightmap, x, z)
-                    : TerrainEditor.Lower(_scene.World, _scene.Heightmap, x, z));
+                Ui.Windows.Open(SampleWindows.Create(i));
+            }
+        }
+    }
+
+    private void OnTerrainEdited(IReadOnlyList<(int X, int Y, int Z)> voxels) =>
+        _renderer?.NotifyVoxelsChanged(voxels, Stopwatch.GetTimestamp());
+
+    private void OnAction(string action, bool shift)
+    {
+        if (_screen?.HandleAction(action, shift) == true)
+        {
+            return;
+        }
+
+        switch (action)
+        {
+            case "back":
+                Ui.Windows.CloseFront();
+                break;
+            case "closeAllWindows":
+                Ui.Windows.CloseAll();
+                break;
+            case "settings":
+                OpenSettings();
+                break;
+            case "statistics":
+                ShowStatistics = !ShowStatistics;
+                break;
+        }
+    }
+
+    private bool IsKeyDown(Key key)
+    {
+        if (_input is null)
+        {
+            return false;
+        }
+
+        foreach (var keyboard in _input.Keyboards)
+        {
+            if (keyboard.IsKeyPressed(key))
+            {
+                return true;
             }
         }
 
-        if (_editedVoxels.Count > 0)
-        {
-            _renderer.NotifyVoxelsChanged(_editedVoxels, timestamp);
-        }
-    }
-
-    private void SubmitAddVehicle()
-    {
-        var fleet = _simulation.Vehicles;
-        var line = _uiRandom.Next(fleet.LineCount);
-        var speed = _uiRandom.Next(SyntheticTraffic.MinCruiseSpeed, SyntheticTraffic.MaxCruiseSpeed + 1);
-        _simulation.Submit(new AddVehicleCommand(line, speed));
-    }
-
-    private void SubmitRemoveVehicle()
-    {
-        if (_playerAddedVehicles.TryPop(out var id))
-        {
-            _simulation.Submit(new RemoveVehicleCommand(id));
-        }
-    }
-
-    private void OnCommandProcessed(CommandProcessed processed)
-    {
-        if (processed.Result.Succeeded && processed.Command is AddVehicleCommand)
-        {
-            _playerAddedVehicles.Push(_simulation.Vehicles.LastCreatedVehicleId);
-        }
-
-        _message = processed.Result.Succeeded
-            ? _strings.Format("command.applied", ("command", _strings.Get($"command.{processed.Command.TypeName}")))
-            : _strings.Format("command.rejected", ("reason", RejectionText(processed.Result.ReasonCode)));
-        _messageTimer.Restart();
-    }
-
-    private string RejectionText(string? reasonCode)
-    {
-        var key = $"command.rejected.{reasonCode}";
-        return _strings.Contains(key) ? _strings.Get(key) : _strings.Get("command.rejected.unknown");
-    }
-
-    private void OnMouseMove(IMouse mouse, Vector2 position)
-    {
-        if (_lastMouse is { } last)
-        {
-            var delta = position - last;
-            if (mouse.IsButtonPressed(MouseButton.Left))
-            {
-                _camera.Yaw -= delta.X * MouseRotateSpeed;
-                _camera.Pitch += delta.Y * MouseRotateSpeed;
-            }
-            else if (mouse.IsButtonPressed(MouseButton.Right))
-            {
-                // Scale with distance so the ground follows the cursor roughly.
-                var scale = _camera.Distance * 0.0015f;
-                _camera.Pan(-delta.X * scale, delta.Y * scale);
-            }
-        }
-
-        _lastMouse = position;
+        return false;
     }
 
     private void OnUpdate(double deltaSeconds)
     {
-        if (_input is null)
+        if (_ui is null)
         {
             return;
         }
 
-        var updateStart = Stopwatch.GetTimestamp();
-        var dt = (float)deltaSeconds;
-        foreach (var keyboard in _input.Keyboards)
+        if (_generation is { IsCompleted: true } generation)
         {
-            var right = Axis(keyboard, Key.D, Key.Right) - Axis(keyboard, Key.A, Key.Left);
-            var forward = Axis(keyboard, Key.W, Key.Up) - Axis(keyboard, Key.S, Key.Down);
-            var rotate = Axis(keyboard, Key.E, Key.E) - Axis(keyboard, Key.Q, Key.Q);
-
-            var pan = _camera.Distance * KeyboardPanSpeed * dt;
-            _camera.Pan(right * pan, forward * pan);
-            _camera.Yaw += rotate * KeyboardRotateSpeed * dt;
-        }
-
-        FollowTerrain(dt);
-
-        var simulationStart = Stopwatch.GetTimestamp();
-        var stats = _runner.Advance(deltaSeconds, _simulation, _time, PromoteCurrentToPrevious, AfterEachTick);
-        if (stats.TicksRun > 0)
-        {
-            CaptureCurrentPoses();
-        }
-
-        _ticksThisSecond += stats.TicksRun;
-        _tickMilliseconds += stats.TickMilliseconds;
-        _ticksThisFrame += stats.TicksRun;
-        _simulationMs += Stopwatch.GetElapsedTime(simulationStart).TotalMilliseconds;
-        _updateMs += Stopwatch.GetElapsedTime(updateStart).TotalMilliseconds;
-    }
-
-    /// <summary>
-    /// Called right before the last tick of a frame: the current snapshot becomes "previous". When it
-    /// is already up to date (the usual one-tick frame) the buffers are just swapped, no copying.
-    /// </summary>
-    private void PromoteCurrentToPrevious()
-    {
-        if (_currentCapturedAtTick != _simulation.CurrentTick)
-        {
-            CaptureCurrentPoses();
-        }
-
-        (_previousPoses, _currentPoses) = (_currentPoses, _previousPoses);
-        (_previousIds, _currentIds) = (_currentIds, _previousIds);
-        _previousCount = _currentCount;
-    }
-
-    private void AfterEachTick(GameSimulation simulation)
-    {
-        if (_scene.PrintFingerprintAtTick == simulation.CurrentTick)
-        {
-            Console.WriteLine($"fingerprint at tick {simulation.CurrentTick}: {StateHasher.Format(simulation.ComputeFingerprint())}");
-            if (_scene.ExitAfterFingerprint)
+            _generation = null;
+            if (generation.IsCompletedSuccessfully)
             {
-                _window.Close();
+                EnterGame(generation.Result);
+            }
+            else
+            {
+                var message = generation.Exception?.GetBaseException().Message ?? "?";
+                Console.Error.WriteLine($"Could not create the game: {message}");
+                (_screen as NewGameScreen)?.SetGenerating(false, TextRef.Of("newGame.failed", ("reason", message)));
             }
         }
-    }
 
-    private void CaptureCurrentPoses()
-    {
-        var fleet = _simulation.Vehicles;
-        EnsureCapacity(fleet.VehicleCount);
-        fleet.CopyPoses(_currentPoses, parallel: true);
-        fleet.CopyIds(_currentIds);
-        _currentCount = fleet.VehicleCount;
-        _currentCapturedAtTick = _simulation.CurrentTick;
-    }
-
-    private void CopyCurrentToPrevious()
-    {
-        EnsureCapacity(_currentCount);
-        Array.Copy(_currentPoses, _previousPoses, _currentCount);
-        Array.Copy(_currentIds, _previousIds, _currentCount);
-        _previousCount = _currentCount;
-    }
-
-    private void EnsureCapacity(int count)
-    {
-        if (_currentPoses.Length >= count)
+        _ui.Update(deltaSeconds);
+        _screen?.Update(deltaSeconds);
+        if (_session is not null)
         {
-            return;
-        }
-
-        var size = Math.Max(count, _currentPoses.Length * 2);
-        Array.Resize(ref _previousPoses, size);
-        Array.Resize(ref _previousIds, size);
-        Array.Resize(ref _currentPoses, size);
-        Array.Resize(ref _currentIds, size);
-        Array.Resize(ref _instances, size);
-    }
-
-    /// <summary>
-    /// Keeps the camera target on the ground and inside the map, and the camera above the terrain,
-    /// so the view never ends up inside a hill.
-    /// </summary>
-    private void FollowTerrain(float dt)
-    {
-        var map = _scene.Heightmap;
-        var target = _camera.Target;
-        target.X = Math.Clamp(target.X, 0f, map.Width);
-        target.Z = Math.Clamp(target.Z, 0f, map.Depth);
-        var ground = map.Get(target.X, target.Z);
-        target.Y += (ground - target.Y) * MathF.Min(1f, dt * 6f);
-        _camera.Target = target;
-
-        for (var i = 0; i < 40; i++)
-        {
-            var position = _camera.Position;
-            var previousPitch = _camera.Pitch;
-            if (position.Y >= map.Get(position.X, position.Z) + CameraClearance)
-            {
-                break;
-            }
-
-            _camera.Pitch += 0.02f;
-            if (_camera.Pitch == previousPitch)
-            {
-                break; // Already looking straight down.
-            }
-        }
-    }
-
-    private void UploadVehicles()
-    {
-        if (_renderer is null)
-        {
-            return;
-        }
-
-        // Interpolate and build GPU instances in parallel batches (rendering only).
-        _drawCount = _currentCount;
-        _drawFactor = _runner.InterpolationFactor;
-        const int batchSize = 4096;
-        var batches = (_drawCount + batchSize - 1) / batchSize;
-        if (batches > 1)
-        {
-            Parallel.For(0, batches, _buildInstancesBatch);
-        }
-        else if (batches == 1)
-        {
-            BuildInstancesBatch(0);
-        }
-
-        _renderer.UpdateVehicles(_instances.AsSpan(0, _drawCount));
-    }
-
-    private void BuildInstancesBatch(int batch)
-    {
-        const int batchSize = 4096;
-        var map = _scene.Heightmap;
-        var end = Math.Min((batch + 1) * batchSize, _drawCount);
-        for (var v = batch * batchSize; v < end; v++)
-        {
-            // Only interpolate when the slot holds the same vehicle in both snapshots.
-            var pose = v < _previousCount && _previousIds[v] == _currentIds[v]
-                ? PoseInterpolator.Interpolate(_previousPoses[v], _currentPoses[v], _drawFactor)
-                : _currentPoses[v];
-
-            var (position, direction) = pose;
-            var right = new Vector2(-direction.Y, direction.X);
-            var p = position + right * LaneOffset;
-            var alongZ = MathF.Abs(direction.Y) > MathF.Abs(direction.X) ? 1f : 0f;
-            _instances[v] = new VehicleInstance(
-                new Vector4(p.X, map.Get(position.X, position.Y), p.Y, alongZ),
-                VehicleColors[_currentIds[v] % VehicleColors.Length]);
+            var stats = _session.Advance(deltaSeconds);
+            _ticksThisSecond += stats.TicksRun;
         }
     }
 
     private void OnRender(double deltaSeconds)
     {
-        var renderStart = Stopwatch.GetTimestamp();
-        UploadVehicles(); // Once per drawn frame, so uploads never outpace submissions.
-        var vehiclesMs = Stopwatch.GetElapsedTime(renderStart).TotalMilliseconds;
+        if (_renderer is null || _ui is null || _router is null)
+        {
+            return;
+        }
+
+        if (_session is not null)
+        {
+            _session.BuildInstances(); // Once per drawn frame, so uploads never outpace submissions.
+            _renderer.UpdateVehicles(_session.Instances);
+        }
+
+        var uiStart = Stopwatch.GetTimestamp();
+        UpdateViewport();
+        if (_screen is InGameScreen game)
+        {
+            game.UpdatePicking(_router.CursorPosition, _ui.ViewportSize, _router.IsCursorOverWorld && !_router.IsDraggingWorld);
+            _renderer.SetHighlights(game.Highlights, _camera.Position);
+        }
+
+        _ui.Layout();
+        _ui.Draw(_drawList);
+        _uiCpuMs = Stopwatch.GetElapsedTime(uiStart).TotalMilliseconds;
 
         // Managed allocations of the draw path (constitution II: none expected in steady state).
         var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        _renderer?.Draw(_camera);
+        var theme = _ui.Theme.Background;
+        _renderer.Draw(_camera, _drawList, SrgbToLinear(theme));
         _renderAllocatedBytes += GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         _renderAllocationFrames++;
+        _uiMsSum += _uiCpuMs + _renderer.LastUiMilliseconds;
+        _uiMsFrames++;
 
-        // Frame time = time between two presented frames.
         var now = Stopwatch.GetTimestamp();
         if (_lastFrameTimestamp != 0)
         {
             var frameMs = Stopwatch.GetElapsedTime(_lastFrameTimestamp, now).TotalMilliseconds;
             _frameTimes.Record(frameMs);
-            if (_showStatistics && frameMs > LongFrameMilliseconds)
+            if (ShowStatistics && frameMs > LongFrameMilliseconds)
             {
-                ReportLongFrame(frameMs, vehiclesMs);
+                var d = _renderer.LastDrawTimings;
+                Console.WriteLine($"Long frame {frameMs:F1} ms: ui {_uiCpuMs:F2}, acquire {d.Acquire:F1}, prepare {d.Prepare:F1}, encode {d.Encode:F1}, wait GPU {d.WaitGpu:F1}, submit {d.Submit:F1}");
             }
         }
 
         _lastFrameTimestamp = now;
-        _updateMs = 0;
-        _simulationMs = 0;
-        _ticksThisFrame = 0;
-        (_gen0, _gen1, _gen2, _gcPause) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2), GC.GetTotalPauseDuration());
-
-        while (_renderer is not null && _renderer.TryTakeCompletedEdit(out var editTimestamp, out var chunks))
+        while (_renderer.TryTakeCompletedEdit(out var editTimestamp, out var chunks))
         {
-            Console.WriteLine(_strings.Format("edit.visible",
+            Console.WriteLine(_ui.Strings.Format("edit.visible",
                 ("ms", Math.Round(Stopwatch.GetElapsedTime(editTimestamp).TotalMilliseconds, 1)),
                 ("chunks", chunks)));
         }
@@ -517,87 +446,117 @@ internal sealed class GameWindow : IDisposable
             UpdateTitle(seconds);
             _frames = 0;
             _ticksThisSecond = 0;
-            _tickMilliseconds = 0;
             _statsTimer.Restart();
         }
     }
 
     private void UpdateTitle(double seconds)
     {
-        var s = _strings;
+        var s = _ui!.Strings;
         _allocatedBytesPerFrame = _renderAllocationFrames > 0 ? _renderAllocatedBytes / (double)_renderAllocationFrames : 0;
         _renderAllocatedBytes = 0;
         _renderAllocationFrames = 0;
-        var fps = _frames / seconds;
-        var effective = _ticksThisSecond / seconds / GameClock.TicksPerSecondAtNormalSpeed;
-        if (_showStatistics && _renderer is not null)
+        _uiAverageMs = _uiMsFrames > 0 ? _uiMsSum / _uiMsFrames : 0;
+        _uiMsSum = 0;
+        _uiMsFrames = 0;
+        if (!ShowStatistics)
         {
-            var statistics = StatisticsText(_renderer.Statistics, effective);
-            _window.Title = statistics;
-            Console.WriteLine(statistics);
+            _window.Title = s.Get("app.title");
             return;
         }
 
-        var tick = _ticksThisSecond > 0 ? _tickMilliseconds / _ticksThisSecond : 0;
-        var parts = new List<string>
-        {
-            "Transit & Logistics Tycoon",
-            s.FormatDate(_simulation.Date),
-            s.FormatSpeed(_runner.Speed),
+        var effective = _ticksThisSecond / seconds / GameClock.TicksPerSecondAtNormalSpeed;
+        var r = _renderer!.Statistics;
+        var speed = _session?.Runner.Speed ?? GameSpeed.Paused;
+        var statistics = string.Join(" — ",
+            s.FormatSpeed(speed),
             s.Format("status.effectiveSpeed", ("speed", Math.Round(effective, 1))),
-            s.Format("status.fps", ("fps", Math.Round(fps))),
-            s.Format("status.vehicles", ("count", _simulation.Vehicles.VehicleCount)),
-            s.Format("status.tick", ("ms", Math.Round(tick, 2))),
-        };
-
-        if (_messageTimer.IsRunning && _messageTimer.Elapsed.TotalSeconds < MessageSeconds)
-        {
-            parts.Add(_message);
-        }
-
-        _window.Title = string.Join(" — ", parts);
-    }
-
-    /// <summary>Prints where a frame longer than the budget spent its time (shown with the statistics).</summary>
-    private void ReportLongFrame(double frameMs, double vehiclesMs)
-    {
-        var d = _renderer!.LastDrawTimings;
-        var pause = (GC.GetTotalPauseDuration() - _gcPause).TotalMilliseconds;
-        Console.WriteLine(
-            $"Long frame {frameMs:F1} ms: update {_updateMs:F1} (simulation {_simulationMs:F1}, {_ticksThisFrame} ticks), " +
-            $"vehicles {vehiclesMs:F1}, acquire {d.Acquire:F1}, prepare {d.Prepare:F1}, encode {d.Encode:F1}, " +
-            $"wait GPU {d.WaitGpu:F1}, submit {d.Submit:F1}; GC {GC.CollectionCount(0) - _gen0}/{GC.CollectionCount(1) - _gen1}/{GC.CollectionCount(2) - _gen2} " +
-            $"(pause {pause:F1} ms)");
-    }
-
-    private string StatisticsText(RenderStatistics r, double effectiveSpeed)
-    {
-        var s = _strings;
-        return string.Join(" — ",
-            s.FormatSpeed(_runner.Speed),
-            s.Format("status.effectiveSpeed", ("speed", Math.Round(effectiveSpeed, 1))),
             s.Format("stats.frame", ("average", Math.Round(_frameTimes.AverageMs, 1)), ("worst", Math.Round(_frameTimes.WorstMs, 1))),
             s.Format("status.fps", ("fps", Math.Round(_frameTimes.FramesPerSecond))),
+            s.Format("stats.ui", ("ms", Math.Round(_uiAverageMs, 2)), ("windows", Ui.Windows.Count)),
             s.Format("stats.draws", ("count", r.DrawCalls)),
             s.Format("stats.triangles", ("count", r.Triangles)),
             s.Format("stats.regions", ("lod0", r.RegionsLod0), ("lod1", r.RegionsLod1), ("lod2", r.RegionsLod2), ("lod3", r.RegionsLod3)),
-            s.Format("stats.memory", ("mb", r.WorldGpuBytes / (1024 * 1024))),
+            s.Format("stats.memory", ("mb", r.WorldGpuBytes / (1024 * 1024)), ("released", r.Lod0Released)),
             s.Format("stats.jobs", ("count", r.PendingJobs + r.JobsInFlight)),
             s.Format("stats.allocated", ("bytes", (long)_allocatedBytesPerFrame)));
+        _window.Title = statistics;
+        Console.WriteLine(statistics);
     }
 
-    private void SaveRecording()
+    private void UpdateViewport()
     {
-        if (_scene.Recorder is null || _scene.RecordPath is null)
+        var size = _window.FramebufferSize;
+        Ui.ViewportSize = new Vector2(size.X, size.Y);
+    }
+
+    private void OnWindowResize(Vector2D<int> size)
+    {
+        if (_window.WindowState == WindowState.Normal && size.X >= PlayerSettings.MinimumWindowWidth && size.Y >= PlayerSettings.MinimumWindowHeight
+            && (size.X != Settings.WindowWidth || size.Y != Settings.WindowHeight))
         {
-            return;
+            Settings.WindowWidth = size.X;
+            Settings.WindowHeight = size.Y;
+            _windowSizeDirty = true;
+        }
+    }
+
+    private bool _windowSizeDirty;
+
+    /// <summary>Mouse positions come in window coordinates; the interface works in framebuffer pixels (high-DPI macOS).</summary>
+    private Vector2 ToFramebuffer(Vector2 position)
+    {
+        var window = _window.Size;
+        var framebuffer = _window.FramebufferSize;
+        if (_windowSizeDirty && _router is not null && !_router.IsDraggingWorld)
+        {
+            _windowSizeDirty = false;
+            SaveSettings();
         }
 
-        _scene.Recorder.AddCheckpoint(_simulation);
-        File.WriteAllText(_scene.RecordPath, _scene.Recorder.Session.ToJson());
-        Console.WriteLine($"Session recorded to {Path.GetFullPath(_scene.RecordPath)} ({_simulation.CurrentTick} ticks).");
+        return window.X > 0 && window.Y > 0
+            ? new Vector2(position.X * framebuffer.X / window.X, position.Y * framebuffer.Y / window.Y)
+            : position;
     }
 
-    private static float Axis(IKeyboard keyboard, Key primary, Key secondary) =>
-        keyboard.IsKeyPressed(primary) || keyboard.IsKeyPressed(secondary) ? 1f : 0f;
+    /// <summary>
+    /// First-start interface scale (FR-024): the operating system's scaling (framebuffer / window size),
+    /// or a larger step on high-resolution monitors that report no scaling; rounded to 25 %.
+    /// </summary>
+    private float SuggestedScale()
+    {
+        var ratio = _window.Size.X > 0 ? _window.FramebufferSize.X / (float)_window.Size.X : 1f;
+        if (ratio <= 1.01f && _window.Monitor?.VideoMode.Resolution is { } resolution)
+        {
+            ratio = resolution.Y >= 2000 ? 1.5f : resolution.Y >= 1400 ? 1.25f : 1f;
+        }
+
+        var stepped = MathF.Round(ratio * 4f) / 4f;
+        return Math.Clamp(stepped, 1f, 2f);
+    }
+
+    private static Vector3 SrgbToLinear(UiColor color)
+    {
+        static float Channel(byte value)
+        {
+            var c = value / 255f;
+            return c <= 0.04045f ? c / 12.92f : MathF.Pow((c + 0.055f) / 1.055f, 2.4f);
+        }
+
+        return new Vector3(Channel(color.R), Channel(color.G), Channel(color.B));
+    }
+
+    /// <summary>Sends world input to the in-game screen, if any (menus have no world).</summary>
+    private sealed class WorldInputProxy(GameWindow owner) : IWorldInput
+    {
+        private IWorldInput? Target => owner._screen as IWorldInput;
+
+        public void MouseDown(MouseButton button, Vector2 position) => Target?.MouseDown(button, position);
+
+        public void Drag(Vector2 position, Vector2 delta) => Target?.Drag(position, delta);
+
+        public void MouseUp(MouseButton button, Vector2 position, bool isClick) => Target?.MouseUp(button, position, isClick);
+
+        public void Scroll(float delta) => Target?.Scroll(delta);
+    }
 }

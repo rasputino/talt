@@ -1,10 +1,10 @@
 using System.Numerics;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using Silk.NET.Core.Native;
 using Silk.NET.Maths;
 using Silk.NET.WebGPU;
 using Silk.NET.Windowing;
+using Talt.Client.Ui;
 using Talt.Core.Meshing;
 using Talt.Core.Voxels;
 using Buffer = Silk.NET.WebGPU.Buffer;
@@ -14,8 +14,9 @@ namespace Talt.Client.Rendering;
 
 /// <summary>
 /// WebGPU renderer: owns the device, the pipelines and the frame; the voxel world is drawn by
-/// <see cref="WorldRenderer"/> and vehicles by instancing. WebGPU maps to Vulkan, Metal or DirectX 12
-/// depending on the platform.
+/// <see cref="WorldRenderer"/>, vehicles by instancing, highlight boxes by <see cref="HighlightRenderer"/>
+/// and the interface on top by <see cref="UiRenderer"/>. The world is optional: menus draw only the
+/// interface. WebGPU maps to Vulkan, Metal or DirectX 12 depending on the platform.
 /// </summary>
 internal sealed unsafe class WebGpuRenderer : IDisposable
 {
@@ -36,6 +37,10 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
 
     private readonly WebGPU _wgpu;
     private WorldRenderer? _worldRenderer;
+    private UiRenderer? _uiRenderer;
+    private HighlightRenderer? _highlightRenderer;
+    private PresentMode _presentMode = PresentMode.Fifo;
+    private PresentMode _uncappedMode = PresentMode.Fifo;
 
     private Instance* _instance;
     private Surface* _surface;
@@ -68,10 +73,9 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
     private long _frameNumber;
     private bool _disposed;
 
-    public WebGpuRenderer(IWindow window, VoxelWorld world)
+    public WebGpuRenderer(IWindow window, bool verticalSync = true)
     {
         ArgumentNullException.ThrowIfNull(window);
-        ArgumentNullException.ThrowIfNull(world);
 
         _wgpu = WebGPU.GetApi();
 
@@ -85,11 +89,64 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _wgpu.DeviceSetUncapturedErrorCallback(_device, OnErrorPfn, null);
 
         _surfaceFormat = ChooseSurfaceFormat();
+        _presentMode = verticalSync ? PresentMode.Fifo : _uncappedMode;
         Resize(window.FramebufferSize);
         CreatePipeline();
         CreateVehiclePipeline();
+        _highlightRenderer = new HighlightRenderer(_wgpu, _device, _queue, _pipelineLayout, _surfaceFormat, DepthFormat);
+    }
+
+    /// <summary>Whether a world is being drawn.</summary>
+    public bool HasWorld => _worldRenderer is not null;
+
+    /// <summary>Milliseconds the last frame spent uploading and encoding the interface.</summary>
+    public double LastUiMilliseconds { get; private set; }
+
+    /// <summary>Starts drawing <paramref name="world"/> (a new game).</summary>
+    public void SetWorld(VoxelWorld world)
+    {
+        ArgumentNullException.ThrowIfNull(world);
+        ClearWorld();
         _worldRenderer = new WorldRenderer(_wgpu, _device, _queue, world);
     }
+
+    /// <summary>Stops drawing the world and releases its GPU memory (back to the main menu).</summary>
+    public void ClearWorld()
+    {
+        if (_worldRenderer is null)
+        {
+            return;
+        }
+
+        _ = NativeWgpu.DevicePoll(_device, 1, null); // Let the GPU finish frames that use the world.
+        _worldRenderer.Dispose();
+        _worldRenderer = null;
+        _instanceCount = 0;
+        _highlightRenderer?.Update([], Vector3.Zero);
+    }
+
+    /// <summary>Creates the interface pipeline for <paramref name="atlas"/>.</summary>
+    public void AttachUi(UiAtlas atlas)
+    {
+        ArgumentNullException.ThrowIfNull(atlas);
+        _uiRenderer?.Dispose();
+        _uiRenderer = new UiRenderer(_wgpu, _device, _queue, _surfaceFormat, atlas, WebGpuShaders.Load("ui.wgsl"));
+    }
+
+    /// <summary>Vertical sync on (present at the display refresh) or off (when the surface supports it).</summary>
+    public void SetVerticalSync(bool enabled)
+    {
+        var mode = enabled ? PresentMode.Fifo : _uncappedMode;
+        if (mode != _presentMode)
+        {
+            _presentMode = mode;
+            Resize(_size);
+        }
+    }
+
+    /// <summary>Boxes outlined in the world in the next frames.</summary>
+    public void SetHighlights(ReadOnlySpan<HighlightBox> boxes, Vector3 cameraPosition) =>
+        _highlightRenderer?.Update(_worldRenderer is null ? [] : boxes, cameraPosition);
 
     public string AdapterDescription { get; private set; } = "unknown";
 
@@ -161,7 +218,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             AlphaMode = CompositeAlphaMode.Auto,
             Width = (uint)size.X,
             Height = (uint)size.Y,
-            PresentMode = PresentMode.Fifo,
+            PresentMode = _presentMode,
         };
         _wgpu.SurfaceConfigure(_surface, &configuration);
 
@@ -179,7 +236,11 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _depthView = _wgpu.TextureCreateView(_depthTexture, null);
     }
 
-    public void Draw(OrbitCamera camera)
+    /// <summary>
+    /// Draws a frame: the world seen from <paramref name="camera"/> when a world is set (otherwise the
+    /// <paramref name="background"/> colour), then the interface.
+    /// </summary>
+    public void Draw(OrbitCamera camera, UiDrawList? ui, Vector3 background)
     {
         ArgumentNullException.ThrowIfNull(camera);
 
@@ -221,7 +282,9 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
 
         var colorView = _wgpu.TextureCreateView(surfaceTexture.Texture, null);
         var encoder = _wgpu.DeviceCreateCommandEncoder(_device, null);
-        _worldRenderer!.Prepare(encoder, viewProjection, camera.Position, fogDistance, _size.Y, camera.FieldOfView);
+        var world = _worldRenderer;
+        world?.Prepare(encoder, viewProjection, camera.Position, fogDistance, _size.Y, camera.FieldOfView);
+        var clear = world is not null ? SkyColor : background;
         var prepared = System.Diagnostics.Stopwatch.GetTimestamp();
 
         var colorAttachment = new RenderPassColorAttachment
@@ -230,7 +293,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             ResolveTarget = null,
             LoadOp = LoadOp.Clear,
             StoreOp = StoreOp.Store,
-            ClearValue = new Color(SkyColor.X, SkyColor.Y, SkyColor.Z, 1),
+            ClearValue = new Color(clear.X, clear.Y, clear.Z, 1),
             DepthSlice = uint.MaxValue, // WGPU_DEPTH_SLICE_UNDEFINED: not a 3D texture.
         };
         var depthAttachment = new RenderPassDepthStencilAttachment
@@ -253,9 +316,9 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _wgpu.RenderPassEncoderSetPipeline(pass, _pipeline);
         _wgpu.RenderPassEncoderSetBindGroup(pass, 0, _bindGroup, 0, null);
 
-        _worldRenderer.Encode(pass);
+        world?.Encode(pass);
 
-        if (_instanceCount > 0)
+        if (world is not null && _instanceCount > 0)
         {
             _wgpu.RenderPassEncoderSetPipeline(pass, _vehiclePipeline);
             _wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, _cubeVertexBuffer, 0, _cubeVertexBytes);
@@ -264,16 +327,42 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             _wgpu.RenderPassEncoderDrawIndexed(pass, _cubeIndexCount, (uint)_instanceCount, 0, 0, 0);
         }
 
+        if (world is not null)
+        {
+            _wgpu.RenderPassEncoderSetBindGroup(pass, 0, _bindGroup, 0, null);
+            _highlightRenderer?.Encode(pass);
+        }
+
         _wgpu.RenderPassEncoderEnd(pass);
         _wgpu.RenderPassEncoderRelease(pass);
 
+        var uiStart = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (ui is not null && _uiRenderer is not null && ui.QuadCount > 0)
+        {
+            _uiRenderer.Upload(ui, _size.X, _size.Y);
+            var uiColor = new RenderPassColorAttachment
+            {
+                View = colorView,
+                ResolveTarget = null,
+                LoadOp = LoadOp.Load,
+                StoreOp = StoreOp.Store,
+                DepthSlice = uint.MaxValue,
+            };
+            var uiPassDescriptor = new RenderPassDescriptor { ColorAttachmentCount = 1, ColorAttachments = &uiColor };
+            var uiPass = _wgpu.CommandEncoderBeginRenderPass(encoder, &uiPassDescriptor);
+            _uiRenderer.Encode(uiPass, ui, _size.X, _size.Y);
+            _wgpu.RenderPassEncoderEnd(uiPass);
+            _wgpu.RenderPassEncoderRelease(uiPass);
+        }
+
+        LastUiMilliseconds = System.Diagnostics.Stopwatch.GetElapsedTime(uiStart).TotalMilliseconds;
         var commands = _wgpu.CommandEncoderFinish(encoder, null);
         var encoded = System.Diagnostics.Stopwatch.GetTimestamp();
         WaitForFrameSlot();
         var waited = System.Diagnostics.Stopwatch.GetTimestamp();
         _submissions[_frameNumber % MaxFramesInFlight] = NativeWgpu.QueueSubmitForIndex(_queue, 1, &commands);
         _frameNumber++;
-        _worldRenderer.AfterSubmit();
+        world?.AfterSubmit();
         _wgpu.SurfacePresent(_surface);
         var presented = System.Diagnostics.Stopwatch.GetTimestamp();
         LastDrawTimings = new DrawTimings(
@@ -295,6 +384,8 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _disposed = true;
         _worldRenderer?.Dispose();
         _worldRenderer = null;
+        _uiRenderer?.Dispose();
+        _highlightRenderer?.Dispose();
         ReleaseDepthTexture();
 
         if (_instanceBuffer != null)
@@ -408,6 +499,12 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         {
             throw new InvalidOperationException("The window surface reports no supported formats.");
         }
+
+        // Vertical sync off uses Mailbox (no tearing) or Immediate when available; Fifo is always supported.
+        var presentModes = new ReadOnlySpan<PresentMode>(capabilities.PresentModes, (int)capabilities.PresentModeCount);
+        _uncappedMode = presentModes.Contains(PresentMode.Mailbox) ? PresentMode.Mailbox
+            : presentModes.Contains(PresentMode.Immediate) ? PresentMode.Immediate
+            : PresentMode.Fifo;
 
         var formats = new ReadOnlySpan<TextureFormat>(capabilities.Formats, (int)capabilities.FormatCount);
         foreach (var format in formats)
@@ -531,24 +628,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         }
     }
 
-    private ShaderModule* CreateShaderModule(string source)
-    {
-        var code = SilkMarshal.StringToPtr(source);
-        try
-        {
-            var wgsl = new ShaderModuleWGSLDescriptor
-            {
-                Chain = new ChainedStruct { SType = SType.ShaderModuleWgslDescriptor },
-                Code = (byte*)code,
-            };
-            var descriptor = new ShaderModuleDescriptor { NextInChain = &wgsl.Chain };
-            return _wgpu.DeviceCreateShaderModule(_device, &descriptor);
-        }
-        finally
-        {
-            SilkMarshal.Free(code);
-        }
-    }
+    private ShaderModule* CreateShaderModule(string source) => WebGpuShaders.CreateModule(_wgpu, _device, source);
 
     private Buffer* CreateBuffer<T>(T[] data, BufferUsage usage)
         where T : unmanaged
@@ -581,14 +661,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         }
     }
 
-    private static string LoadShaderSource(string fileName)
-    {
-        var assembly = Assembly.GetExecutingAssembly();
-        var resourceName = assembly.GetManifestResourceNames().Single(name => name.EndsWith(fileName, StringComparison.Ordinal));
-        using var stream = assembly.GetManifestResourceStream(resourceName)!;
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
-    }
+    private static string LoadShaderSource(string fileName) => WebGpuShaders.Load(fileName);
 
     private static void HandleError(ErrorType type, byte* message, void* userData)
     {

@@ -1,0 +1,28 @@
+{
+  // Bindable actions and their default keys (feature 005, FR-027, data-model.md InputAction).
+  // Defaults are the controls the game had before the interface existed. Key names are
+  // Silk.NET.Input.Key names, optionally prefixed with "Shift+". Up to two keys per action.
+  "actions": [
+    { "id": "panForward", "label": "action.panForward", "category": "camera", "kind": "held", "keys": ["W", "Up"] },
+    { "id": "panBack", "label": "action.panBack", "category": "camera", "kind": "held", "keys": ["S", "Down"] },
+    { "id": "panLeft", "label": "action.panLeft", "category": "camera", "kind": "held", "keys": ["A", "Left"] },
+    { "id": "panRight", "label": "action.panRight", "category": "camera", "kind": "held", "keys": ["D", "Right"] },
+    { "id": "rotateLeft", "label": "action.rotateLeft", "category": "camera", "kind": "held", "keys": ["Q"] },
+    { "id": "rotateRight", "label": "action.rotateRight", "category": "camera", "kind": "held", "keys": ["E"] },
+    { "id": "zoomIn", "label": "action.zoomIn", "category": "camera", "kind": "held", "keys": ["Equal", "KeypadAdd"] },
+    { "id": "zoomOut", "label": "action.zoomOut", "category": "camera", "kind": "held", "keys": ["Minus", "KeypadSubtract"] },
+    { "id": "pause", "label": "action.pause", "category": "game", "kind": "press", "keys": ["Space"] },
+    { "id": "speedNormal", "label": "action.speedNormal", "category": "game", "kind": "press", "keys": ["Number1"] },
+    { "id": "speedFast", "label": "action.speedFast", "category": "game", "kind": "press", "keys": ["Number2"] },
+    { "id": "speedVeryFast", "label": "action.speedVeryFast", "category": "game", "kind": "press", "keys": ["Number3"] },
+    { "id": "fastForward", "label": "action.fastForward", "category": "game", "kind": "press", "keys": ["F"] },
+    { "id": "addVehicle", "label": "action.addVehicle", "category": "game", "kind": "press", "keys": ["N"] },
+    { "id": "removeVehicle", "label": "action.removeVehicle", "category": "game", "kind": "press", "keys": ["Delete"] },
+    { "id": "back", "label": "action.back", "category": "interface", "kind": "press", "keys": ["Escape"] },
+    { "id": "closeAllWindows", "label": "action.closeAllWindows", "category": "interface", "kind": "press", "keys": ["Shift+Delete"] },
+    { "id": "settings", "label": "action.settings", "category": "interface", "kind": "press", "keys": ["F10"] },
+    { "id": "statistics", "label": "action.statistics", "category": "debug", "kind": "press", "keys": ["F3"] },
+    { "id": "raiseTerrain", "label": "action.raiseTerrain", "category": "debug", "kind": "press", "keys": ["PageUp"] },
+    { "id": "lowerTerrain", "label": "action.lowerTerrain", "category": "debug", "kind": "press", "keys": ["PageDown"] }
+  ]
+}
