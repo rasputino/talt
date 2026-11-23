@@ -58,6 +58,11 @@ internal class Button : Widget
     {
         if (button == MouseButton.Left && inside)
         {
+            if (IsEnabledInTree)
+            {
+                ui.Activated?.Invoke();
+            }
+
             Click();
         }
     }

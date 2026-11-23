@@ -18,6 +18,7 @@ using Talt.Core.Maps;
 //   --exit-after-fingerprint     close the window right after that fingerprint is printed (smoke test)
 //   --stats                      show render statistics from the start (same as pressing F3)
 //   --zoom <distance>            initial camera distance ("max" for the farthest zoom)
+//   --no-audio                   start with the silent backend (CI and no-device machines)
 // Map options (feature 004); any of them starts a game straight away:
 //   --map <N|WxD>                map size in tiles, multiples of 32, 256 to 16384 (default from chunks-per-side)
 //   --seed <number>              map seed (default 2026; the map settings text is printed to share the map)
@@ -38,6 +39,7 @@ float? zoom = null;
 var play = false;
 float? uiScale = null;
 var uiTestWindows = 0;
+var noAudio = false;
 var mapOptions = new List<(string Name, string Value)>();
 
 for (var i = 0; i < args.Length; i++)
@@ -91,6 +93,9 @@ for (var i = 0; i < args.Length; i++)
             break;
         case "--ui-test-windows":
             uiTestWindows = int.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        case "--no-audio":
+            noAudio = true;
             break;
         default:
             positional.Add(int.Parse(args[i], CultureInfo.InvariantCulture));
@@ -161,6 +166,7 @@ using var window = new GameWindow(new ClientOptions(
     Session: new SessionOptions(recordPath, printFingerprintAt, exitAfterFingerprint),
     ShowStatistics: showStatistics,
     InitialZoom: zoom,
-    UiTestWindows: uiTestWindows));
+    UiTestWindows: uiTestWindows,
+    NoAudio: noAudio));
 window.Run();
 return 0;

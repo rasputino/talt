@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Numerics;
+using Talt.Client.Audio;
 using Talt.Client.Rendering;
 using Talt.Client.Ui;
 using Talt.Core.Commands;
@@ -109,6 +110,12 @@ internal sealed class GameSession
     /// <summary>Raised for every processed command with a localized message.</summary>
     public event Action<TextRef>? Message;
 
+    /// <summary>
+    /// Raised for every processed command: whether it succeeded and whether its type is a
+    /// construction command (feature 019 audio feedback).
+    /// </summary>
+    public event Action<bool, bool>? CommandFeedback;
+
     /// <summary>Raised when the fingerprint requested on the command line was printed and the game should exit.</summary>
     public event Action? ExitRequested;
 
@@ -194,7 +201,11 @@ internal sealed class GameSession
         Console.WriteLine($"Session recorded to {Path.GetFullPath(Options.RecordPath)} ({Simulation.CurrentTick} ticks).");
     }
 
-    public void Detach() => Simulation.CommandProcessed -= OnCommandProcessed;
+    public void Detach()
+    {
+        Simulation.CommandProcessed -= OnCommandProcessed;
+        CommandFeedback = null;
+    }
 
     private void OnCommandProcessed(CommandProcessed processed)
     {
@@ -206,6 +217,7 @@ internal sealed class GameSession
         var command = processed.Command.TypeName;
         var reason = processed.Result.ReasonCode;
         var succeeded = processed.Result.Succeeded;
+        CommandFeedback?.Invoke(succeeded, AudioCommandClassifier.IsConstruction(command));
         Message?.Invoke(TextRef.Dynamic(() => 0, s => succeeded
             ? s.Format("command.applied", ("command", s.Get($"command.{command}")))
             : s.Format("command.rejected", ("reason", s.Contains($"command.rejected.{reason}") ? s.Get($"command.rejected.{reason}") : s.Get("command.rejected.unknown")))));

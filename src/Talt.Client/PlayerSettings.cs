@@ -11,7 +11,7 @@ namespace Talt.Client;
 /// </summary>
 internal sealed class PlayerSettings
 {
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
     public const int MinimumWindowWidth = 800;
     public const int MinimumWindowHeight = 600;
 
@@ -22,7 +22,7 @@ internal sealed class PlayerSettings
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    /// <summary>Format version of the file (1 = feature 001, only the fast-forward flag).</summary>
+    /// <summary>Format version of the file (1 = feature 001; 3 = feature 019 audio).</summary>
     public int Version { get; set; } = CurrentVersion;
 
     /// <summary>"en" or "es"; null until chosen (the system language is used).</summary>
@@ -44,6 +44,21 @@ internal sealed class PlayerSettings
 
     /// <summary>Unlocks the separate fast-forward control (false by default, feature 001).</summary>
     public bool FastForwardUnlocked { get; set; }
+
+    /// <summary>Master volume 0–1 (feature 019); mute does not change it.</summary>
+    public float MasterVolume { get; set; } = 0.8f;
+
+    /// <summary>Music bus volume 0–1.</summary>
+    public float MusicVolume { get; set; } = 0.5f;
+
+    /// <summary>Effects bus volume 0–1 (interface, construction and vehicles).</summary>
+    public float EffectsVolume { get; set; } = 0.8f;
+
+    /// <summary>Ambient bus volume 0–1.</summary>
+    public float AmbientVolume { get; set; } = 0.65f;
+
+    /// <summary>Mutes all output while preserving the four volumes.</summary>
+    public bool Muted { get; set; }
 
     /// <summary>Key binding overrides: action id → key names per slot ("" = empty slot).</summary>
     public Dictionary<string, string[]> KeyBindings { get; set; } = new(StringComparer.Ordinal);
@@ -172,6 +187,16 @@ internal sealed class PlayerSettings
                 return TryBool(value, b => VSync = b);
             case "fastforwardunlocked":
                 return TryBool(value, b => FastForwardUnlocked = b);
+            case "mastervolume":
+                return TryVolume(value, v => MasterVolume = v);
+            case "musicvolume":
+                return TryVolume(value, v => MusicVolume = v);
+            case "effectsvolume":
+                return TryVolume(value, v => EffectsVolume = v);
+            case "ambientvolume":
+                return TryVolume(value, v => AmbientVolume = v);
+            case "muted":
+                return TryBool(value, b => Muted = b);
             case "windowwidth":
                 if (value.TryGetInt32(out var width) && width >= MinimumWindowWidth)
                 {
@@ -223,6 +248,17 @@ internal sealed class PlayerSettings
         if (value.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
             set(value.GetBoolean());
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryVolume(JsonElement value, Action<float> set)
+    {
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetSingle(out var volume) && float.IsFinite(volume) && volume is >= 0 and <= 1)
+        {
+            set(volume);
             return true;
         }
 

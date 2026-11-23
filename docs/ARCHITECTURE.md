@@ -630,6 +630,56 @@ SC-001 (20 windows add less than 1 ms) and SC-005 (4096 at 60 FPS with the inter
 frame in steady state) hold. The main menu costs 0.1 ms per frame. The first in-game frame takes about
 9 ms of interface time once (texts and layouts are created).
 
+## Audio (feature 019)
+
+Sound lives only in `Talt.Client/Audio`; `Talt.Core` has no audio reference and the simulation is
+unchanged. The client reads `GameSimulation.CommandProcessed`, the terrain-edit result, UI button
+activation and the per-frame camera/vehicle snapshot, and turns them into cues. No player action
+or state crosses back into the simulation.
+
+- **Data**: `Audio/Data/audio.json` (embedded and validated at startup) defines the five cue
+  sounds, the three ambient beds, the music playlist, four bus assignments, gains, priorities, the
+  eight-voice budget and the distance/zoom/pan curves. Invalid data logs one clear error and starts
+  the game silently instead of stopping it.
+- **Native boundary**: `MiniAudioBackend` is the only file that uses `JAJ.Packages.MiniAudioEx`
+  (miniaudio 0.11.26). It creates one engine and four `MaSoundGroup` buses (master → music,
+  effects, ambient), a fixed pool of voices, and streams the FLAC music tracks. The wrapper is
+  MIT/Unlicense and ships native libraries for win-x64/arm64, linux-x64/arm64 and osx-x64/arm64.
+  If the engine cannot initialize (no device, container, missing library) `TryCreate` returns null,
+  `AudioSystem` uses `NullAudioBackend`, prints one reason and the game keeps running in silence.
+  `--no-audio` forces the silent path for CI and manual tests.
+- **Mixer**: `AudioMixer` is pure managed and benchmarked. It applies master/music/effects/ambient
+  gains and mute, distance attenuation (full volume at 18 tiles, 1.4 rolloff), a zoom gain that
+  falls to 20 % at the reference distance, a behind-camera gain and stereo pan from the camera
+  basis. It keeps the eight nearest vehicles within 220 tiles, gives the selected and hovered
+  vehicle priority and a 4-tile hysteresis, keeps each selected vehicle on the same voice slot even
+  when its rank changes, and drops the lowest-priority one-shot when the four one-shot voices are
+  busy. Volume and pan are ramped per voice (30 ms in, 80 ms out, 50 ms pan) so a vehicle entering
+  or leaving the eight-voice set never clicks. No LINQ, strings or objects are created in the
+  update path; the scene is a `readonly ref struct` pointing at the session's existing arrays.
+- **Ambience and music**: a 128 × 128 per-game environment grid built once from `MapData` selects
+  country, water or town and cross-fades two ambient voices over 1.5 s. Music starts in the main
+  menu, survives screen changes, streams one FLAC track at a time and loops a playlist; missing
+  tracks are skipped and all-failed music disables itself with one warning.
+- **Settings**: `PlayerSettings` version 3 adds master/music/effects/ambient volumes (defaults
+  0.8/0.5/0.8/0.65) and mute. The Settings window shows four focusable sliders (mouse and arrow
+  keys) with percentages and a mute check box; changes apply and save immediately, and mute never
+  overwrites the stored volumes.
+- **Assets**: every WAV/FLAC file is original, generated deterministically by
+  `tools/audio/generate-audio.cs` (FLAC encoding with EggEncoder, a build-time MIT tool). Loops are
+  cross-faded and trimmed at generation time so their end and start are continuous. They are
+  listed in `README.md`. The shipped miniaudio build decodes WAV and FLAC but not Vorbis, so music
+  and loops use FLAC instead of OGG; the streamed-from-disk design is unchanged.
+- **Cost**: `AudioBenchmarks` (50 000 vehicles, 8 voices, short job, Windows, AMD Ryzen 7 160,
+  2026-11-23) takes **0.285 ms** per update and allocates **0 B**; the in-client F3 title shows the
+  live audio milliseconds and active voice count. The allocation test runs 1 000 updates after
+  warm-up and asserts zero managed bytes.
+- **Hand test (developer, Windows, 2026-11-23)**: music and clicks in the menu, music continues in
+  the game, ambience and engines follow the camera, construction and all four volume controls plus
+  mute work. The first version crackled when vehicle ranks changed; each vehicle now keeps its
+  voice slot, volume/pan ramp, and sample loops cross-fade correctly. The developer confirmed the
+  result is much better and acceptable; a faint background residue was left for a later mixing pass.
+
 ## Rendering performance (feature 003)
 
 Windows, AMD Ryzen 7 160 with integrated Radeon GPU over Vulkan, 1600 × 900 window, vertical sync

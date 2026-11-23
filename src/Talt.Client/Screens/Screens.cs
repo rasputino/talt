@@ -1,4 +1,5 @@
 using System.Globalization;
+using Talt.Client.Audio;
 using Talt.Client.Input;
 using Talt.Client.Localization;
 using Talt.Client.Ui;
@@ -26,6 +27,9 @@ internal interface IScreenHost
 
     /// <summary>The F3 render statistics in the window title.</summary>
     bool ShowStatistics { get; set; }
+
+    /// <summary>Audio feedback for interface, command and construction cues (feature 019).</summary>
+    AudioSystem Audio { get; }
 
     void ShowMainMenu();
 

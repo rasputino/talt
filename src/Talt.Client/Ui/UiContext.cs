@@ -80,6 +80,9 @@ internal sealed class UiContext
     /// <summary>Returns the key name bound to an action, for tooltips; set by the client.</summary>
     public Func<string, string?>? ShortcutText { get; set; }
 
+    /// <summary>Called once when the player activates a button (feature 019 interface click).</summary>
+    public Action? Activated { get; set; }
+
     public Vector2 MousePosition => _lastMouse;
 
     public Widget? Hovered => _hovered;

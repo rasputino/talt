@@ -1,4 +1,5 @@
 using System.Numerics;
+using Talt.Client.Audio;
 using Talt.Client.Input;
 using Talt.Client.Localization;
 using Talt.Client.Screens;
@@ -70,6 +71,8 @@ internal sealed class FakeHost : IScreenHost
     public KeyBindings Bindings { get; }
 
     public MoneyFormatter Money { get; }
+
+    public AudioSystem Audio { get; } = AudioSystem.CreateSilent();
 
     public Currency Currency => Money.Resolve(Settings.Currency, Ui.Strings.Language);
 

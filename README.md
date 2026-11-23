@@ -25,6 +25,7 @@ dotnet run --project src/Talt.Client -c Release -- [chunks-per-side] [vehicles] 
 dotnet run --project tools/Talt.Headless -c Release -- run --ticks 10000
 dotnet run --project tools/Talt.Headless -c Release -- run --ticks 4000 --map-text T1-512x512-s7-r50-h28-w25-l7
 dotnet run --project benchmarks/Talt.Benchmarks -c Release -- --filter * --job short
+dotnet run tools/audio/generate-audio.cs   # regenerate the original audio assets (optional)
 ```
 
 Example: `dotnet run --project src/Talt.Client -c Release -- 16 20000` shows a 512 × 512 map with
@@ -40,7 +41,8 @@ so a map can be shared): `dotnet run --project src/Talt.Client -c Release -- --m
 Client options: `--start-year <year>`, `--language en|es` and `--ui-scale <0.75–2>` (for this run),
 `--unlock-fast-forward` / `--lock-fast-forward` (saved in your settings), `--record [file]`,
 `--print-fingerprint-at <tick>`, `--stats` (render statistics from the start), `--zoom <distance|max>`
-(initial camera distance), `--ui-test-windows <n>` (opens sample windows to measure the interface).
+(initial camera distance), `--ui-test-windows <n>` (opens sample windows to measure the interface),
+`--no-audio` (starts silently, for CI and machines without a sound device).
 
 In game: the top bar shows money, date and speed buttons, the toolbar on the left opens settings and
 the other tools, and clicking the map selects the tile, road, vehicle or industry under the cursor
@@ -50,8 +52,11 @@ Space pause, `1`/`2`/`3` speed ×1/×3/×8, `F` fast forward (once unlocked), `N
 remove the last vehicle you added, `Shift+Delete` close all windows, `F10` settings, `F3` render
 statistics, `PageUp`/`PageDown` raise/lower the tile under the camera (debug; Shift for a 32 × 32 area),
 `Esc` close window / pause menu, mouse and WASD/arrows/Q/E for the camera. All keys can be changed in
-Settings → Key bindings; settings (language, currency, interface size, full screen, vertical sync) are
-saved in your user profile.
+Settings → Key bindings; settings (language, currency, interface size, display, audio volumes and
+mute) are saved in your user profile. Audio starts in the main menu, follows the camera with
+countryside, water and town ambience plus nearby vehicle engines, and plays original music from a
+playlist; `Esc` opens the pause menu and settings has separate master, music, effects and ambient
+volumes.
 
 `Talt.Headless` runs and replays simulations without a window (`run`, `replay`). `run --map-text
 <T1-...>` generates the map and its industries; a run without it stays map-less and keeps the
@@ -81,3 +86,13 @@ Copyright © 2026 Pablo León Manzano. All rights reserved.
   The font is bundled with the game and is not covered by the PolyForm licence above.
 - [StbTrueTypeSharp](https://github.com/StbSharp/StbTrueTypeSharp) (font rasterizer), MIT or
   Unlicense.
+- [JAJ.Packages.MiniAudioEx](https://github.com/japajoe/MiniAudioExNET) / [miniaudio](https://miniaud.io)
+  (audio engine and cross-platform native output), MIT No Attribution / Unlicense. Native binaries
+  are bundled for Windows, Linux and macOS, x64 and arm64; no external installation is required.
+  The game falls back to silence when no output device is available.
+- [EggEncoder](https://github.com/eggspot/EggEncoder) (FLAC encoding for the asset generator only,
+  not shipped with the game), MIT.
+- **Original audio assets**: every WAV and FLAC under `src/Talt.Client/Assets/Audio` was composed
+  and synthesized for TALT by `tools/audio/generate-audio.cs`; no samples, loops or melodies come
+  from another game or library. They are covered by the project licence and can be regenerated
+  deterministically with `dotnet run tools/audio/generate-audio.cs`.

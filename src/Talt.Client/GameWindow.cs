@@ -3,8 +3,10 @@ using System.Numerics;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
+using Talt.Client.Audio;
 using Talt.Client.Input;
 using Talt.Client.Localization;
+using Talt.Client.Picking;
 using Talt.Client.Rendering;
 using Talt.Client.Screens;
 using Talt.Client.Ui;
@@ -24,7 +26,8 @@ internal sealed record ClientOptions(
     SessionOptions? Session = null,
     bool ShowStatistics = false,
     float? InitialZoom = null,
-    int UiTestWindows = 0);
+    int UiTestWindows = 0,
+    bool NoAudio = false);
 
 /// <summary>
 /// Owns the window, the renderer, the interface and the current screen (main menu, new game, game).
@@ -51,6 +54,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
     private InputRouter? _router;
     private KeyBindings? _bindings;
     private MoneyFormatter? _money;
+    private AudioSystem? _audio;
     private IScreen? _screen;
     private GameSession? _session;
     private Task<GeneratedGame>? _generation;
@@ -99,6 +103,8 @@ internal sealed class GameWindow : IDisposable, IScreenHost
 
     public MoneyFormatter Money => _money ?? throw new InvalidOperationException("Currencies are not loaded yet.");
 
+    public AudioSystem Audio => _audio ?? throw new InvalidOperationException("Audio is not loaded yet.");
+
     public Currency Currency => Money.Resolve(Settings.Currency, _language);
 
     public bool InGame => _session is not null;
@@ -109,6 +115,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
 
     public void Dispose()
     {
+        _audio?.Dispose();
         _input?.Dispose();
         // Release GPU resources after the render loop has stopped, never during it.
         _renderer?.Dispose();
@@ -170,6 +177,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
 
         _window.VSync = Settings.VSync;
         _renderer?.SetVerticalSync(Settings.VSync);
+        _audio?.ApplySettings(Settings);
         if (_screen is InGameScreen game)
         {
             game.ApplySettings(Settings);
@@ -209,6 +217,8 @@ internal sealed class GameWindow : IDisposable, IScreenHost
             Scale = _options.UiScaleOverride ?? Settings.UiScale ?? SuggestedScale(),
             ShortcutText = action => _bindings.Primary(action) is { } chord ? KeyNames.Display(_ui!.Strings, chord) : null,
         };
+        _audio = AudioSystem.TryCreate(Settings, AudioSystem.DefaultAssetRoot, Console.Error.WriteLine, _options.NoAudio);
+        _ui.Activated = _audio.PlayInterfaceClick;
         _renderer.AttachUi(atlas);
         UpdateViewport();
 
@@ -280,8 +290,10 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         }
 
         _session.SaveRecording();
+        _session.CommandFeedback -= OnCommandFeedback;
         _session.Detach();
         _session = null;
+        _audio?.ClearGame();
         Ui.Windows.CloseEverything();
         _renderer?.ClearWorld();
     }
@@ -290,6 +302,8 @@ internal sealed class GameWindow : IDisposable, IScreenHost
     {
         _session = new GameSession(game, _options.Session ?? new SessionOptions(), Settings.FastForwardUnlocked);
         _session.ExitRequested += () => _window.Close();
+        _session.CommandFeedback += OnCommandFeedback;
+        _audio?.SetGame(game.Map);
 
         var map = game.Heightmap;
         _camera.FitMap(Math.Max(map.Width, map.Depth));
@@ -313,6 +327,9 @@ internal sealed class GameWindow : IDisposable, IScreenHost
 
     private void OnTerrainEdited(IReadOnlyList<(int X, int Y, int Z)> voxels) =>
         _renderer?.NotifyVoxelsChanged(voxels, Stopwatch.GetTimestamp());
+
+    private void OnCommandFeedback(bool succeeded, bool construction) =>
+        _audio?.PlayCommandFeedback(succeeded, construction);
 
     private void OnAction(string action, bool shift)
     {
@@ -385,6 +402,43 @@ internal sealed class GameWindow : IDisposable, IScreenHost
             var stats = _session.Advance(deltaSeconds);
             _ticksThisSecond += stats.TicksRun;
         }
+
+        if (_audio is not null)
+        {
+            UpdateAudio(deltaSeconds);
+        }
+    }
+
+    private void UpdateAudio(double deltaSeconds)
+    {
+        var forward = _camera.Target - _camera.Position;
+        var forwardLength = forward.Length();
+        forward = forwardLength > 0.0001f ? forward / forwardLength : Vector3.UnitZ;
+        var right = Vector3.Cross(Vector3.UnitY, forward);
+        var rightLength = right.Length();
+        right = rightLength > 0.0001f ? right / rightLength : Vector3.UnitX;
+        var screen = _screen as InGameScreen;
+        var selected = screen is not null && screen.Selected.Kind == PickKind.Vehicle ? screen.Selected.VehicleId : -1;
+        var hovered = screen is not null && screen.Hovered.Kind == PickKind.Vehicle ? screen.Hovered.VehicleId : -1;
+        var vehicles = _session is null ? default : _session.Instances;
+        var ids = _session is null ? default : _session.InstanceIds;
+        var scene = new AudioScene
+        {
+            InGame = _session is not null,
+            Paused = _session?.Runner.IsPaused ?? false,
+            CameraPosition = _camera.Position,
+            CameraTarget = _camera.Target,
+            CameraForward = forward,
+            CameraRight = right,
+            CameraDistance = _camera.Distance,
+            Vehicles = vehicles,
+            VehicleIds = ids,
+            SelectedVehicleId = selected,
+            HoveredVehicleId = hovered,
+            Ambients = _audio!.Ambients,
+            DeltaSeconds = (float)deltaSeconds,
+        };
+        _audio.Update(scene);
     }
 
     private void OnRender(double deltaSeconds)
@@ -471,12 +525,14 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         var effective = _ticksThisSecond / seconds / GameClock.TicksPerSecondAtNormalSpeed;
         var r = _renderer!.Statistics;
         var speed = _session?.Runner.Speed ?? GameSpeed.Paused;
+        var audio = _audio?.Statistics ?? default;
         var statistics = string.Join(" — ",
             s.FormatSpeed(speed),
             s.Format("status.effectiveSpeed", ("speed", Math.Round(effective, 1))),
             s.Format("stats.frame", ("average", Math.Round(_frameTimes.AverageMs, 1)), ("worst", Math.Round(_frameTimes.WorstMs, 1))),
             s.Format("status.fps", ("fps", Math.Round(_frameTimes.FramesPerSecond))),
             s.Format("stats.ui", ("ms", Math.Round(_uiAverageMs, 2)), ("windows", Ui.Windows.Count)),
+            s.Format("stats.audio", ("ms", Math.Round(audio.AverageUpdateMilliseconds, 3)), ("voices", audio.ActiveVoices)),
             s.Format("stats.draws", ("count", r.DrawCalls)),
             s.Format("stats.triangles", ("count", r.Triangles)),
             s.Format("stats.regions", ("lod0", r.RegionsLod0), ("lod1", r.RegionsLod1), ("lod2", r.RegionsLod2), ("lod3", r.RegionsLod3)),

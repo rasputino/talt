@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "voiceBudget": 8,
+  "oneShotVoices": 4,
+  "ambientVoices": 2,
+  "maxVehicleDistanceTiles": 220,
+  "hysteresisTiles": 4,
+  "cues": {
+    "interfaceClick": {
+      "file": "effects/interface-click.wav",
+      "bus": "effects",
+      "gain": 0.35,
+      "priority": 2,
+      "loop": false,
+      "stream": false
+    },
+    "commandApplied": {
+      "file": "effects/command-applied.wav",
+      "bus": "effects",
+      "gain": 0.45,
+      "priority": 3,
+      "loop": false,
+      "stream": false
+    },
+    "commandRejected": {
+      "file": "effects/command-rejected.wav",
+      "bus": "effects",
+      "gain": 0.45,
+      "priority": 3,
+      "loop": false,
+      "stream": false
+    },
+    "construction": {
+      "file": "effects/construction.wav",
+      "bus": "effects",
+      "gain": 0.9,
+      "priority": 4,
+      "loop": false,
+      "stream": false
+    },
+    "vehicleEngine": {
+      "file": "effects/vehicle-engine.flac",
+      "bus": "effects",
+      "gain": 0.55,
+      "priority": 1,
+      "loop": true,
+      "stream": true
+    }
+  },
+  "ambient": {
+    "country": {
+      "file": "ambient/country.flac",
+      "bus": "ambient",
+      "gain": 0.55,
+      "priority": 0,
+      "loop": true,
+      "stream": true
+    },
+    "water": {
+      "file": "ambient/water.flac",
+      "bus": "ambient",
+      "gain": 0.55,
+      "priority": 0,
+      "loop": true,
+      "stream": true
+    },
+    "town": {
+      "file": "ambient/town.flac",
+      "bus": "ambient",
+      "gain": 0.5,
+      "priority": 0,
+      "loop": true,
+      "stream": true
+    }
+  },
+  "music": {
+    "tracks": [
+      "music/open-road.flac",
+      "music/daybreak.flac"
+    ],
+    "gain": 0.8,
+    "stream": true
+  },
+  "vehicle": {
+    "fullVolumeDistanceTiles": 18,
+    "rolloff": 1.4,
+    "zoomReference": 80,
+    "minZoomGain": 0.2,
+    "behindGain": 0.65,
+    "panWidth": 0.8
+  }
+}

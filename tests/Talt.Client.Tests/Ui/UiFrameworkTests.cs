@@ -380,3 +380,24 @@ public class WindowManagerTests
         Assert.True(tip.Right <= 1600 && tip.Bottom <= 900 && tip.X >= 0 && tip.Y >= 0);
     }
 }
+
+public class SliderKeyboardTests
+{
+    [Fact]
+    public void ArrowKeys_ChangeTheValueInSteps()
+    {
+        var ui = UiTestKit.CreateContext();
+        var value = 50f;
+        var slider = new Slider(0, 100, 5, () => value, v => value = v);
+        ui.Screen = slider;
+        ui.Layout();
+        Assert.True(slider.OnKeyDown(ui, Key.Right, false));
+        Assert.Equal(55f, value);
+        Assert.True(slider.OnKeyDown(ui, Key.Left, shift: true));
+        Assert.Equal(30f, value);
+        Assert.True(slider.OnKeyDown(ui, Key.Home, false));
+        Assert.Equal(0f, value);
+        Assert.True(slider.OnKeyDown(ui, Key.End, false));
+        Assert.Equal(100f, value);
+    }
+}
