@@ -43,7 +43,9 @@ them every frame. 4096 × 4096 = 16 384 chunks, 38 M faces, about 6.4 GB.
   (LOD 1–3) are built per region. One draw call per visible region. When one chunk changes, the new
   region buffer is assembled on the GPU: unchanged chunk ranges are copied buffer-to-buffer from the
   old region buffer and only the changed chunk is uploaded from the CPU, so no CPU copy of the meshes
-  is kept.
+  is kept. Added after the hand test: a region's LOD 0 buffer is released after 5 s without being
+  wanted beyond 1.5 × the nearer of the farthest LOD 0 distance and the full-fog distance (a coarser
+  level is built first); simplified levels are kept (see `Lod0Eviction`).
 - **Rationale**: 1 024 regions on a 4096 map (16 on 512) bound draw calls to about 1 000 even with
   the whole map on screen; 16 384 per-chunk draws would cost several milliseconds of driver time on
   the reference machine, too much for the 8 ms fast-forward budget. Per-chunk meshing keeps edits

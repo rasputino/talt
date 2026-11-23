@@ -35,7 +35,7 @@
   "stats.draws": "{count} draws",
   "stats.triangles": "{count} triangles",
   "stats.regions": "regions by detail {lod0}/{lod1}/{lod2}/{lod3}",
-  "stats.memory": "world {mb} MB",
+  "stats.memory": "world {mb} MB ({released} full-detail buffers released)",
   "stats.jobs": "{count} mesh jobs",
   "stats.allocated": "{bytes} B allocated per frame",
   "edit.visible": "Edit visible after {ms} ms ({chunks} chunks rebuilt)."
