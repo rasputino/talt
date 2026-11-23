@@ -35,7 +35,7 @@
   "stats.draws": "{count} llamadas de dibujo",
   "stats.triangles": "{count} triángulos",
   "stats.regions": "regiones por detalle {lod0}/{lod1}/{lod2}/{lod3}",
-  "stats.memory": "mundo {mb} MB",
+  "stats.memory": "mundo {mb} MB ({released} búferes de detalle completo liberados)",
   "stats.jobs": "{count} trabajos de mallado",
   "stats.allocated": "{bytes} B reservados por fotograma",
   "edit.visible": "Edición visible tras {ms} ms ({chunks} chunks reconstruidos)."

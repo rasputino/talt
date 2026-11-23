@@ -38,6 +38,17 @@ internal static class LodSelector
         return 0;
     }
 
+    /// <summary>
+    /// Farthest distance at which <see cref="Select"/> can return full detail (LOD 0): a region already
+    /// at LOD 0 keeps it until LOD 1 cells fall 10 % below the error limit. Returning to LOD 0 from a
+    /// coarser level happens nearer still.
+    /// </summary>
+    public static float FullDetailDistance(float screenHeightPixels, float verticalFieldOfView)
+    {
+        var pixelsPerUnit = MaxErrorPixels * (1f - Hysteresis) / 2f;
+        return screenHeightPixels / (2f * pixelsPerUnit * MathF.Tan(verticalFieldOfView * 0.5f));
+    }
+
     /// <summary>Distance from a point to the nearest point of a box (0 inside).</summary>
     public static float DistanceToBox(Vector3 point, Vector3 min, Vector3 max) =>
         Vector3.Distance(point, Vector3.Clamp(point, min, max));

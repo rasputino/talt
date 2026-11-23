@@ -267,6 +267,14 @@ default statistical job):
 - **Full-detail buffers** are the concatenation of the region's chunk meshes. When chunks change, a
   new buffer is assembled on the GPU: unchanged chunk ranges are copied buffer-to-buffer from the
   old one and only rebuilt chunks are uploaded, so no mesh copy stays in main memory.
+- **Releasing full detail.** Full-detail buffers are the bulk of world memory, so a region's LOD 0
+  buffer is released (and its chunk bookkeeping reset) once the region has not chosen LOD 0 for 5 s
+  and is farther than 1.5 × the nearer of the farthest LOD 0 distance (`LodSelector.FullDetailDistance`)
+  and the full-fog distance (`Lod0Eviction`). LOD 0 is only rebuilt inside both, so hovering near the
+  threshold does not thrash. If no simplified level is built yet, one is built first and the release
+  waits for it, so a region never drops to nothing; it also waits while a chunk mesh of the region is
+  in flight. Simplified levels (LOD 1–3) are small and kept. Edits keep working: a released region
+  rebuilds every chunk at its current version when it wants full detail again.
 - **Culling** per frame on the CPU: regions beyond the full-fog distance are skipped (they would be
   drawn in sky colour), then a frustum test on the region box and on the mesh bounds.
 - **Level of detail** per region from the screen-space error of its nearest point
@@ -283,8 +291,8 @@ default statistical job):
   their replacement arrives. The client reports when an edit is on screen (PageUp/PageDown debug
   edits print "Edit visible after … ms").
 - **Statistics.** F3 (or `--stats`) shows frame time average/worst, FPS, draw calls, triangles,
-  regions per level, world GPU memory, pending mesh jobs and managed bytes allocated per frame by
-  the draw path (0 in steady state) in the title bar and the console.
+  regions per level, world GPU memory (and full-detail buffers released so far), pending mesh jobs
+  and managed bytes allocated per frame by the draw path (0 in steady state) in the title bar and the console.
 - `vehicles.wgsl`: **instancing**. A single unit cube is drawn once per vehicle in one draw call;
   each instance carries position, heading and color, uploaded every frame.
 - Colors are linear. The renderer prefers an sRGB surface format so the GPU converts them.
@@ -351,8 +359,8 @@ closest and the farthest zoom, with edits and fast forward; console log of the s
   no frame exceeded 33 ms; 15 had one longer frame (34–56 ms, typically 36–42 ms), also while the
   camera was still and no meshing was pending, so they are not caused by mesh uploads. Up to
   2.75 M triangles and 430 draws at medium zoom; world memory peaked at 292 MB after visiting much of
-  the map (all built levels are kept; no eviction yet). SC-001 is met on average frame rate; the
-  occasional single long frame is a follow-up (see below).
+  the map (all built levels were kept then; full-detail buffers are now released, see below).
+  SC-001 is met on average frame rate; the occasional single long frame is a follow-up (see below).
 - Edits (PageUp/PageDown): every single-tile edit was on screen after 29–34 ms (two frames; 1 or 4
   chunks rebuilt), well under the 100 ms target (SC-002). 32 × 32 area edits also showed within a few
   frames.
@@ -394,8 +402,17 @@ presentation stall outside the game's code, not reproduced in the other runs. Co
 and drawing stay within the frame budget; long frames seen during testing came from other processes
 loading the CPU, plus rare presentation stalls.
 
-**Follow-ups:** evicting full-detail buffers of regions far from the camera if memory ever matters
-(292 MB peak today); watch for presentation stalls on other machines (the long-frame log names them).
+**Releasing full-detail buffers** (2026-11-22, 4096 map, 50 000 vehicles, `--stats`, hand test
+panning across the map and zooming out to the farthest zoom and back): world memory went back down
+after moving away, e.g. 245 → 143 MB, 183 → 164 MB and 245 → 223 MB within a few seconds, with 597
+full-detail buffers released in about 30 s of movement; peak 245 MB (292 MB before, with all levels
+kept). 60 FPS in 593 of 597 one-second samples, 0 B allocated per frame at rest. The
+memory that stays is the simplified levels of every region visited (small) plus full detail around
+the camera. `--zoom max` without input is unchanged: 1 023 draws, 8 MB, 60 FPS, 0 B per frame.
+`--zoom 1000` without input: 94 draws (92 at LOD 0), settles at 157 MB, 60 FPS, 0 B per frame and
+nothing released (every region within reach may still want full detail).
+
+**Follow-ups:** watch for presentation stalls on other machines (the long-frame log names them).
 
 ## Current numbers (prototype before feature 003, Windows, AMD Radeon integrated GPU)
 

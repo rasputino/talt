@@ -51,6 +51,7 @@ internal sealed unsafe class WorldRenderer : IDisposable
     private Buffer* _indexBuffer;
     private int _indexQuadCapacity;
     private long _worldBytes;
+    private long _lod0Released;
     private RenderStatistics _statistics;
 
     public WorldRenderer(WebGPU wgpu, Device* device, Queue* queue, VoxelWorld world)
@@ -122,21 +123,31 @@ internal sealed unsafe class WorldRenderer : IDisposable
         _draws.Clear();
         _candidates.Clear();
         var maxQuads = 0;
+        var now = Stopwatch.GetTimestamp();
+        var releaseDistance = Lod0Eviction.ReleaseDistance(
+            LodSelector.FullDetailDistance(screenHeightPixels, verticalFieldOfView), fogFull);
 
         foreach (var region in _regions)
         {
             var distance = LodSelector.DistanceToBox(cameraPosition, region.BoxMin, region.BoxMax);
+            var pixelsPerUnit = LodSelector.PixelsPerUnit(distance, screenHeightPixels, verticalFieldOfView);
             if (distance > fogFull)
             {
                 region.Shown = false;
                 _statistics.RegionsCulled++;
+                ReleaseLod0IfIdle(region, distance, releaseDistance, pixelsPerUnit, now, visible: false);
                 continue; // Entirely sky-coloured: nothing to draw, nothing to build yet.
             }
 
             var visible = frustum.Intersects(region.BoxMin, region.BoxMax);
-            var pixelsPerUnit = LodSelector.PixelsPerUnit(distance, screenHeightPixels, verticalFieldOfView);
             region.DesiredLod = LodSelector.Select(pixelsPerUnit, Math.Max(region.DesiredLod, 0));
+            if (region.DesiredLod == 0)
+            {
+                region.LastWantedLod0 = now;
+            }
+
             AddCandidates(region, distance + (visible ? 0f : InvisiblePriorityPenalty));
+            ReleaseLod0IfIdle(region, distance, releaseDistance, pixelsPerUnit, now, visible);
 
             region.Shown = false;
             if (!visible)
@@ -170,6 +181,7 @@ internal sealed unsafe class WorldRenderer : IDisposable
         EnsureIndexCapacity(maxQuads);
         SubmitJobs();
         _statistics.WorldGpuBytes = _worldBytes;
+        _statistics.Lod0Released = _lod0Released;
         _statistics.PendingJobs = _candidates.Count;
         _statistics.JobsInFlight = _scheduler.InFlight;
     }
@@ -348,6 +360,47 @@ internal sealed unsafe class WorldRenderer : IDisposable
         }
     }
 
+    /// <summary>
+    /// Releases the region's full-detail buffer when it has not been wanted for a while and the camera is
+    /// far away (<see cref="Lod0Eviction"/>). A coarser level is built first, so the region never
+    /// drops to nothing.
+    /// </summary>
+    private void ReleaseLod0IfIdle(Region region, float distance, float releaseDistance, float pixelsPerUnit,
+        long now, bool visible)
+    {
+        var level = region.Lods[0];
+        if (level.Buffer == null)
+        {
+            return; // Nothing resident (or an empty region, whose LOD 0 costs nothing).
+        }
+
+        var idle = Stopwatch.GetElapsedTime(region.LastWantedLod0, now).TotalSeconds;
+        switch (Lod0Eviction.Decide(idle, distance, releaseDistance, region.HasChunkWork(), region.HasCoarserLevel()))
+        {
+            case Lod0EvictionAction.BuildCoarserLevel:
+                var lod = LodSelector.Select(pixelsPerUnit, Math.Max(region.DesiredLod, 1));
+                var coarser = region.Lods[Math.Max(lod, 1)];
+                if (!coarser.InFlight && coarser.BuiltVersion != region.Version)
+                {
+                    var priority = distance + (visible ? 0f : InvisiblePriorityPenalty);
+                    _candidates.Add(new Candidate(priority, new MeshJob(region.Slot, Math.Max(lod, 1), 0, region.Version)));
+                }
+
+                break;
+
+            case Lod0EvictionAction.Evict:
+                ReleaseLater(level);
+                level.Quads = 0;
+                level.BuiltVersion = 0;
+                level.Available = false;
+                Array.Clear(region.ChunkBuilt);
+                Array.Clear(region.ChunkQuads);
+                Array.Clear(region.ChunkOffset);
+                _lod0Released++;
+                break;
+        }
+    }
+
     private void SubmitJobs()
     {
         if (_candidates.Count == 0 || !_scheduler.HasRoom)
@@ -365,6 +418,11 @@ internal sealed unsafe class WorldRenderer : IDisposable
 
             var job = candidate.Job;
             var region = _regions[job.RegionSlot];
+            if (job.Lod == 0 ? region.ChunkInFlight[job.ChunkIndex] : region.Lods[job.Lod].InFlight)
+            {
+                continue; // Already submitted by another candidate this frame.
+            }
+
             if (job.Lod == 0)
             {
                 region.ChunkInFlight[job.ChunkIndex] = true;
@@ -693,6 +751,42 @@ internal sealed unsafe class WorldRenderer : IDisposable
 
             BoxMin = Origin;
             BoxMax = Origin + new Vector3(RegionCoord.Size, top, RegionCoord.Size);
+        }
+
+        /// <summary><see cref="Stopwatch"/> timestamp of the last frame that chose LOD 0 for this region.</summary>
+        public long LastWantedLod0 { get; set; }
+
+        /// <summary>A chunk mesh is being built or waits to be assembled into the LOD 0 buffer.</summary>
+        public bool HasChunkWork()
+        {
+            if (HasPendingChunks)
+            {
+                return true;
+            }
+
+            foreach (var inFlight in ChunkInFlight)
+            {
+                if (inFlight)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>A simplified level is built and can be drawn in place of LOD 0.</summary>
+        public bool HasCoarserLevel()
+        {
+            for (var lod = 1; lod < LodCount; lod++)
+            {
+                if (Lods[lod].Available)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public bool AllChunksBuilt()

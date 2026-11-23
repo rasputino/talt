@@ -581,7 +581,7 @@ internal sealed class GameWindow : IDisposable
             s.Format("stats.draws", ("count", r.DrawCalls)),
             s.Format("stats.triangles", ("count", r.Triangles)),
             s.Format("stats.regions", ("lod0", r.RegionsLod0), ("lod1", r.RegionsLod1), ("lod2", r.RegionsLod2), ("lod3", r.RegionsLod3)),
-            s.Format("stats.memory", ("mb", r.WorldGpuBytes / (1024 * 1024))),
+            s.Format("stats.memory", ("mb", r.WorldGpuBytes / (1024 * 1024)), ("released", r.Lod0Released)),
             s.Format("stats.jobs", ("count", r.PendingJobs + r.JobsInFlight)),
             s.Format("stats.allocated", ("bytes", (long)_allocatedBytesPerFrame)));
     }
