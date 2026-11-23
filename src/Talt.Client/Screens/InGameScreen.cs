@@ -51,7 +51,12 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         _camera = camera ?? throw new ArgumentNullException(nameof(camera));
         _onTerrainEdited = onTerrainEdited ?? throw new ArgumentNullException(nameof(onTerrainEdited));
         _isKeyDown = isKeyDown ?? throw new ArgumentNullException(nameof(isKeyDown));
-        _pickContext = new PickContext { Heightmap = session.Heightmap, World = session.World };
+        _pickContext = new PickContext
+        {
+            Heightmap = session.Heightmap,
+            World = session.World,
+            Industries = session.Simulation.Industries,
+        };
         _session.Message += ShowMessage;
         Root = BuildHud();
         _pauseMenu = BuildPauseMenu();
@@ -113,6 +118,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         }
 
         FollowSelectedVehicle();
+        FollowSelectedIndustry();
         _highlightCount = 0;
         var theme = _host.Ui.Theme;
         if (_selected.Kind != PickKind.None)
@@ -394,6 +400,36 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         }
 
         _selected = PickResult.None; // The vehicle was removed.
+    }
+
+    private void FollowSelectedIndustry()
+    {
+        if (_selected.Kind != PickKind.Industry)
+        {
+            return;
+        }
+
+        var industries = _session.Simulation.Industries;
+        var slot = industries.SlotOf(_selected.IndustryId);
+        if (slot < 0)
+        {
+            _selected = PickResult.None; // The industry closed.
+            return;
+        }
+
+        if (!industries.FootprintBounds(slot, out var minX, out var minZ, out var maxX, out var maxZ))
+        {
+            _selected = PickResult.None;
+            return;
+        }
+
+        var kind = industries.Content.IndustryKind(industries.KindIndexAt(slot));
+        var ground = _session.Heightmap.Get(industries.XAt(slot), industries.ZAt(slot));
+        _selected = _selected with
+        {
+            BoundsMin = new Vector3(minX, ground, minZ),
+            BoundsMax = new Vector3(maxX, ground + kind.ModelHeight, maxZ),
+        };
     }
 
     /// <summary>

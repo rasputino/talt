@@ -196,7 +196,7 @@ public class InGameScreenTests
     public void Selecting_OpensOneWindowPerObject()
     {
         var (screen, _, host) = Create();
-        var tile = new PickResult(PickKind.Tile, 1, 2, 5, Core.Voxels.VoxelMaterial.Grass, -1, default, default, 1);
+        var tile = new PickResult(PickKind.Tile, 1, 2, 5, Core.Voxels.VoxelMaterial.Grass, -1, -1, default, default, 1);
         var other = tile with { TileX = 9 };
         screen.Select(tile);
         screen.Select(other);

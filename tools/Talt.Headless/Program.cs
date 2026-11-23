@@ -109,6 +109,7 @@ static void PrintSummary(GameSimulation simulation, TimeSpan setup, TimeSpan sim
     Console.WriteLine($"ticks: {simulation.CurrentTick}");
     Console.WriteLine($"date: {simulation.Date}");
     Console.WriteLine($"vehicles: {simulation.Vehicles.VehicleCount}");
+    Console.WriteLine($"industries: {simulation.Industries.Count}");
     Console.WriteLine($"fingerprint: {StateHasher.Format(simulation.ComputeFingerprint())}");
     Console.WriteLine($"setup-ms: {setup.TotalMilliseconds.ToString("F0", c)}");
     Console.WriteLine($"simulate-ms: {simulate.TotalMilliseconds.ToString("F0", c)}");

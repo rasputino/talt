@@ -11,6 +11,8 @@ Talt.slnx
 │   │   ├── Voxels/         Chunk, ChunkCoord, RegionCoord, VoxelWorld, VoxelMaterial
 │   │   ├── Terrain/        ValueNoise, Heightmap, TerrainEditor (debug edits)
 │   │   ├── Maps/           MapSettings, MapGenerator (+ Stages/), MapData, WorldBuilder (feature 004)
+│   │   ├── Content/        Cargo and industry definitions + embedded JSON data (feature 009)
+│   │   ├── Industries/     IndustryFleet (SoA state), placement, economy, delivery, read model (009)
 │   │   ├── Meshing/        GreedyMesher, LodVolume, PackedVertex, PackedMesh, FaceDirections,
 │   │   │                   MaterialPalette; ChunkMesher/ChunkMesh/VoxelVertex (naive reference)
 │   │   ├── Network/        TransportNetwork (+ builder), GridPoint, PathFinder (A*),
@@ -20,22 +22,22 @@ Talt.slnx
 │   │   ├── Commands/       ISimulationCommand, CommandInbox, Add/RemoveVehicleCommand,
 │   │   │                   RecordedSession, SessionRecorder, SessionReplayer, CommandSerializer
 │   │   ├── Determinism/    FixedMath, DeterministicRandom (xoshiro256**), StateHasher (XxHash3)
-│   │   └── Scenarios/      ScenarioSettings, ScenarioBuilder (shared by client and headless runner)
+│   │   └── Scenarios/      ScenarioSettings (+ map settings), ScenarioBuilder (shared by client and headless)
 │   └── Talt.Client/        Executable: window, input, rendering, interface, runs the simulation.
 │       ├── GameWindow.cs   Window lifecycle, screens, input routing, settings, UI pass, title status
-│       ├── GameSetup.cs    Builds simulation + world + heightmap from NewGameOptions (background task)
-│       ├── GameSession.cs  A running game: runner, pose interpolation, vehicle instances, commands
+│       ├── GameSetup.cs    Builds map + simulation + world + heightmap from NewGameOptions (background task)
+│       ├── GameSession.cs  A running game: runner, pose interpolation, vehicle/industry instances, commands
 │       ├── PlayerSettings.cs  Persisted settings (language, currency, scale, display, bindings...)
 │       ├── DataFiles.cs    Embedded JSON data files with validation errors
 │       ├── Ui/             Retained-mode interface: UiContext, widgets, windows, SDF font, icons, theme
 │       ├── Screens/        Main menu, new game, in-game HUD and pause menu, settings, key bindings,
-│       │                   object information and sample windows; INewGameOptionsSource
+│       │                   object information (incl. industries) and sample windows; INewGameOptionsSource
 │       ├── Input/          KeyBindings (data-driven actions), InputRouter
-│       ├── Picking/        Ray, MapPicker and pick layers (terrain, road, vehicle)
+│       ├── Picking/        Ray, MapPicker and pick layers (terrain, road, vehicle, industry)
 │       ├── Localization/   Strings (en/es, plurals), MoneyFormatter and currencies
 │       └── Rendering/      WebGpuRenderer, WorldRenderer, UiRenderer, HighlightRenderer,
 │                           ChunkMeshScheduler, Frustum, LodSelector, RenderStatistics, OrbitCamera,
-│                           UnitCube, Shaders/*.wgsl
+│                           UnitCube, IndustryInstance, Shaders/*.wgsl
 ├── tools/
 │   └── Talt.Headless/      Console runner: run and replay simulations without a window
 ├── tests/
@@ -46,7 +48,7 @@ Talt.slnx
 │   └── Talt.Headless.Tests/ Command-line parsing tests
 └── benchmarks/
     └── Talt.Benchmarks/    BenchmarkDotNet: full tick, vehicle tick, pathfinding, SoA vs Arch ECS,
-                            chunk meshing (naive vs greedy, LOD), UI frame cost, picking
+                            chunk meshing (naive vs greedy, LOD), UI frame cost, picking, industries
 ```
 
 **Rule:** `Talt.Core` must never reference graphics or windowing libraries. Everything in it must be
@@ -255,6 +257,54 @@ changes state after creation. Each tick:
   interpolates previous → current with `PoseInterpolator` (rendering-only floats). Slots whose
   vehicle changed between snapshots are drawn without interpolation.
 
+## Cargo and industries (feature 009)
+
+Industries are the world's freight economy: they produce, accept and process cargo on their own; the
+player only transports it. Everything is data-driven (constitution VII).
+
+- **Content** lives in `src/Talt.Core/Content/Data/cargo.json` and `industries.json`, embedded in
+  `Talt.Core` and loaded by `GameContent`. Version 1 has 13 cargo types (passengers, mail, coal, wood,
+  iron ore, grain, livestock, oil, steel, lumber, fuel, food, goods) and 11 industry kinds (coal and
+  iron mines, forest, farm, oil well, power station, sawmill, steel mill, refinery, factory, food
+  plant). Validation names the file and the offending id/field and stops the game at startup.
+- **Placement**: `IndustryFleet.Create` walks the industry sites reserved by feature 004 and places a
+  kind compatible with the site kind and era on about 75 % of them, weighted by the data. A quarter of
+  the sites stay free for later openings. Positions and kinds are a pure function of map settings and
+  the industry random stream.
+- **Storage** is structure-of-arrays: scalar arrays per industry plus flat `int[]` tables indexed
+  `slot * cargoCount + cargoIndex` for available cargo, pending recipe input, and accepted/shipped
+  this and last month. Removal swaps the last industry into the free slot; ids never repeat. No
+  per-tick allocation.
+- **Schedule**: `GameSimulation` registers `AdvanceDay` and `AdvanceMonth` on the existing day/month
+  events. Days accumulate a month's production in whole units (the remainder is added on the month's
+  last day); months rotate statistics, apply seeded drift, growth from deliveries, decline after 24
+  months without deliveries, seeded closures after about five years and seeded openings on free sites.
+  Production beyond a cargo's storage cap is discarded.
+- **Processing** is immediate and automatic: accepted cargo with a recipe is converted in whole
+  batches (`inputAmount` → `outputAmount`); a partial batch waits as pending input and processing
+  waits if the output store is full. Accepted cargo without a recipe is consumed (power station coal).
+  `Deliver` and `Take` are the public API that feature 010 will call.
+- **Replay and fingerprints**: `ScenarioSettings.Map` is optional and recorded as a `"map"` text;
+  replay regenerates the same map and industries. `IndustryFleet.AppendTo` writes nothing when the
+  fleet is empty, so map-less scenarios keep their pre-009 fingerprints; with industries it hashes all
+  arrays, the forked random stream, free sites, the content fingerprint and the next id.
+- **Client**: data-driven placeholder boxes are drawn with an instanced pipeline
+  (`industries.wgsl`); instances rebuild only when `IndustryFleet.Version` changes. An
+  `IndustryPickLayer` (priority 75) picks industries, and the information window shows production,
+  acceptance, recipes, waiting/pending cargo, cargo properties and last month's delivered/shipped
+  amounts. Final models are feature 018.
+
+Measured on the development machine (AMD Ryzen 7 160, 8 cores / 16 threads, 4096 × 4096 map, about
+1 000 industries, `IndustryBenchmarks`, short job, 2026-11-23):
+
+| Benchmark | Mean | Budget |
+|---|---|---|
+| Day update, all industries | 20.3 µs | < 1 ms (SC-001) |
+| Month update, all industries | 51.7 µs | < 5 ms (SC-002) |
+| Initial placement on the 4096 map | 424 µs | informational (1.4 MB allocated once) |
+
+Both updates report no managed allocation per operation.
+
 ## Determinism
 
 The same settings and the same commands produce the same state at every tick, on every platform.
@@ -267,9 +317,12 @@ The same settings and the same commands produce the same state at every tick, on
   streams; the UI never uses the simulation's generator.
 - **Commands:** player actions are `ISimulationCommand` records applied at the start of the next
   tick. First commands: `AddVehicleCommand`, `RemoveVehicleCommand`.
-- **Fingerprint:** `GameSimulation.ComputeFingerprint()` hashes the whole state with XxHash3.
+- **Fingerprint:** `GameSimulation.ComputeFingerprint()` hashes the whole state with XxHash3. An
+  industry fleet with no industries contributes nothing, so a map-less game keeps the fingerprints it
+  had before feature 009; a populated fleet hashes its arrays, random stream and content fingerprint.
 - **Recorded sessions:** `SessionRecorder` writes settings + commands + checkpoints as JSON
-  (`.talt-session.json`); `SessionReplayer` replays them and reports the first diverging tick.
+  (`.talt-session.json`); `SessionReplayer` replays them and reports the first diverging tick. Sessions
+  with map settings write a `"map"` text; replay regenerates the map and its industries.
 - **Golden fingerprints:** `GoldenFingerprintTests` pins the fingerprints of a fixed scenario,
   generated on Windows x64. Linux and macOS must produce exactly the same values. Regenerate only
   when simulation rules change on purpose and say so in the commit message.
@@ -281,8 +334,12 @@ The same settings and the same commands produce the same state at every tick, on
 ```
 dotnet run -c Release --project tools/Talt.Headless -- run --map 4096 --vehicles 50000 --ticks 10000
 dotnet run -c Release --project tools/Talt.Headless -- run --ticks 10000 --record session.json
+dotnet run -c Release --project tools/Talt.Headless -- run --ticks 4000 --map-text T1-512x512-s7-r50-h28-w25-l7
 dotnet run -c Release --project tools/Talt.Headless -- replay session.json --checkpoint-every 1000
 ```
+
+`--map-text` generates the map and places its industries before ticking; without it a run has no
+industries (and keeps the pre-009 fingerprints). The summary includes `industries: <count>`.
 
 It prints stable `key: value` lines (`date`, `fingerprint`, `avg-tick-ms`, ...). Exit codes: 0 success,
 1 determinism failure, 2 invalid arguments or file, 3 unexpected error.
@@ -360,6 +417,19 @@ independent of vehicle count).
 Scenario setup takes ~2.5 s (it took 26–57 s before the synthetic lines' 10 000 A* routes were
 searched in parallel with a faster A*); real games will build lines from player actions, and cached
 hierarchical pathfinding (feature 007) will cut this further. Total run time stays under the 60 s target (SC-008).
+
+### Industry economy (feature 009)
+
+`IndustryBenchmarks` (short job, 2026-11-23) generates a 4096 × 4096 map once and places industries on
+all its sites (about 1 000), then measures the economy:
+
+| Benchmark | Mean | Allocated | Budget |
+|---|---|---|---|
+| `AdvanceDay` for every industry | 20.3 µs | 0 B | < 1 ms |
+| `AdvanceMonth` for every industry | 51.7 µs | 0 B | < 5 ms |
+| `PlaceOnMap` (initial placement) | 424 µs | 1.4 MB once | informational |
+
+The full simulation tick budget is unaffected: industries only work on day and month boundaries.
 
 ### Entity storage decision (research R5)
 

@@ -55,6 +55,9 @@ internal sealed class GameSession
     private int[] _instanceIds = [];
     private int _drawCount;
     private float _drawFactor;
+    private IndustryInstance[] _industryInstances = [];
+    private int _industryCount;
+    private int _industryVersion = -1;
 
     public GameSession(GeneratedGame game, SessionOptions options, bool fastForwardUnlocked)
     {
@@ -99,6 +102,9 @@ internal sealed class GameSession
 
     /// <summary>Vehicle id of each entry of <see cref="Instances"/>.</summary>
     public ReadOnlySpan<int> InstanceIds => _instanceIds.AsSpan(0, _drawCount);
+
+    /// <summary>Industry placeholder boxes as drawn this frame (feature 009).</summary>
+    public ReadOnlySpan<IndustryInstance> IndustryInstances => _industryInstances.AsSpan(0, _industryCount);
 
     /// <summary>Raised for every processed command with a localized message.</summary>
     public event Action<TextRef>? Message;
@@ -171,6 +177,8 @@ internal sealed class GameSession
         {
             BuildInstancesBatch(0);
         }
+
+        BuildIndustryInstances();
     }
 
     /// <summary>Writes the recorded session, if recording.</summary>
@@ -286,4 +294,52 @@ internal sealed class GameSession
             _instanceIds[v] = _currentIds[v];
         }
     }
+
+    /// <summary>
+    /// Rebuilds the industry boxes only when the fleet changed (opening, closing or a new game).
+    /// One model box becomes one instance; the shader stretches the unit cube to its extent.
+    /// </summary>
+    private void BuildIndustryInstances()
+    {
+        var industries = Simulation.Industries;
+        if (industries.Version == _industryVersion)
+        {
+            return;
+        }
+
+        _industryVersion = industries.Version;
+        var total = 0;
+        for (var slot = 0; slot < industries.Count; slot++)
+        {
+            total += Simulation.Content.IndustryKind(industries.KindIndexAt(slot)).Model.Count;
+        }
+
+        if (_industryInstances.Length < total)
+        {
+            Array.Resize(ref _industryInstances, Math.Max(total, Math.Max(64, _industryInstances.Length * 2)));
+        }
+
+        var index = 0;
+        for (var slot = 0; slot < industries.Count; slot++)
+        {
+            var kind = Simulation.Content.IndustryKind(industries.KindIndexAt(slot));
+            var x = industries.XAt(slot);
+            var z = industries.ZAt(slot);
+            var ground = Game.Map.HeightAt(x, z);
+            foreach (var box in kind.Model)
+            {
+                var centerX = x + box.X + ((box.Width % 2 == 0) ? 0f : 0.5f);
+                var centerZ = z + box.Z + ((box.Depth % 2 == 0) ? 0f : 0.5f);
+                _industryInstances[index++] = new IndustryInstance(
+                    new Vector4(centerX, ground + box.Y, centerZ, 0f),
+                    new Vector4(box.Width, box.Height, box.Depth, 0f),
+                    ToColor(box.Color));
+            }
+        }
+
+        _industryCount = index;
+    }
+
+    private static Vector4 ToColor(uint rgb) =>
+        new(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f);
 }

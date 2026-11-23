@@ -1,4 +1,5 @@
 using System.Globalization;
+using Talt.Core.Maps;
 using Talt.Core.Scenarios;
 
 namespace Talt.Headless;
@@ -25,7 +26,8 @@ internal static class HeadlessArguments
     public const string Usage = """
         Usage:
           Talt.Headless run [--seed <int>] [--map <tiles>] [--vehicles <int>] [--lines <int>]
-                            [--start-year <int>] --ticks <int> [--sequential] [--record <session.json>]
+                            [--start-year <int>] [--map-text <T1-...>] --ticks <int> [--sequential]
+                            [--record <session.json>]
           Talt.Headless replay <session.json> [--ticks <int>] [--checkpoint-every <int>] [--sequential]
         """;
 
@@ -61,6 +63,7 @@ internal static class HeadlessArguments
         var checkpointEvery = 0;
         string? record = null;
         string? session = null;
+        string? mapText = null;
 
         try
         {
@@ -77,6 +80,7 @@ internal static class HeadlessArguments
                     case "--checkpoint-every": checkpointEvery = ParseInt(args, ref i); break;
                     case "--sequential": sequential = true; break;
                     case "--record": record = Next(args, ref i); break;
+                    case "--map-text": mapText = Next(args, ref i); break;
                     default:
                         if (command == HeadlessCommand.Replay && session is null && !args[i].StartsWith("--", StringComparison.Ordinal))
                         {
@@ -102,6 +106,16 @@ internal static class HeadlessArguments
         }
 
         var settings = new ScenarioSettings(Seed: seed, StartYear: startYear, MapSizeTiles: map, VehicleCount: vehicles, LineCount: lines);
+        if (mapText is not null)
+        {
+            if (!MapSettings.TryParse(mapText, out var parsedMap, out var mapError))
+            {
+                error = $"Invalid map text: {mapError}";
+                return false;
+            }
+
+            settings = settings with { Map = parsedMap };
+        }
         if (command == HeadlessCommand.Run)
         {
             if (ticks is null)

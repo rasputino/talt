@@ -1,7 +1,10 @@
 using System.Numerics;
 using System.Reflection;
 using Talt.Core.Commands;
+using Talt.Core.Content;
 using Talt.Core.Determinism;
+using Talt.Core.Industries;
+using Talt.Core.Maps;
 using Talt.Core.Network;
 using Talt.Core.Scenarios;
 using Talt.Core.Simulation;
@@ -30,6 +33,19 @@ public class NoFloatingPointStateTests
         typeof(AddVehicleCommand),
         typeof(RemoveVehicleCommand),
         typeof(SimulationEvents),
+        typeof(GameContent),
+        typeof(CargoDefinition),
+        typeof(IndustryKindDefinition),
+        typeof(EconomyRules),
+        typeof(ProductionEntry),
+        typeof(RecipeDefinition),
+        typeof(StockDefinition),
+        typeof(ModelBox),
+        typeof(IndustryFleet),
+        typeof(IndustryInfo),
+        typeof(IndustryDeliveryResult),
+        typeof(Site),
+        typeof(MapSettings),
     ];
 
     private static readonly Type[] Forbidden =

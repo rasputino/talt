@@ -1,0 +1,214 @@
+{
+  "economy": {
+    "initialOccupancyPercent": 75,
+    "driftPerMille": 15,
+    "growthPerMille": 25,
+    "declineAfterMonths": 24,
+    "declinePerMille": 20,
+    "closeAfterMonths": 60,
+    "closeChancePerMille": 8,
+    "closeAtRatePerMille": 700,
+    "openingChancePerMillePerSite": 4,
+    "maxOpeningsPerMonth": 3,
+    "minRatePerMille": 300,
+    "maxRatePerMille": 1500
+  },
+  "industries": [
+    {
+      "id": "coal-mine",
+      "nameKey": "industry.coal-mine",
+      "footprint": [4, 3],
+      "siteKinds": ["hills"],
+      "era": [1800, 9999],
+      "weight": 14,
+      "production": [{ "cargo": "coal", "perMonth": 180 }],
+      "model": [
+        { "x": 0, "y": 0, "z": 0, "width": 4, "depth": 3, "height": 2, "color": "#5A5A5A" },
+        { "x": -1, "y": 2, "z": -1, "width": 1, "depth": 1, "height": 3, "color": "#3A3A3A" },
+        { "x": 1, "y": 0, "z": 1, "width": 2, "depth": 2, "height": 1, "color": "#1E1E1E" }
+      ],
+      "stock": [{ "cargo": "coal", "capacity": 900 }]
+    },
+    {
+      "id": "iron-mine",
+      "nameKey": "industry.iron-mine",
+      "footprint": [4, 3],
+      "siteKinds": ["hills"],
+      "era": [1800, 9999],
+      "weight": 10,
+      "production": [{ "cargo": "iron-ore", "perMonth": 150 }],
+      "model": [
+        { "x": 0, "y": 0, "z": 0, "width": 4, "depth": 3, "height": 2, "color": "#7A6A5A" },
+        { "x": 1, "y": 2, "z": 0, "width": 1, "depth": 1, "height": 3, "color": "#4A3E34" },
+        { "x": -1, "y": 0, "z": 1, "width": 2, "depth": 1, "height": 1, "color": "#8C6A55" }
+      ],
+      "stock": [{ "cargo": "iron-ore", "capacity": 750 }]
+    },
+    {
+      "id": "forest",
+      "nameKey": "industry.forest",
+      "footprint": [4, 4],
+      "siteKinds": ["forest"],
+      "era": [1800, 9999],
+      "weight": 16,
+      "production": [{ "cargo": "wood", "perMonth": 160 }],
+      "model": [
+        { "x": 0, "y": 0, "z": 0, "width": 4, "depth": 4, "height": 1, "color": "#4F7A3A" },
+        { "x": -1, "y": 1, "z": -1, "width": 2, "depth": 2, "height": 2, "color": "#2F5A28" },
+        { "x": 1, "y": 1, "z": 1, "width": 2, "depth": 2, "height": 2, "color": "#2F5A28" },
+        { "x": -1, "y": 1, "z": 1, "width": 1, "depth": 1, "height": 2, "color": "#3F6A30" },
+        { "x": 1, "y": 1, "z": -1, "width": 1, "depth": 1, "height": 2, "color": "#3F6A30" }
+      ],
+      "stock": [{ "cargo": "wood", "capacity": 800 }]
+    },
+    {
+      "id": "farm",
+      "nameKey": "industry.farm",
+      "footprint": [4, 4],
+      "siteKinds": ["plain"],
+      "era": [1800, 9999],
+      "weight": 18,
+      "production": [
+        { "cargo": "grain", "perMonth": 120 },
+        { "cargo": "livestock", "perMonth": 24 }
+      ],
+      "model": [
+        { "x": 0, "y": 0, "z": 0, "width": 4, "depth": 4, "height": 1, "color": "#C9B85A" },
+        { "x": -1, "y": 1, "z": 0, "width": 2, "depth": 2, "height": 2, "color": "#A33C32" },
+        { "x": 1, "y": 1, "z": -1, "width": 1, "depth": 1, "height": 3, "color": "#9A9A9A" }
+      ],
+      "stock": [
+        { "cargo": "grain", "capacity": 600 },
+        { "cargo": "livestock", "capacity": 120 }
+      ]
+    },
+    {
+      "id": "oil-well",
+      "nameKey": "industry.oil-well",
+      "footprint": [3, 3],
+      "siteKinds": ["coast"],
+      "era": [1900, 9999],
+      "weight": 10,
+      "production": [{ "cargo": "oil", "perMonth": 150 }],
+      "model": [
+        { "x": 0, "y": 0, "z": 0, "width": 3, "depth": 3, "height": 1, "color": "#6A6A62" },
+        { "x": 0, "y": 1, "z": 0, "width": 1, "depth": 1, "height": 4, "color": "#2A2A2A" },
+        { "x": 0, "y": 1, "z": 1, "width": 2, "depth": 2, "height": 1, "color": "#3A3A3A" }
+      ],
+      "stock": [{ "cargo": "oil", "capacity": 750 }]
+    },
+    {
+      "id": "power-station",
+      "nameKey": "industry.power-station",
+      "footprint": [4, 4],
+      "siteKinds": ["plain"],
+      "era": [1900, 9999],
+      "weight": 8,
+      "accepts": ["coal"],
+      "model": [
+        { "x": 0, "y": 0, "z": 0, "width": 4, "depth": 4, "height": 2, "color": "#8A8A86" },
+        { "x": 1, "y": 2, "z": -1, "width": 1, "depth": 1, "height": 4, "color": "#5A5A5A" },
+        { "x": -1, "y": 2, "z": 1, "width": 2, "depth": 2, "height": 1, "color": "#B0B0AC" }
+      ]
+    },
+    {
+      "id": "sawmill",
+      "nameKey": "industry.sawmill",
+      "footprint": [4, 3],
+      "siteKinds": ["plain", "forest"],
+      "era": [1800, 9999],
+      "weight": 9,
+      "accepts": ["wood"],
+      "recipes": [{ "input": "wood", "inputAmount": 4, "output": "lumber", "outputAmount": 3 }],
+      "model": [
+        { "x": 0, "y": 0, "z": 0, "width": 4, "depth": 3, "height": 2, "color": "#8A6A45" },
+        { "x": 0, "y": 2, "z": 0, "width": 4, "depth": 3, "height": 1, "color": "#5B4630" },
+        { "x": -1, "y": 0, "z": 1, "width": 2, "depth": 1, "height": 1, "color": "#C0A070" }
+      ],
+      "stock": [
+        { "cargo": "wood", "capacity": 400 },
+        { "cargo": "lumber", "capacity": 600 }
+      ]
+    },
+    {
+      "id": "steel-mill",
+      "nameKey": "industry.steel-mill",
+      "footprint": [4, 4],
+      "siteKinds": ["plain"],
+      "era": [1850, 9999],
+      "weight": 7,
+      "accepts": ["iron-ore", "coal"],
+      "recipes": [{ "input": "iron-ore", "inputAmount": 3, "output": "steel", "outputAmount": 2 }],
+      "model": [
+        { "x": 0, "y": 0, "z": 0, "width": 4, "depth": 4, "height": 3, "color": "#6E747A" },
+        { "x": 1, "y": 3, "z": -1, "width": 1, "depth": 1, "height": 4, "color": "#3E444A" },
+        { "x": -1, "y": 0, "z": 1, "width": 2, "depth": 2, "height": 1, "color": "#8C6A55" }
+      ],
+      "stock": [
+        { "cargo": "iron-ore", "capacity": 450 },
+        { "cargo": "steel", "capacity": 600 }
+      ]
+    },
+    {
+      "id": "refinery",
+      "nameKey": "industry.refinery",
+      "footprint": [4, 4],
+      "siteKinds": ["coast", "plain"],
+      "era": [1920, 9999],
+      "weight": 7,
+      "accepts": ["oil"],
+      "recipes": [{ "input": "oil", "inputAmount": 3, "output": "fuel", "outputAmount": 2 }],
+      "model": [
+        { "x": 0, "y": 0, "z": 0, "width": 4, "depth": 4, "height": 2, "color": "#9A9A94" },
+        { "x": 0, "y": 2, "z": 0, "width": 1, "depth": 1, "height": 4, "color": "#C8C8C0" },
+        { "x": -1, "y": 2, "z": 1, "width": 2, "depth": 2, "height": 1, "color": "#7A7A74" }
+      ],
+      "stock": [
+        { "cargo": "oil", "capacity": 450 },
+        { "cargo": "fuel", "capacity": 600 }
+      ]
+    },
+    {
+      "id": "factory",
+      "nameKey": "industry.factory",
+      "footprint": [4, 4],
+      "siteKinds": ["plain"],
+      "era": [1930, 9999],
+      "weight": 8,
+      "accepts": ["steel"],
+      "recipes": [{ "input": "steel", "inputAmount": 3, "output": "goods", "outputAmount": 2 }],
+      "model": [
+        { "x": 0, "y": 0, "z": 0, "width": 4, "depth": 4, "height": 2, "color": "#B0A898" },
+        { "x": 0, "y": 2, "z": 0, "width": 4, "depth": 4, "height": 1, "color": "#7A7264" },
+        { "x": 1, "y": 3, "z": -1, "width": 1, "depth": 1, "height": 3, "color": "#4A4440" }
+      ],
+      "stock": [
+        { "cargo": "steel", "capacity": 450 },
+        { "cargo": "goods", "capacity": 600 }
+      ]
+    },
+    {
+      "id": "food-plant",
+      "nameKey": "industry.food-plant",
+      "footprint": [4, 3],
+      "siteKinds": ["plain"],
+      "era": [1900, 9999],
+      "weight": 8,
+      "accepts": ["grain", "livestock"],
+      "recipes": [
+        { "input": "grain", "inputAmount": 4, "output": "food", "outputAmount": 3 },
+        { "input": "livestock", "inputAmount": 3, "output": "food", "outputAmount": 2 }
+      ],
+      "model": [
+        { "x": 0, "y": 0, "z": 0, "width": 4, "depth": 3, "height": 2, "color": "#D8D0C0" },
+        { "x": 0, "y": 2, "z": 0, "width": 4, "depth": 3, "height": 1, "color": "#8A8274" },
+        { "x": -1, "y": 0, "z": 1, "width": 2, "depth": 2, "height": 2, "color": "#A8A092" }
+      ],
+      "stock": [
+        { "cargo": "grain", "capacity": 400 },
+        { "cargo": "livestock", "capacity": 120 },
+        { "cargo": "food", "capacity": 600 }
+      ]
+    }
+  ]
+}

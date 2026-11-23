@@ -1,0 +1,147 @@
+{
+  "cargo": [
+    {
+      "id": "passengers",
+      "nameKey": "cargo.passengers",
+      "category": "passenger",
+      "unitKey": "unit.passengers",
+      "destinationRequired": true,
+      "valueDecayPerDayPerMille": 60,
+      "minimumValuePercent": 25,
+      "color": "#2E77C8",
+      "vehicleKinds": ["road", "rail", "ship", "air"]
+    },
+    {
+      "id": "mail",
+      "nameKey": "cargo.mail",
+      "category": "mail",
+      "unitKey": "unit.bags",
+      "destinationRequired": true,
+      "valueDecayPerDayPerMille": 40,
+      "minimumValuePercent": 30,
+      "color": "#E8D34A",
+      "vehicleKinds": ["road", "rail", "ship", "air"]
+    },
+    {
+      "id": "coal",
+      "nameKey": "cargo.coal",
+      "category": "raw",
+      "unitKey": "unit.tonnes",
+      "destinationRequired": false,
+      "valueDecayPerDayPerMille": 4,
+      "minimumValuePercent": 35,
+      "color": "#3B3B3B",
+      "vehicleKinds": ["road", "rail", "ship"]
+    },
+    {
+      "id": "wood",
+      "nameKey": "cargo.wood",
+      "category": "raw",
+      "unitKey": "unit.tonnes",
+      "destinationRequired": false,
+      "valueDecayPerDayPerMille": 4,
+      "minimumValuePercent": 35,
+      "color": "#7A5230",
+      "vehicleKinds": ["road", "rail", "ship"]
+    },
+    {
+      "id": "iron-ore",
+      "nameKey": "cargo.iron-ore",
+      "category": "raw",
+      "unitKey": "unit.tonnes",
+      "destinationRequired": false,
+      "valueDecayPerDayPerMille": 3,
+      "minimumValuePercent": 40,
+      "color": "#8C6A55",
+      "vehicleKinds": ["road", "rail", "ship"]
+    },
+    {
+      "id": "grain",
+      "nameKey": "cargo.grain",
+      "category": "raw",
+      "unitKey": "unit.tonnes",
+      "destinationRequired": false,
+      "valueDecayPerDayPerMille": 6,
+      "minimumValuePercent": 30,
+      "color": "#D9B84A",
+      "vehicleKinds": ["road", "rail", "ship"]
+    },
+    {
+      "id": "livestock",
+      "nameKey": "cargo.livestock",
+      "category": "raw",
+      "unitKey": "unit.heads",
+      "destinationRequired": false,
+      "valueDecayPerDayPerMille": 10,
+      "minimumValuePercent": 25,
+      "color": "#B98A6B",
+      "vehicleKinds": ["road"]
+    },
+    {
+      "id": "oil",
+      "nameKey": "cargo.oil",
+      "category": "raw",
+      "unitKey": "unit.tonnes",
+      "destinationRequired": false,
+      "valueDecayPerDayPerMille": 8,
+      "minimumValuePercent": 30,
+      "color": "#1F2326",
+      "vehicleKinds": ["road", "rail", "ship"]
+    },
+    {
+      "id": "steel",
+      "nameKey": "cargo.steel",
+      "category": "processed",
+      "unitKey": "unit.tonnes",
+      "destinationRequired": false,
+      "valueDecayPerDayPerMille": 4,
+      "minimumValuePercent": 50,
+      "color": "#8A9199",
+      "vehicleKinds": ["road", "rail", "ship"]
+    },
+    {
+      "id": "lumber",
+      "nameKey": "cargo.lumber",
+      "category": "processed",
+      "unitKey": "unit.tonnes",
+      "destinationRequired": false,
+      "valueDecayPerDayPerMille": 4,
+      "minimumValuePercent": 50,
+      "color": "#A97C50",
+      "vehicleKinds": ["road", "rail", "ship"]
+    },
+    {
+      "id": "fuel",
+      "nameKey": "cargo.fuel",
+      "category": "processed",
+      "unitKey": "unit.tonnes",
+      "destinationRequired": false,
+      "valueDecayPerDayPerMille": 12,
+      "minimumValuePercent": 30,
+      "color": "#C46A2A",
+      "vehicleKinds": ["road", "rail", "ship"]
+    },
+    {
+      "id": "food",
+      "nameKey": "cargo.food",
+      "category": "processed",
+      "unitKey": "unit.tonnes",
+      "destinationRequired": false,
+      "valueDecayPerDayPerMille": 15,
+      "minimumValuePercent": 25,
+      "color": "#5FA84F",
+      "vehicleKinds": ["road", "rail", "ship"]
+    },
+    {
+      "id": "goods",
+      "nameKey": "cargo.goods",
+      "category": "goods",
+      "unitKey": "unit.crates",
+      "destinationRequired": true,
+      "valueDecayPerDayPerMille": 10,
+      "minimumValuePercent": 20,
+      "color": "#B45FA8",
+      "vehicleKinds": ["road", "rail"]
+    }
+  ]
+}

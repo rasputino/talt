@@ -59,6 +59,13 @@ public sealed class StateHasher
         _hash.Append(MemoryMarshal.AsBytes(values));
     }
 
+    /// <summary>Appends a string as UTF-8 (content ids and keys; not used in per-tick state).</summary>
+    public void Append(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        _hash.Append(System.Text.Encoding.UTF8.GetBytes(value));
+    }
+
     public void Append(IStateHashable part)
     {
         ArgumentNullException.ThrowIfNull(part);

@@ -66,6 +66,12 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
     private int _instanceCapacity;
     private int _instanceCount;
 
+    private ShaderModule* _industryShader;
+    private RenderPipeline* _industryPipeline;
+    private Buffer* _industryBuffer;
+    private int _industryCapacity;
+    private int _industryCount;
+
     private Texture* _depthTexture;
     private TextureView* _depthView;
     private Vector2D<int> _size;
@@ -93,6 +99,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         Resize(window.FramebufferSize);
         CreatePipeline();
         CreateVehiclePipeline();
+        CreateIndustryPipeline();
         _highlightRenderer = new HighlightRenderer(_wgpu, _device, _queue, _pipelineLayout, _surfaceFormat, DepthFormat);
     }
 
@@ -122,6 +129,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _worldRenderer.Dispose();
         _worldRenderer = null;
         _instanceCount = 0;
+        _industryCount = 0;
         _highlightRenderer?.Update([], Vector3.Zero);
     }
 
@@ -198,6 +206,40 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             fixed (VehicleInstance* data = instances)
             {
                 _wgpu.QueueWriteBuffer(_queue, _instanceBuffer, 0, data, (nuint)(_instanceCount * sizeof(VehicleInstance)));
+            }
+        }
+    }
+
+    /// <summary>Replaces the industry boxes drawn in the next frames. Grows the GPU buffer when needed.</summary>
+    public void UpdateIndustries(ReadOnlySpan<IndustryInstance> instances)
+    {
+        if (_disposed || _size.X <= 0 || _size.Y <= 0)
+        {
+            return;
+        }
+
+        if (instances.Length > _industryCapacity)
+        {
+            if (_industryBuffer != null)
+            {
+                _wgpu.BufferRelease(_industryBuffer);
+            }
+
+            _industryCapacity = Math.Max(instances.Length, _industryCapacity * 2);
+            var descriptor = new BufferDescriptor
+            {
+                Usage = BufferUsage.Vertex | BufferUsage.CopyDst,
+                Size = (ulong)(_industryCapacity * sizeof(IndustryInstance)),
+            };
+            _industryBuffer = _wgpu.DeviceCreateBuffer(_device, &descriptor);
+        }
+
+        _industryCount = instances.Length;
+        if (_industryCount > 0)
+        {
+            fixed (IndustryInstance* data = instances)
+            {
+                _wgpu.QueueWriteBuffer(_queue, _industryBuffer, 0, data, (nuint)(_industryCount * sizeof(IndustryInstance)));
             }
         }
     }
@@ -327,6 +369,15 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             _wgpu.RenderPassEncoderDrawIndexed(pass, _cubeIndexCount, (uint)_instanceCount, 0, 0, 0);
         }
 
+        if (world is not null && _industryCount > 0)
+        {
+            _wgpu.RenderPassEncoderSetPipeline(pass, _industryPipeline);
+            _wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, _cubeVertexBuffer, 0, _cubeVertexBytes);
+            _wgpu.RenderPassEncoderSetVertexBuffer(pass, 1, _industryBuffer, 0, (ulong)(_industryCount * sizeof(IndustryInstance)));
+            _wgpu.RenderPassEncoderSetIndexBuffer(pass, _cubeIndexBuffer, IndexFormat.Uint16, 0, _cubeIndexCount * sizeof(ushort));
+            _wgpu.RenderPassEncoderDrawIndexed(pass, _cubeIndexCount, (uint)_industryCount, 0, 0, 0);
+        }
+
         if (world is not null)
         {
             _wgpu.RenderPassEncoderSetBindGroup(pass, 0, _bindGroup, 0, null);
@@ -393,10 +444,17 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
             _wgpu.BufferRelease(_instanceBuffer);
         }
 
+        if (_industryBuffer != null)
+        {
+            _wgpu.BufferRelease(_industryBuffer);
+        }
+
         _wgpu.BufferRelease(_cubeVertexBuffer);
         _wgpu.BufferRelease(_cubeIndexBuffer);
         _wgpu.RenderPipelineRelease(_vehiclePipeline);
         _wgpu.ShaderModuleRelease(_vehicleShader);
+        _wgpu.RenderPipelineRelease(_industryPipeline);
+        _wgpu.ShaderModuleRelease(_industryShader);
 
         _wgpu.BindGroupRelease(_bindGroup);
         _wgpu.BufferRelease(_uniformBuffer);
@@ -578,6 +636,25 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _cubeIndexBuffer = CreateBuffer(indices, BufferUsage.Index | BufferUsage.CopyDst);
         _cubeVertexBytes = (ulong)(vertices.Length * sizeof(float));
         _cubeIndexCount = (uint)indices.Length;
+    }
+
+    /// <summary>Pipeline for industries: a unit cube per model box, with per-instance extent and colour.</summary>
+    private void CreateIndustryPipeline()
+    {
+        _industryShader = CreateShaderModule(LoadShaderSource("industries.wgsl"));
+
+        var cubeAttributes = stackalloc VertexAttribute[2];
+        cubeAttributes[0] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 0, ShaderLocation = 0 };
+        cubeAttributes[1] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 12, ShaderLocation = 1 };
+        var instanceAttributes = stackalloc VertexAttribute[3];
+        instanceAttributes[0] = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 0, ShaderLocation = 2 };
+        instanceAttributes[1] = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 16, ShaderLocation = 3 };
+        instanceAttributes[2] = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 32, ShaderLocation = 4 };
+
+        var layouts = stackalloc VertexBufferLayout[2];
+        layouts[0] = new VertexBufferLayout { ArrayStride = 24, StepMode = VertexStepMode.Vertex, AttributeCount = 2, Attributes = cubeAttributes };
+        layouts[1] = new VertexBufferLayout { ArrayStride = (ulong)sizeof(IndustryInstance), StepMode = VertexStepMode.Instance, AttributeCount = 3, Attributes = instanceAttributes };
+        _industryPipeline = CreateRenderPipeline(_industryShader, layouts, 2);
     }
 
     private RenderPipeline* CreateRenderPipeline(ShaderModule* shader, VertexBufferLayout* vertexLayouts, int layoutCount)

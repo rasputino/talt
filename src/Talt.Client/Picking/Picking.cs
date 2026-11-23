@@ -1,5 +1,6 @@
 using System.Numerics;
 using Talt.Client.Rendering;
+using Talt.Core.Industries;
 using Talt.Core.Terrain;
 using Talt.Core.Voxels;
 
@@ -38,6 +39,7 @@ internal enum PickKind
     Tile,
     Road,
     Vehicle,
+    Industry,
 }
 
 /// <summary>What is under the cursor (data-model.md Pick result).</summary>
@@ -48,23 +50,30 @@ internal readonly record struct PickResult(
     int Height,
     VoxelMaterial Material,
     int VehicleId,
+    int IndustryId,
     Vector3 BoundsMin,
     Vector3 BoundsMax,
     float Distance)
 {
-    public static readonly PickResult None = new(PickKind.None, 0, 0, 0, VoxelMaterial.Air, -1, default, default, float.PositiveInfinity);
+    public static readonly PickResult None = new(PickKind.None, 0, 0, 0, VoxelMaterial.Air, -1, -1, default, default, float.PositiveInfinity);
 
     /// <summary>Identity for "one window per object": same object, same key.</summary>
     public string Key => Kind switch
     {
         PickKind.Vehicle => $"vehicle:{VehicleId}",
+        PickKind.Industry => $"industry:{IndustryId}",
         PickKind.Road => $"road:{TileX},{TileZ}",
         PickKind.Tile => $"tile:{TileX},{TileZ}",
         _ => "none",
     };
 
-    public bool SameObject(in PickResult other) =>
-        Kind == other.Kind && (Kind == PickKind.Vehicle ? VehicleId == other.VehicleId : TileX == other.TileX && TileZ == other.TileZ);
+    public bool SameObject(in PickResult other) => Kind switch
+    {
+        PickKind.Vehicle => other.Kind == Kind && VehicleId == other.VehicleId,
+        PickKind.Industry => other.Kind == Kind && IndustryId == other.IndustryId,
+        PickKind.None => other.Kind == Kind,
+        _ => other.Kind == Kind && TileX == other.TileX && TileZ == other.TileZ,
+    };
 }
 
 /// <summary>Everything layers need to test a ray against this frame's world.</summary>
@@ -80,6 +89,9 @@ internal sealed class PickContext
     public int[] VehicleIds { get; set; } = [];
 
     public int VehicleCount { get; set; }
+
+    /// <summary>Industries of the game (feature 009).</summary>
+    public Talt.Core.Industries.IndustryFleet? Industries { get; set; }
 
     /// <summary>The terrain hit of this ray (computed first by <see cref="MapPicker"/>).</summary>
     public PickResult Terrain { get; set; } = PickResult.None;
@@ -145,7 +157,7 @@ internal sealed class TerrainPickLayer : IPickLayer
                 var hit = y0 <= height ? t0 : (height - ray.Origin.Y) / d.Y;
                 var material = height > 0 ? world.GetVoxel(x, height - 1, z) : VoxelMaterial.Air;
                 // Outline: a flat square on the tile's top face (a full voxel box looked like it floated).
-                return new PickResult(PickKind.Tile, x, z, height, material, -1,
+                return new PickResult(PickKind.Tile, x, z, height, material, -1, -1,
                     new Vector3(x, height - 0.02f, z), new Vector3(x + 1, height + 0.02f, z + 1), hit);
             }
 
@@ -304,7 +316,7 @@ internal sealed class VehiclePickLayer : IPickLayer
 
         var (boxMin, boxMax) = Box(vehicles[best], 1f);
         result = new PickResult(PickKind.Vehicle, (int)MathF.Floor(vehicles[best].Position.X), (int)MathF.Floor(vehicles[best].Position.Z),
-            0, VoxelMaterial.Air, context.VehicleIds[best], boxMin, boxMax, nearest);
+            0, VoxelMaterial.Air, context.VehicleIds[best], -1, boxMin, boxMax, nearest);
         return true;
     }
 
@@ -318,6 +330,69 @@ internal sealed class VehiclePickLayer : IPickLayer
 }
 
 /// <summary>
+/// Industries: ray against the footprint box of each open industry (feature 009). Priority sits
+/// between roads and vehicles, so a vehicle in front still wins.
+/// </summary>
+internal sealed class IndustryPickLayer : IPickLayer
+{
+    public int Priority => 75;
+
+    public bool TryPick(in Ray ray, PickContext context, out PickResult result)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        result = PickResult.None;
+        var industries = context.Industries;
+        if (industries is null || industries.Count == 0)
+        {
+            return false;
+        }
+
+        var nearest = float.PositiveInfinity;
+        var best = -1;
+        var bestMin = default(Vector3);
+        var bestMax = default(Vector3);
+        for (var slot = 0; slot < industries.Count; slot++)
+        {
+            if (!industries.FootprintBounds(slot, out var minX, out var minZ, out var maxX, out var maxZ))
+            {
+                continue;
+            }
+
+            var kind = industries.Content.IndustryKind(industries.KindIndexAt(slot));
+            var ground = context.Heightmap.Get(industries.XAt(slot), industries.ZAt(slot));
+            var min = new Vector3(minX, ground, minZ);
+            var max = new Vector3(maxX, ground + kind.ModelHeight, maxZ);
+            if (TerrainPickLayer.ClipToBox(ray, min, max, out var hit, out _) && hit < nearest)
+            {
+                nearest = hit;
+                best = slot;
+                bestMin = min;
+                bestMax = max;
+            }
+        }
+
+        if (best < 0)
+        {
+            return false;
+        }
+
+        var height = (int)bestMin.Y;
+        result = new PickResult(
+            PickKind.Industry,
+            industries.XAt(best),
+            industries.ZAt(best),
+            height,
+            VoxelMaterial.Air,
+            -1,
+            industries.IdAt(best),
+            bestMin,
+            bestMax,
+            nearest);
+        return true;
+    }
+}
+
+/// <summary>
 /// Finds the object under the cursor every frame (FR-008, research R5): the terrain is cast first,
 /// then every registered layer is asked; hits behind the terrain are hidden and ignored.
 /// </summary>
@@ -326,7 +401,7 @@ internal sealed class MapPicker
     /// <summary>A hit may be this far behind the terrain hit and still count (it stands on it).</summary>
     private const float OcclusionTolerance = 0.75f;
 
-    private readonly List<IPickLayer> _layers = [new TerrainPickLayer(), new RoadPickLayer(), new VehiclePickLayer()];
+    private readonly List<IPickLayer> _layers = [new TerrainPickLayer(), new RoadPickLayer(), new VehiclePickLayer(), new IndustryPickLayer()];
 
     /// <summary>Adds a kind of pickable object (stations, buildings... in later features).</summary>
     public void Register(IPickLayer layer) => _layers.Add(layer ?? throw new ArgumentNullException(nameof(layer)));

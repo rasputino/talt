@@ -23,6 +23,7 @@ dotnet build
 dotnet test
 dotnet run --project src/Talt.Client -c Release -- [chunks-per-side] [vehicles] [seed] [options]
 dotnet run --project tools/Talt.Headless -c Release -- run --ticks 10000
+dotnet run --project tools/Talt.Headless -c Release -- run --ticks 4000 --map-text T1-512x512-s7-r50-h28-w25-l7
 dotnet run --project benchmarks/Talt.Benchmarks -c Release -- --filter * --job short
 ```
 
@@ -42,7 +43,9 @@ Client options: `--start-year <year>`, `--language en|es` and `--ui-scale <0.75�
 (initial camera distance), `--ui-test-windows <n>` (opens sample windows to measure the interface).
 
 In game: the top bar shows money, date and speed buttons, the toolbar on the left opens settings and
-the other tools, and clicking the map selects the tile, road or vehicle under the cursor. Default keys:
+the other tools, and clicking the map selects the tile, road, vehicle or industry under the cursor
+(industries have their own information window with production, acceptance, recipes and last month's
+figures). Default keys:
 Space pause, `1`/`2`/`3` speed ×1/×3/×8, `F` fast forward (once unlocked), `N` add a vehicle, `Delete`
 remove the last vehicle you added, `Shift+Delete` close all windows, `F10` settings, `F3` render
 statistics, `PageUp`/`PageDown` raise/lower the tile under the camera (debug; Shift for a 32 × 32 area),
@@ -50,8 +53,9 @@ statistics, `PageUp`/`PageDown` raise/lower the tile under the camera (debug; Sh
 Settings → Key bindings; settings (language, currency, interface size, full screen, vertical sync) are
 saved in your user profile.
 
-`Talt.Headless` runs and replays simulations without a window (`run`, `replay`); see
-[the headless runner contract](specs/001-simulation-foundation/contracts/headless-cli.md).
+`Talt.Headless` runs and replays simulations without a window (`run`, `replay`). `run --map-text
+<T1-...>` generates the map and its industries; a run without it stays map-less and keeps the
+pre-009 fingerprints. See the [headless contract](specs/001-simulation-foundation/contracts/headless-cli.md).
 
 ## Inspiration
 
