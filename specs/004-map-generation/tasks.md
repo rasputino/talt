@@ -96,7 +96,7 @@
 - [x] T041 [P] Update `docs/ARCHITECTURE.md` (replace the "Terrain generation" section, project tree, map generation pipeline, settings text, limits, deferrals), `README.md`/`docs/SPECKIT_GUIDE.md` status lines if they list features, and the 004 checklist
 - [x] T042 Run the full suite (`dotnet test`, Headless tests, 5-platform CI expectations) and confirm the simulation golden fingerprints; if they changed, regenerate on purpose and note it for the commit message
 - [ ] T043 Launch the client in a terminal tab with three different seeds and ask the user for screenshots (synthetic input does not reach the window); list them in the PR body when the user asks for the PR
-- [ ] T044 Ask the user before any commit, push, PR or merge (project rule); prepare the commit message mentioning golden changes if any
+- [X] T044 Ask the user before any commit, push, PR or merge (project rule); prepare the commit message mentioning golden changes if any
 
 ## Dependencies and order
 

@@ -66,7 +66,7 @@
 - [X] T021 Update "Verification status" in `docs/ARCHITECTURE.md` with the macOS and ARM64 CI results (fingerprints, test counts, run date) and any gap
 - [X] T022 Update the T062 status note in `specs/001-simulation-foundation/tasks.md` (and the cross-platform step in `specs/001-simulation-foundation/quickstart.md`) with the CI results; mark T062 done only if macOS and ARM64 are covered or the gap is explicitly accepted
 - [X] T023 Add a CI badge or short CI note to `README.md` if it documents building; run the full quickstart validation and mark this feature's tasks complete
-- [ ] T024 Ask the user whether to commit and whether to open a pull request (no commit, push or PR without their yes)
+- [X] T024 Ask the user whether to commit and whether to open a pull request (no commit, push or PR without their yes)
 
 ## Dependencies and execution order
 
