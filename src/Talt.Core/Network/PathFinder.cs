@@ -9,7 +9,11 @@ namespace Talt.Core.Network;
 /// Reuses its internal buffers between searches, so a search allocates nothing beyond growing the
 /// caller's output list. Not thread safe: use one instance per thread.
 /// A "visit stamp" marks which entries belong to the current search, so buffers never need clearing.
-/// Ties in the priority queue are broken by node index, so results are deterministic.
+/// The heuristic of each node is computed once per search (when the node is first reached) and
+/// cached, because its integer square root is the most expensive step of an expansion.
+/// Ties in the priority queue are broken by node index, so results are deterministic. Within one
+/// search every (priority, node) key is unique (a node is queued again only with a strictly lower
+/// cost), so the order of expansions does not depend on how the queue is implemented.
 /// </remarks>
 public sealed class PathFinder
 {
@@ -17,7 +21,8 @@ public sealed class PathFinder
     private readonly long[] _cost;
     private readonly int[] _cameFromEdge;
     private readonly int[] _stamp;
-    private readonly PriorityQueue<int, (long Priority, int Node)> _open = new();
+    private readonly long[] _heuristic;
+    private readonly MinHeap _open = new();
     private int _currentStamp;
 
     public PathFinder(TransportNetwork network)
@@ -28,6 +33,7 @@ public sealed class PathFinder
         _cost = new long[network.NodeCount];
         _cameFromEdge = new int[network.NodeCount];
         _stamp = new int[network.NodeCount];
+        _heuristic = new long[network.NodeCount];
     }
 
     /// <summary>Number of nodes expanded by the last search. Useful for benchmarks.</summary>
@@ -55,13 +61,13 @@ public sealed class PathFinder
         _open.Clear();
         var goalPosition = _network.NodePosition(goal);
 
-        Visit(start, 0, -1);
-        _open.Enqueue(start, (Heuristic(start, goalPosition), start));
+        Reach(start, 0, -1, goalPosition);
+        _open.Enqueue(_heuristic[start], start);
 
-        while (_open.TryDequeue(out var node, out var key))
+        while (_open.TryDequeue(out var node, out var priority))
         {
             // Lazy deletion: skip queue entries made obsolete by a cheaper path found later.
-            if (key.Priority > _cost[node] + Heuristic(node, goalPosition))
+            if (priority > _cost[node] + _heuristic[node])
             {
                 continue;
             }
@@ -77,10 +83,16 @@ public sealed class PathFinder
             {
                 var next = _network.EdgeTo(edge);
                 var cost = _cost[node] + _network.EdgeLength(edge);
-                if (_stamp[next] != _currentStamp || cost < _cost[next])
+                if (_stamp[next] != _currentStamp)
                 {
-                    Visit(next, cost, edge);
-                    _open.Enqueue(next, (cost + Heuristic(next, goalPosition), next));
+                    Reach(next, cost, edge, goalPosition);
+                    _open.Enqueue(cost + _heuristic[next], next);
+                }
+                else if (cost < _cost[next])
+                {
+                    _cost[next] = cost;
+                    _cameFromEdge[next] = edge;
+                    _open.Enqueue(cost + _heuristic[next], next);
                 }
             }
         }
@@ -88,11 +100,13 @@ public sealed class PathFinder
         return false;
     }
 
-    private void Visit(int node, long cost, int fromEdge)
+    /// <summary>First time <paramref name="node"/> is reached in this search.</summary>
+    private void Reach(int node, long cost, int fromEdge, GridPoint goal)
     {
         _stamp[node] = _currentStamp;
         _cost[node] = cost;
         _cameFromEdge[node] = fromEdge;
+        _heuristic[node] = Heuristic(node, goal);
     }
 
     /// <summary>
@@ -124,5 +138,97 @@ public sealed class PathFinder
             Array.Clear(_stamp);
             _currentStamp = 1;
         }
+    }
+
+    /// <summary>
+    /// Binary min-heap ordered by (priority, node). Faster than <see cref="PriorityQueue{TElement, TPriority}"/>
+    /// with a tuple priority because comparisons are inlined; keeps its storage between searches.
+    /// </summary>
+    private sealed class MinHeap
+    {
+        private long[] _priorities = new long[1024];
+        private int[] _nodes = new int[1024];
+        private int _count;
+
+        public void Clear() => _count = 0;
+
+        public void Enqueue(long priority, int node)
+        {
+            if (_count == _nodes.Length)
+            {
+                Array.Resize(ref _priorities, _count * 2);
+                Array.Resize(ref _nodes, _count * 2);
+            }
+
+            // Sift up.
+            var index = _count++;
+            while (index > 0)
+            {
+                var parent = (index - 1) >> 1;
+                if (!Less(priority, node, _priorities[parent], _nodes[parent]))
+                {
+                    break;
+                }
+
+                _priorities[index] = _priorities[parent];
+                _nodes[index] = _nodes[parent];
+                index = parent;
+            }
+
+            _priorities[index] = priority;
+            _nodes[index] = node;
+        }
+
+        public bool TryDequeue(out int node, out long priority)
+        {
+            if (_count == 0)
+            {
+                node = 0;
+                priority = 0;
+                return false;
+            }
+
+            node = _nodes[0];
+            priority = _priorities[0];
+
+            // Move the last entry to the root and sift it down.
+            var count = --_count;
+            if (count > 0)
+            {
+                var lastPriority = _priorities[count];
+                var lastNode = _nodes[count];
+                var index = 0;
+                while (true)
+                {
+                    var child = (index << 1) + 1;
+                    if (child >= count)
+                    {
+                        break;
+                    }
+
+                    if (child + 1 < count && Less(_priorities[child + 1], _nodes[child + 1], _priorities[child], _nodes[child]))
+                    {
+                        child++;
+                    }
+
+                    if (!Less(_priorities[child], _nodes[child], lastPriority, lastNode))
+                    {
+                        break;
+                    }
+
+                    _priorities[index] = _priorities[child];
+                    _nodes[index] = _nodes[child];
+                    index = child;
+                }
+
+                _priorities[index] = lastPriority;
+                _nodes[index] = lastNode;
+            }
+
+            return true;
+        }
+
+        private static bool Less(long priorityA, int nodeA, long priorityB, int nodeB) =>
+            priorityA < priorityB || (priorityA == priorityB && nodeA < nodeB);
     }
 }
