@@ -9,7 +9,8 @@ Talt.slnx
 ├── src/
 │   ├── Talt.Core/          Game logic. No graphics, no window, no platform code.
 │   │   ├── Voxels/         Chunk, ChunkCoord, RegionCoord, VoxelWorld, VoxelMaterial
-│   │   ├── Terrain/        ValueNoise, TerrainGenerator, Heightmap, TerrainEditor (debug edits)
+│   │   ├── Terrain/        ValueNoise, Heightmap, TerrainEditor (debug edits)
+│   │   ├── Maps/           MapSettings, MapGenerator (+ Stages/), MapData, WorldBuilder (feature 004)
 │   │   ├── Meshing/        GreedyMesher, LodVolume, PackedVertex, PackedMesh, FaceDirections,
 │   │   │                   MaterialPalette; ChunkMesher/ChunkMesh/VoxelVertex (naive reference)
 │   │   ├── Network/        TransportNetwork (+ builder), GridPoint, PathFinder (A*),
@@ -55,11 +56,93 @@ testable without a GPU. The client depends on the core, never the other way arou
 - `VoxelWorld` is a sparse dictionary of chunks. Missing chunks are air.
 - `ChunkCoord.FromVoxel` uses floor division, so negative coordinates work.
 
-## Terrain generation
+## Map generation (feature 004)
 
-`TerrainGenerator` builds a heightmap from fractal value noise (`ValueNoise`) and fills columns:
-grass, snow or sand on top, dirt below, stone underneath, water up to the water level.
-Same seed, same terrain. This is prototype quality and will be replaced by a proper map generator.
+`Talt.Core.Maps` replaced the prototype `TerrainGenerator`. Design: `specs/004-map-generation/`
+(research R1–R13, data-model, contracts). Summary:
+
+- **Settings**: `MapSettings` (width and depth in tiles, multiples of 32, 64 to 16 384 – players 256 and
+  up; seed; roughness 0–100; maximum height 8–127; water amount 0–90 %; sea level). Validation errors
+  name the setting and its range. `ToText()`/`TryParse` turn a map into one shareable text such as
+  `T1-1024x512-s2026-r50-h28-w25-l7`; the leading `T1` is the generator version, bumped whenever the
+  same settings would produce a different map. `MapSettingsBuilder` parses the same option names for the
+  client and the headless tool.
+- **Result**: `MapData` holds five bytes per tile in separate arrays (ground height, terrain type, water
+  surface level, flags such as river/lake/cliff/buildable, scenery) plus the reserved `Site`s. Gameplay
+  reads it directly; voxels are only for drawing. `Fingerprint()` hashes all of it (determinism tests,
+  goldens).
+- **Stages** (`MapGenerator.Generate`, progress through `IProgress<MapGenerationProgress>`, cancellable):
+  1. *Terrain* – continents, hills (octaves driven by roughness) and ridged mountains from `ValueNoise`
+     with domain warping; a monotone histogram remap puts exactly the requested share of tiles under the
+     sea and the peak at the maximum height.
+  2. *Slopes* – a raster-scan distance transform lowers ground so neighbouring land tiles differ by at
+     most one voxel ("one step per tile"), except in rocky high cliff zones (two); sea tiles are never
+     touched, so the water share is exact. Tiles still steeper are flagged `Cliff` and not buildable.
+  3. *Water* – priority-flood from the sea: lakes (deep depressions at their spill level), levelled
+     shallow pits, and a drainage forest where every land tile points to its lowest neighbour. A smooth
+     sub-voxel jitter keeps flat ground from draining in straight lines.
+  4. *Rivers* – tiles with a large enough catchment become rivers; because every tile drains to the sea
+     or a lake, a river cannot dead-end. The water surface never rises downstream and is lowered (or the
+     bank raised) so no water floats above a lower bank; the bed is carved one voxel below the water.
+  5. *Surface* – water, beach (within 2 tiles of sea or lake and low), rock (cliffs and high rocky
+     patches), snow above the snow line (72 % of the land height range, never below sea level + 8), grass;
+     coast and buildable flags.
+  6. *Scenery* – forest density noise (wetter maps are more wooded) and one tree per tile at most, stored
+     as scenery data (kind and variant in one byte). Trees are not drawn yet: the renderer has no
+     instanced objects; removable scenery is the design (trees are not terrain voxels).
+  7. *Sites* – land is split into connected components; Poisson-disc sampling (Bridson, integer
+     arithmetic) places town sites only on the largest landmass and industry sites on components of at
+     least 2 000 tiles, on spots whose surrounding square (towns 9 × 9, industries 5 × 5) is buildable and
+     nearly flat, spaced by land area (towns about one per 25 000 land tiles, industries one per 16 000;
+     minimums 48/24/16 tiles). Industry sites are classified as coast, forest, hills or plain.
+- **Determinism**: float math is limited to `+ − × ÷`, `MathF.Sqrt`, floor and casts (no `Pow`, `Exp`,
+  trigonometry; a test scans the sources); parallel stages split the map into fixed 16-row bands that do
+  not depend on core count and sequential stages stay sequential. Tests compare 1, 3 and all threads, and
+  golden fingerprints (`MapGoldenTests`) run on every CI platform.
+- **World**: `WorldBuilder` creates the chunks (up to four stacked, 127 voxels fit one 128³ region column)
+  and fills them in parallel; `Heightmap.FromMapData` builds the camera/vehicle heightmap straight from the
+  tile data; `VoxelWorld.GetSurfaceHeight` searches from the top of the highest chunk.
+- **Tuning**: thresholds and densities live in `MapGenerationTuning` (changing a default alters maps and
+  needs a `GeneratorVersion` bump).
+
+### New game in the client (command line only for now)
+
+`Talt.Client` accepts `--map <N|WxD>`, `--seed`, `--roughness`, `--max-height`, `--water`, `--sea-level`
+and `--map-text`; without a seed a random one is chosen and printed with the map text. Progress is
+printed per stage (`[ 37%] Carving rivers`, localized en/es). `Talt.Headless map ...` generates without a
+window and prints stage timings, counts and the fingerprint (`--build-world` also times the voxel world;
+`--threads n` limits workers).
+
+**Deferred until after feature 005 (UI foundation)**: the in-window new-game screen (settings form with
+a progress bar) and the overview preview of the map before starting. The screen will build a
+`MapSettings`, call `MapGenerator.Generate` with an `IProgress` bound to its progress bar and then
+`WorldBuilder.Build`; the overview can be derived from `MapData` (terrain, heights, water level) without
+touching voxels. Drawing trees as instances is deferred to the rendering features.
+
+### Known limits
+
+- The prototype road grid (`GridNetworkGenerator`) still covers a square of `min(width, depth)` tiles and
+  ignores water and slopes; towns and roads placed on the reserved sites replace it in features 007–008.
+- Maps with a very large maximum height on a small map are clipped by the slope rule (a 127-voxel peak
+  needs at least 127 tiles of run, 64 on cliffs).
+
+## Map generation numbers
+
+Windows, AMD Ryzen/Radeon dev machine, BenchmarkDotNet short job (`MapGenerationBenchmarks`), default
+settings, all cores:
+
+| Map | Generate | Build voxel world | Allocated (generate / world) |
+|-----|---------:|------------------:|-----------------------------:|
+| 256 × 256 | 6 ms | 1 ms | 2.7 / 2.0 MB |
+| 1024 × 1024 | 102 ms | 27 ms | 40 / 32 MB |
+| 2048 × 2048 | 384 ms | 91 ms | 154 / 129 MB |
+| 4096 × 4096 | 2.0 s | 0.32 s | 577 / 515 MB |
+
+Budget: 4096 × 4096 in under 20 s – met with a factor of about 8 (2.3 s in total). Stage shares at 4096
+(`Talt.Headless map --map 4096`): terrain 19 %, slopes 4 %, water 45 %, rivers 15 %, surface 5 %,
+scenery 2 %, sites 9 %. With `--threads 1` and `--max-height 127` the same map takes 5.0 s, still far
+below budget. Client check (`--map 4096 --max-height 127 --stats`): 60 FPS, frame 16.7 ms (worst 19.6 ms),
+22 draws, 0.84 M triangles, world memory 176 MB, 0 B allocated per frame.
 
 ## Meshing
 

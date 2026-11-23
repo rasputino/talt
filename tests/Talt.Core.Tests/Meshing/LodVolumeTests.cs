@@ -71,7 +71,7 @@ public class LodVolumeTests
     [InlineData(3)]
     public void RoadGrid_StaysContinuous_AtEveryLevel(int lod)
     {
-        var world = TerrainGenerator.Generate(new TerrainSettings(Seed: 5, ChunksX: 4, ChunksZ: 4));
+        var world = Maps.TestWorlds.Square(4, 5);
         var network = GridNetworkGenerator.Generate(8, 8, spacingTiles: 16, seed: 1, removalChancePerMille: 0, originTileX: 8, originTileZ: 8);
         NetworkTerrainPainter.PaintRoads(world, network);
         var volume = LodVolume.Build(world, new RegionCoord(0, 0, 0), lod);

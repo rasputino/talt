@@ -1,4 +1,5 @@
 using BenchmarkDotNet.Attributes;
+using Talt.Core.Maps;
 using Talt.Core.Meshing;
 using Talt.Core.Network;
 using Talt.Core.Terrain;
@@ -25,7 +26,7 @@ public class ChunkMeshingBenchmarks
     [GlobalSetup]
     public void Setup()
     {
-        _world = TerrainGenerator.Generate(new TerrainSettings(Seed: 2026, ChunksX: 8, ChunksZ: 8));
+        _world = WorldBuilder.Build(MapGenerator.Generate(new MapSettings(256, 256, Seed: 2026)));
         var network = GridNetworkGenerator.Generate(16, 16, spacingTiles: 16, seed: 2026, originTileX: 8, originTileZ: 8);
         NetworkTerrainPainter.PaintRoads(_world, network);
         _chunks = [.. new RegionCoord(0, 0, 0).Chunks().Select(_world.GetChunk).OfType<Chunk>()];

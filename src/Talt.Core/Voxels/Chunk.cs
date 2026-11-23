@@ -46,6 +46,9 @@ public sealed class Chunk
     /// <summary>All voxels in index order (see the class remarks), for fast bulk reads.</summary>
     internal ReadOnlySpan<VoxelMaterial> Voxels => _voxels;
 
+    /// <summary>All voxels for bulk writing by the map builder (same layout as <see cref="Voxels"/>).</summary>
+    internal Span<VoxelMaterial> WritableVoxels => _voxels;
+
     internal static int Index(int x, int y, int z)
     {
         if ((uint)x >= Size || (uint)y >= Size || (uint)z >= Size)

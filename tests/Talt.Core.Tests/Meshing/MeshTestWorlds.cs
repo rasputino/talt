@@ -13,7 +13,7 @@ internal static class MeshTestWorlds
 
     public static VoxelWorld Hills(int chunks = 2, int seed = 7)
     {
-        var world = TerrainGenerator.Generate(new TerrainSettings(Seed: seed, ChunksX: chunks, ChunksZ: chunks));
+        var world = Maps.TestWorlds.Square(chunks, seed);
         return world;
     }
 

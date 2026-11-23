@@ -10,6 +10,18 @@ using Talt.Headless;
 // Exit codes: 0 success, 1 determinism failure, 2 invalid arguments or file, 3 unexpected error.
 try
 {
+    if (args.Length > 0 && args[0] == "map")
+    {
+        if (!MapCommand.TryParse(args, out var mapOptions, out var mapError))
+        {
+            Console.Error.WriteLine(mapError);
+            Console.Error.WriteLine(MapCommand.Usage);
+            return 2;
+        }
+
+        return MapCommand.Run(mapOptions!);
+    }
+
     if (!HeadlessArguments.TryParse(args, out var options, out var error))
     {
         Console.Error.WriteLine(error);

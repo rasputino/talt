@@ -13,6 +13,7 @@ namespace Talt.Core.Voxels;
 public sealed class VoxelWorld
 {
     private readonly Dictionary<ChunkCoord, Chunk> _chunks = [];
+    private int _topChunkY = -1;
 
     public IEnumerable<Chunk> Chunks => _chunks.Values;
 
@@ -26,6 +27,7 @@ public sealed class VoxelWorld
         {
             chunk = new Chunk(coord);
             _chunks.Add(coord, chunk);
+            _topChunkY = Math.Max(_topChunkY, coord.Y);
         }
 
         return chunk;
@@ -38,13 +40,17 @@ public sealed class VoxelWorld
         return chunk?.Get(x & Chunk.Mask, y & Chunk.Mask, z & Chunk.Mask) ?? VoxelMaterial.Air;
     }
 
+    /// <summary>Highest vertical chunk index that exists (-1 for an empty world).</summary>
+    public int TopChunkY => _topChunkY;
+
     /// <summary>
     /// Height of the first air voxel above the highest solid voxel in a column, searching down from
-    /// <paramref name="maxY"/>. Returns 0 when the column is empty.
+    /// <paramref name="maxY"/> (default: the top of the highest chunk). Returns 0 when the column is empty.
     /// </summary>
-    public int GetSurfaceHeight(int x, int z, int maxY = Chunk.Size - 1)
+    public int GetSurfaceHeight(int x, int z, int maxY = int.MaxValue)
     {
-        for (var y = maxY; y >= 0; y--)
+        var start = Math.Min(maxY, ((_topChunkY + 1) * Chunk.Size) - 1);
+        for (var y = start; y >= 0; y--)
         {
             if (GetVoxel(x, y, z).IsSolid())
             {

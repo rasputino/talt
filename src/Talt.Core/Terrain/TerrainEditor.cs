@@ -23,7 +23,7 @@ public static class TerrainEditor
         ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(heightmap);
 
-        if (!IsInside(world, heightmap, x, z, out var height) || height >= Chunk.Size)
+        if (!IsInside(world, heightmap, x, z, out var height) || world.GetChunk(ChunkCoord.FromVoxel(x, height, z)) is null)
         {
             return [];
         }

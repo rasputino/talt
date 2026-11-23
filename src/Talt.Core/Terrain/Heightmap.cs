@@ -1,3 +1,4 @@
+using Talt.Core.Maps;
 using Talt.Core.Voxels;
 
 namespace Talt.Core.Terrain;
@@ -34,6 +35,22 @@ public sealed class Heightmap
         });
 
         return new Heightmap(width, depth, heights);
+    }
+
+    /// <summary>Builds the heightmap straight from generated tile data (water surface where there is water).</summary>
+    public static Heightmap FromMapData(MapData map)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+
+        var heights = new int[map.Width * map.Depth];
+        var ground = map.Heights;
+        var water = map.WaterLevels;
+        for (var i = 0; i < heights.Length; i++)
+        {
+            heights[i] = Math.Max(ground[i], water[i]);
+        }
+
+        return new Heightmap(map.Width, map.Depth, heights);
     }
 
     /// <summary>Recomputes one column from the world after it changed. Columns outside the map are ignored.</summary>

@@ -38,5 +38,17 @@
   "stats.memory": "world {mb} MB",
   "stats.jobs": "{count} mesh jobs",
   "stats.allocated": "{bytes} B allocated per frame",
-  "edit.visible": "Edit visible after {ms} ms ({chunks} chunks rebuilt)."
+  "edit.visible": "Edit visible after {ms} ms ({chunks} chunks rebuilt).",
+  "stage.map.Terrain": "Shaping terrain",
+  "stage.map.Slopes": "Smoothing slopes",
+  "stage.map.Water": "Filling lakes",
+  "stage.map.Rivers": "Carving rivers",
+  "stage.map.Surface": "Painting the surface",
+  "stage.map.Scenery": "Planting trees",
+  "stage.map.Sites": "Choosing town and industry sites",
+  "stage.map.World": "Building the world",
+  "map.settings": "Map settings: {text}",
+  "map.progress": "[{percent}%] {stage}",
+  "map.generated": "Generated {width}x{depth} map: {rivers} river tiles, {towns} town sites, {industries} industry sites.",
+  "map.error": "Invalid map settings: {message}"
 }

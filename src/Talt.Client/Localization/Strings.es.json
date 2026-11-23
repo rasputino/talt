@@ -38,5 +38,17 @@
   "stats.memory": "mundo {mb} MB",
   "stats.jobs": "{count} trabajos de mallado",
   "stats.allocated": "{bytes} B reservados por fotograma",
-  "edit.visible": "Edición visible tras {ms} ms ({chunks} chunks reconstruidos)."
+  "edit.visible": "Edición visible tras {ms} ms ({chunks} chunks reconstruidos).",
+  "stage.map.Terrain": "Modelando el terreno",
+  "stage.map.Slopes": "Suavizando pendientes",
+  "stage.map.Water": "Llenando lagos",
+  "stage.map.Rivers": "Excavando ríos",
+  "stage.map.Surface": "Pintando la superficie",
+  "stage.map.Scenery": "Plantando árboles",
+  "stage.map.Sites": "Eligiendo solares de ciudades e industrias",
+  "stage.map.World": "Construyendo el mundo",
+  "map.settings": "Ajustes del mapa: {text}",
+  "map.progress": "[{percent}%] {stage}",
+  "map.generated": "Mapa de {width}x{depth} generado: {rivers} casillas de río, {towns} solares de ciudad, {industries} solares de industria.",
+  "map.error": "Ajustes de mapa no válidos: {message}"
 }

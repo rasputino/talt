@@ -29,6 +29,9 @@ dotnet run --project benchmarks/Talt.Benchmarks -c Release -- --filter * --job s
 Example: `dotnet run --project src/Talt.Client -c Release -- 16 20000` shows a 512 × 512 map with
 20 000 vehicles.
 
+New map from the command line (seed, size, roughness, height, water, sea level; the settings text is printed
+so a map can be shared): `dotnet run --project src/Talt.Client -c Release -- --map 1024x512 --seed 7 --water 35`.
+
 Client options: `--start-year <year>`, `--language en|es`, `--unlock-fast-forward` /
 `--lock-fast-forward` (saved in your settings), `--record [file]`, `--print-fingerprint-at <tick>`,
 `--stats` (render statistics from the start), `--zoom <distance|max>` (initial camera distance).

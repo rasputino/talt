@@ -8,7 +8,7 @@ public class TerrainEditorTests
 {
     private static (VoxelWorld World, Heightmap Map) CreateTerrain()
     {
-        var world = TerrainGenerator.Generate(new TerrainSettings(Seed: 9, ChunksX: 2, ChunksZ: 2));
+        var world = Maps.TestWorlds.Square(2, 9);
         return (world, Heightmap.FromWorld(world, 64, 64));
     }
 
