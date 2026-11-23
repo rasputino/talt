@@ -83,7 +83,11 @@ compressed vertices, LOD meshes for distant chunks.
 - Adjacency is stored in compressed sparse row (CSR) form: flat arrays, no per-node objects, so
   traversals are cache friendly and allocation free. `TransportNetworkBuilder` assembles it.
 - `PathFinder` runs A* with a straight-line heuristic. It reuses its buffers between searches (a
-  "visit stamp" avoids clearing them) and is not thread safe: one instance per thread.
+  "visit stamp" avoids clearing them) and is not thread safe: one instance per thread. The heuristic
+  of each node is computed once per search and cached (its integer square root was the costliest
+  step), and the open set is a small binary heap ordered by (priority, node). Within one search those
+  keys are unique, so the expansion order, and therefore every route, is fixed by the algorithm and
+  not by the queue implementation.
 - `GridNetworkGenerator` builds a synthetic road grid with some roads removed, for tests,
   benchmarks and the prototype. `NetworkTerrainPainter` turns the top voxel under each road into
   road material so the terrain mesher draws it.
@@ -165,6 +169,10 @@ junctions and there are no signals or blocks. Interactions are the next big step
 threat to parallelism, because neighbouring vehicles depend on each other.
 
 `SyntheticTraffic` creates random lines between junctions and spreads vehicles evenly along them.
+Pairs are drawn in batches no larger than the number of lines still missing, so no batch draws a pair
+the sequential loop would not have drawn and the random state afterwards is the same. The routes of
+a batch are searched in parallel (one `PathFinder` per worker, each route written to its own slot)
+and accepted in attempt order, so the fleet is identical with `parallel: false` (unit test).
 
 ## Benchmarks
 
@@ -185,15 +193,33 @@ Results on the development machine (AMD Ryzen 7 160, 8 cores / 16 threads), feat
 | Full `GameSimulation.Tick`, 1 000 000 vehicles | 23 ms | 5.5 ms | 6.0 ms (vehicles only) |
 | A* across the whole map (random pairs) | 1.27 ms per search | — | — |
 
+Scenario setup speed-up (same machine, 2026-11-22). `ScenarioSetupBenchmarks` builds
+the reference network and its 5 000 lines (10 000 A* routes) and 50 000 vehicles:
+
+| Measurement | Before | After |
+|---|---|---|
+| `PathFinderBenchmarks` A* across the whole map (in-process job) | 2.49 ms per search | 1.68 ms per search |
+| `ScenarioSetupBenchmarks.CreateSyntheticTraffic`, sequential | — | 22.6 s |
+| `ScenarioSetupBenchmarks.CreateSyntheticTraffic`, parallel | — | 2.0 s (92 MB allocated) |
+| `ScenarioSetupBenchmarks.GenerateNetwork` | — | 52 ms |
+| Headless reference run, `setup-ms` | 38.6 s and 56.7 s (two runs) | 2.4–2.7 s |
+
+Fingerprints are unchanged (`C0C656C5AB2D3302`, `C9F573FD7DE5CBE3`; `ci/check-fingerprints.ps1`
+passes, replay included). Timings on this laptop vary a lot between runs (the same A* benchmark gave
+1.27 ms in feature 001), so compare only numbers measured in the same session. Before and after the
+change were measured back to back. The "before" setup benchmark could not run: BenchmarkDotNet
+failed to build its boilerplate from a temporary folder, so the headless `setup-ms` is the "before"
+reference.
+
 No regression against the previous float prototype (constitution II): the integer simulation is as
 fast or faster. The full tick allocates only what `Parallel.For` itself needs (~2–5 KB per tick,
 independent of vehicle count).
 
 **Headless reference run:** `Talt.Headless run --map 4096 --vehicles 50000 --ticks 10000` simulates
 10 000 ticks in 2.7 s (0.27 ms per tick) with identical fingerprints in parallel and sequential mode.
-Scenario setup takes ~31 s, dominated by computing 5 000 long A* routes for the synthetic lines; real
-games will build lines from player actions, and cached hierarchical pathfinding (feature 007) will cut
-this further. Total run time stays under the 60 s target (SC-008).
+Scenario setup takes ~2.5 s (it took 26–57 s before the synthetic lines' 10 000 A* routes were
+searched in parallel with a faster A*); real games will build lines from player actions, and cached
+hierarchical pathfinding (feature 007) will cut this further. Total run time stays under the 60 s target (SC-008).
 
 ### Entity storage decision (research R5)
 
