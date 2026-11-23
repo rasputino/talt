@@ -47,16 +47,17 @@ Client options: `--start-year <year>`, `--language en|es` and `--ui-scale <0.75�
 In game: the top bar shows money, date and speed buttons, the toolbar on the left opens settings and
 the other tools, and clicking the map selects the tile, road, vehicle or industry under the cursor
 (industries have their own information window with production, acceptance, recipes and last month's
-figures). Default keys:
+figures). Construction tools (toolbar or keys): `PageUp` raise land, `PageDown` lower land, `L` level,
+`X` clear trees and demolish your own objects, `Backspace` undo the last construction for a few
+seconds. Hover to see a green/red preview with the cost, drag over an area, release to build, `Esc` or
+the right button to cancel; building works while paused. Default keys:
 Space pause, `1`/`2`/`3` speed ×1/×3/×8, `F` fast forward (once unlocked), `N` add a vehicle, `Delete`
 remove the last vehicle you added, `Shift+Delete` close all windows, `F10` settings, `F3` render
-statistics, `PageUp`/`PageDown` raise/lower the tile under the camera (debug; Shift for a 32 × 32 area),
-`Esc` close window / pause menu, mouse and WASD/arrows/Q/E for the camera. All keys can be changed in
-Settings → Key bindings; settings (language, currency, interface size, display, audio volumes and
-mute) are saved in your user profile. Audio starts in the main menu, follows the camera with
-countryside, water and town ambience plus nearby vehicle engines, and plays original music from a
-playlist; `Esc` opens the pause menu and settings has separate master, music, effects and ambient
-volumes.
+statistics, `Esc` close window / pause menu, mouse and WASD/arrows/Q/E for the camera. All keys can be
+changed in Settings → Key bindings; settings (language, currency, interface size, display, audio
+volumes and mute) are saved in your user profile. Audio starts in the main menu, follows the camera
+with countryside, water and town ambience plus nearby vehicle engines, and plays original music from a
+playlist; settings has separate master, music, effects and ambient volumes.
 
 `Talt.Headless` runs and replays simulations without a window (`run`, `replay`). `run --map-text
 <T1-...>` generates the map and its industries; a run without it stays map-less and keeps the

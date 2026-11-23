@@ -131,7 +131,9 @@ public class PickingTests
     public void EditedTerrain_IsPickedAtItsNewHeight()
     {
         var context = CreateWorld();
-        TerrainEditor.Raise(context.World, context.Heightmap, 6, 6);
+        // A raised column, as construction writes it (feature 006: voxels follow the tile data).
+        context.World.SetVoxel(6, context.Heightmap.Get(6, 6), 6, Talt.Core.Voxels.VoxelMaterial.Grass);
+        context.Heightmap.Refresh(context.World, 6, 6);
         var hit = new MapPicker().Pick(new Ray(new Vector3(6.5f, 100, 6.5f), -Vector3.UnitY), context);
         Assert.Equal(11, hit.Height);
     }

@@ -56,7 +56,8 @@ internal static class HeadlessArguments
         }
 
         var defaults = new ScenarioSettings();
-        int seed = defaults.Seed, map = defaults.MapSizeTiles, vehicles = defaults.VehicleCount, startYear = defaults.StartYear;
+        int seed = defaults.Seed, vehicles = defaults.VehicleCount, startYear = defaults.StartYear;
+        int? map = null;
         int? lines = null;
         long? ticks = null;
         var sequential = false;
@@ -105,7 +106,7 @@ internal static class HeadlessArguments
             return false;
         }
 
-        var settings = new ScenarioSettings(Seed: seed, StartYear: startYear, MapSizeTiles: map, VehicleCount: vehicles, LineCount: lines);
+        var settings = new ScenarioSettings(Seed: seed, StartYear: startYear, MapSizeTiles: map ?? defaults.MapSizeTiles, VehicleCount: vehicles, LineCount: lines);
         if (mapText is not null)
         {
             if (!MapSettings.TryParse(mapText, out var parsedMap, out var mapError))
@@ -114,8 +115,15 @@ internal static class HeadlessArguments
                 return false;
             }
 
-            settings = settings with { Map = parsedMap };
+            // The road network must fit inside the map (feature 006): without --map it covers the
+            // map's shorter side, as in the client's new-game options.
+            settings = settings with
+            {
+                Map = parsedMap,
+                MapSizeTiles = map ?? Math.Min(parsedMap!.Width, parsedMap.Depth),
+            };
         }
+
         if (command == HeadlessCommand.Run)
         {
             if (ticks is null)

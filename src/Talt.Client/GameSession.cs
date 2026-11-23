@@ -1,9 +1,11 @@
 using System.Diagnostics;
 using System.Numerics;
 using Talt.Client.Audio;
+using Talt.Client.Construction;
 using Talt.Client.Rendering;
 using Talt.Client.Ui;
 using Talt.Core.Commands;
+using Talt.Core.Construction;
 using Talt.Core.Determinism;
 using Talt.Core.Simulation;
 using Talt.Core.Terrain;
@@ -25,7 +27,6 @@ internal sealed record SessionOptions(
 internal sealed class GameSession
 {
     private const float LaneOffset = 0.22f; // Vehicles drive on the right half of the road.
-    private const int EditAreaSize = 32;    // Shift + PageUp/PageDown edits this many tiles per side.
     private const int BatchSize = 4096;
 
     private static readonly Vector4[] VehicleColors =
@@ -41,7 +42,7 @@ internal sealed class GameSession
     private readonly StopwatchTimeSource _time = new();
     private readonly Random _uiRandom = new(); // Never the simulation's generator (I1): choices travel inside commands.
     private readonly Stack<int> _playerAddedVehicles = new();
-    private readonly List<(int X, int Y, int Z)> _editedVoxels = [];
+    private readonly TerrainSync _terrainSync;
     private readonly Action<int> _buildInstancesBatch;
     private readonly SessionRecorder? _recorder;
 
@@ -69,6 +70,8 @@ internal sealed class GameSession
         Simulation = game.Simulation;
         Runner.SetFastForwardUnlocked(fastForwardUnlocked);
         Simulation.CommandProcessed += OnCommandProcessed;
+        Construction = Simulation.Construction ?? throw new ArgumentException("A client game needs a map.", nameof(game));
+        _terrainSync = new TerrainSync(Construction, game.World, game.Heightmap);
         _buildInstancesBatch = BuildInstancesBatch;
         if (options.RecordPath is not null)
         {
@@ -91,6 +94,15 @@ internal sealed class GameSession
     public VoxelWorld World => Game.World;
 
     public Heightmap Heightmap => Game.Heightmap;
+
+    /// <summary>Tile data, companies and undo of the game (feature 006).</summary>
+    public ConstructionState Construction { get; }
+
+    /// <summary>Changes whenever trees or tile objects may have changed (tree instances are rebuilt).</summary>
+    public int SceneryVersion => _terrainSync.SceneryVersion;
+
+    /// <summary>Raised with the changed voxels after construction changed the terrain (for the renderer).</summary>
+    public event Action<IReadOnlyList<(int X, int Y, int Z)>>? TerrainChanged;
 
     /// <summary>Vehicles as drawn this frame (for rendering and picking).</summary>
     public ReadOnlySpan<VehicleInstance> Instances => _instances.AsSpan(0, _drawCount);
@@ -127,6 +139,16 @@ internal sealed class GameSession
         {
             CaptureCurrentPoses();
         }
+        else if (Runner.IsPaused && Simulation.PendingCommandCount > 0)
+        {
+            Simulation.ProcessPendingCommands(); // Construction applies at once while paused (FR-018).
+        }
+
+        var voxels = _terrainSync.Sync();
+        if (voxels.Count > 0)
+        {
+            TerrainChanged?.Invoke(voxels);
+        }
 
         return stats;
     }
@@ -147,28 +169,8 @@ internal sealed class GameSession
         }
     }
 
-    /// <summary>
-    /// Debug terrain edit around a tile (feature 003 FR-009). Terrain is not simulation state, so this
-    /// does not go through the command queue and does not affect determinism. Returns the changed voxels.
-    /// </summary>
-    public IReadOnlyList<(int X, int Y, int Z)> EditTerrain(Vector3 target, bool raise, bool area)
-    {
-        var size = area ? EditAreaSize : 1;
-        var x0 = (int)MathF.Floor(target.X) - size / 2;
-        var z0 = (int)MathF.Floor(target.Z) - size / 2;
-        _editedVoxels.Clear();
-        for (var z = z0; z < z0 + size; z++)
-        {
-            for (var x = x0; x < x0 + size; x++)
-            {
-                _editedVoxels.AddRange(raise
-                    ? TerrainEditor.Raise(World, Heightmap, x, z)
-                    : TerrainEditor.Lower(World, Heightmap, x, z));
-            }
-        }
-
-        return _editedVoxels;
-    }
+    /// <summary>Queues a player command (construction tools).</summary>
+    public void Submit(ISimulationCommand command) => Simulation.Submit(command);
 
     /// <summary>Interpolates the two snapshots and builds this frame's vehicle instances (parallel batches).</summary>
     public void BuildInstances()
@@ -217,11 +219,22 @@ internal sealed class GameSession
         var command = processed.Command.TypeName;
         var reason = processed.Result.ReasonCode;
         var succeeded = processed.Result.Succeeded;
-        CommandFeedback?.Invoke(succeeded, AudioCommandClassifier.IsConstruction(command));
+        var isConstruction = processed.Command is ConstructionCommand || AudioCommandClassifier.IsConstruction(command);
+        CommandFeedback?.Invoke(succeeded, isConstruction);
+        if (succeeded && processed.Command is ConstructionCommand)
+        {
+            return; // The preview already showed what happens and the money changes in the top bar.
+        }
+
         Message?.Invoke(TextRef.Dynamic(() => 0, s => succeeded
             ? s.Format("command.applied", ("command", s.Get($"command.{command}")))
-            : s.Format("command.rejected", ("reason", s.Contains($"command.rejected.{reason}") ? s.Get($"command.rejected.{reason}") : s.Get("command.rejected.unknown")))));
+            : s.Format("command.rejected", ("reason", RejectionText(s, reason)))));
     }
+
+    private static string RejectionText(Localization.Strings s, string? reason) =>
+        s.Contains($"command.rejected.{reason}") ? s.Get($"command.rejected.{reason}")
+        : s.Contains($"construction.reason.{reason}") ? s.Get($"construction.reason.{reason}")
+        : s.Get("command.rejected.unknown");
 
     /// <summary>
     /// Called right before the last tick of a frame: the current snapshot becomes "previous". When it

@@ -77,6 +77,9 @@ public static class GreedyMesher
     /// Copies the chunk plus a one-voxel border into <paramref name="volume"/>. Returns false when the
     /// chunk has no solid voxel (nothing to draw).
     /// </summary>
+    [ThreadStatic]
+    private static Chunk?[]? t_neighbours;
+
     private static bool CopyChunkPadded(VoxelWorld world, ChunkCoord coord, VoxelMaterial[] volume)
     {
         var chunk = world.GetChunk(coord);
@@ -88,6 +91,14 @@ public static class GreedyMesher
         var (ox, oy, oz) = coord.Origin;
         var voxels = chunk.Voxels;
         var anySolid = false;
+
+        // The 26 neighbours are looked up once per chunk, not once per border voxel (feature 006: the
+        // chunk dictionary became concurrent, which made each lookup dearer).
+        var neighbours = t_neighbours ??= new Chunk?[27];
+        for (var n = 0; n < 27; n++)
+        {
+            neighbours[n] = n == 13 ? chunk : world.GetChunk(new ChunkCoord(coord.X + (n % 3) - 1, coord.Y + ((n / 3) % 3) - 1, coord.Z + (n / 9) - 1));
+        }
 
         for (var py = 0; py < ChunkPadded; py++)
         {
@@ -113,7 +124,8 @@ public static class GreedyMesher
                     }
                     else
                     {
-                        material = world.GetVoxel(ox + x, oy + y, oz + z);
+                        var n = (x < 0 ? 0 : x < Chunk.Size ? 1 : 2) + ((y < 0 ? 0 : y < Chunk.Size ? 1 : 2) * 3) + ((z < 0 ? 0 : z < Chunk.Size ? 1 : 2) * 9);
+                        material = neighbours[n]?.Get(x & Chunk.Mask, y & Chunk.Mask, z & Chunk.Mask) ?? VoxelMaterial.Air;
                     }
 
                     volume[px + row] = material;

@@ -18,6 +18,10 @@
     "input": "#1B232CFF",
     "highlightHover": "#FFFFFFFF",
     "highlightSelection": "#F2B33DFF",
+    "previewValid": "#3CD25A80",
+    "previewInvalid": "#E6463C99",
+    "previewSkipped": "#E6A03C80",
+    "previewArea": "#FFFFFF38",
     "background": "#1E3346FF"
   },
   "cornerRadius": 6,

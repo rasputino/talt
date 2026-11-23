@@ -236,9 +236,21 @@ internal sealed unsafe class WorldRenderer : IDisposable
         {
             var region = FindRegion(RegionCoord.FromChunk(chunk));
             var index = Region.ChunkIndex(chunk);
-            if (region is null || !region.ChunkExists[index])
+            if (region is null)
             {
                 continue;
+            }
+
+            if (!region.ChunkExists[index])
+            {
+                // Terraforming may raise a column into a chunk that did not exist at setup (feature 006).
+                if (_world.GetChunk(chunk) is null)
+                {
+                    continue;
+                }
+
+                region.AddChunk(chunk);
+                region.FinishSetup();
             }
 
             region.ChunkVersion[index]++;

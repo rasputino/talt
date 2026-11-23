@@ -148,10 +148,23 @@ public class InGameScreenTests
         var host = new FakeHost(ui);
         var game = GameSetup.Create(new NewGameOptions(ChunksPerSide: 4, VehicleCount: 50, Seed: 5));
         var session = new GameSession(game, new SessionOptions(), fastForwardUnlocked: false);
-        var screen = new InGameScreen(host, session, new Talt.Client.Rendering.OrbitCamera(), _ => { }, _ => false);
+        var screen = new InGameScreen(host, session, new Talt.Client.Rendering.OrbitCamera(), _ => false);
         ui.Screen = screen.Root;
         screen.ApplySettings(host.Settings);
         return (screen, session, host);
+    }
+
+    [Fact]
+    public void Notifications_HaveAPanelBehindTheText()
+    {
+        // Hand test of feature 006: "Not possible: ..." was hard to read straight over the terrain.
+        var (screen, _, _) = Create();
+
+        screen.ShowMessage(Talt.Client.Ui.TextRef.Of("command.rejected.unknown"));
+
+        var panel = Assert.IsType<Talt.Client.Ui.Widgets.Panel>(screen.Messages.GetChild(screen.Messages.ChildCount - 1));
+        Assert.Equal(Talt.Client.Ui.Widgets.PanelStyle.Panel, panel.Style);
+        Assert.IsType<Talt.Client.Ui.Widgets.Label>(panel.GetChild(0));
     }
 
     [Fact]

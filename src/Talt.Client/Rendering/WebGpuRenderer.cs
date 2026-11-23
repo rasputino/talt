@@ -39,6 +39,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
     private WorldRenderer? _worldRenderer;
     private UiRenderer? _uiRenderer;
     private HighlightRenderer? _highlightRenderer;
+    private BoxRenderer? _boxRenderer;
     private PresentMode _presentMode = PresentMode.Fifo;
     private PresentMode _uncappedMode = PresentMode.Fifo;
 
@@ -101,6 +102,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         CreateVehiclePipeline();
         CreateIndustryPipeline();
         _highlightRenderer = new HighlightRenderer(_wgpu, _device, _queue, _pipelineLayout, _surfaceFormat, DepthFormat);
+        _boxRenderer = new BoxRenderer(_wgpu, _device, _queue, _pipelineLayout, _surfaceFormat, DepthFormat);
     }
 
     /// <summary>Whether a world is being drawn.</summary>
@@ -131,6 +133,25 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _instanceCount = 0;
         _industryCount = 0;
         _highlightRenderer?.Update([], Vector3.Zero);
+        _boxRenderer?.Clear();
+    }
+
+    /// <summary>Replaces the trees drawn near the camera (feature 006). Call only when they changed.</summary>
+    public void UpdateTrees(ReadOnlySpan<BoxInstance> boxes)
+    {
+        if (!_disposed && _worldRenderer is not null)
+        {
+            _boxRenderer?.UpdateOpaque(boxes);
+        }
+    }
+
+    /// <summary>Replaces the construction preview boxes (feature 006). Call only when they changed.</summary>
+    public void UpdatePreview(ReadOnlySpan<BoxInstance> boxes)
+    {
+        if (!_disposed && _worldRenderer is not null)
+        {
+            _boxRenderer?.UpdateTranslucent(boxes);
+        }
     }
 
     /// <summary>Creates the interface pipeline for <paramref name="atlas"/>.</summary>
@@ -381,7 +402,9 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         if (world is not null)
         {
             _wgpu.RenderPassEncoderSetBindGroup(pass, 0, _bindGroup, 0, null);
+            _boxRenderer?.EncodeOpaque(pass);
             _highlightRenderer?.Encode(pass);
+            _boxRenderer?.EncodeTranslucent(pass); // Last: blended over everything drawn before.
         }
 
         _wgpu.RenderPassEncoderEnd(pass);
@@ -437,6 +460,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _worldRenderer = null;
         _uiRenderer?.Dispose();
         _highlightRenderer?.Dispose();
+        _boxRenderer?.Dispose();
         ReleaseDepthTexture();
 
         if (_instanceBuffer != null)

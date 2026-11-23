@@ -304,6 +304,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         _session.ExitRequested += () => _window.Close();
         _session.CommandFeedback += OnCommandFeedback;
         _audio?.SetGame(game.Map);
+        _session.TerrainChanged += OnTerrainEdited;
 
         var map = game.Heightmap;
         _camera.FitMap(Math.Max(map.Width, map.Depth));
@@ -312,7 +313,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         _camera.Target = new Vector3(center.X, map.Get(center.X, center.Y), center.Y);
 
         _renderer?.SetWorld(game.World);
-        var screen = new InGameScreen(this, _session, _camera, OnTerrainEdited, _isKeyDown);
+        var screen = new InGameScreen(this, _session, _camera, _isKeyDown);
         SetScreen(screen);
         screen.ApplySettings(Settings);
         if (_options.UiTestWindows > 0 && !_uiTestWindowsOpened)
@@ -459,8 +460,18 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         UpdateViewport();
         if (_screen is InGameScreen game)
         {
-            game.UpdatePicking(_router.CursorPosition, _ui.ViewportSize, _router.IsCursorOverWorld && !_router.IsDraggingWorld);
+            // Picking pauses while the camera is dragged, but keeps running during a tool drag (feature 006).
+            game.UpdatePicking(_router.CursorPosition, _ui.ViewportSize, _router.IsCursorOverWorld && (!_router.IsDraggingWorld || game.IsToolDragging));
             _renderer.SetHighlights(game.Highlights, _camera.Position);
+            if (game.TakePreviewChange())
+            {
+                _renderer.UpdatePreview(game.PreviewBoxes);
+            }
+
+            if (game.UpdateTrees())
+            {
+                _renderer.UpdateTrees(game.TreeBoxes);
+            }
         }
 
         _ui.Layout();

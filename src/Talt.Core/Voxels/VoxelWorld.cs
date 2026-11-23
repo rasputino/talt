@@ -1,21 +1,23 @@
+using System.Collections.Concurrent;
+
 namespace Talt.Core.Voxels;
 
 /// <summary>
 /// Sparse collection of chunks. Missing chunks are treated as air.
 /// </summary>
 /// <remarks>
-/// Threading: the renderer's mesh workers read voxels while the main thread may change them. That is
-/// safe as long as chunks are only written inside existing chunks (<see cref="SetVoxel"/> on a
-/// position whose chunk exists): a mesh built during a write may be stale and is rebuilt. Creating
-/// chunks (<see cref="GetOrCreateChunk"/>, or <see cref="SetVoxel"/> in a missing chunk) must not
-/// happen while meshes are being built, because the chunk dictionary is not thread-safe.
+/// Threading: the renderer's mesh workers read voxels while the main thread may change them. A mesh
+/// built during a write may be stale and is rebuilt. The chunk dictionary is concurrent (feature 006,
+/// research R6), so the main thread may also create chunks — for example when terraforming raises a
+/// column into the chunk above — while workers read; only one thread may write at a time.
 /// </remarks>
 public sealed class VoxelWorld
 {
-    private readonly Dictionary<ChunkCoord, Chunk> _chunks = [];
+    private readonly ConcurrentDictionary<ChunkCoord, Chunk> _chunks = new();
     private int _topChunkY = -1;
 
-    public IEnumerable<Chunk> Chunks => _chunks.Values;
+    /// <summary>All chunks, sorted by coordinate (Y, then Z, then X) so enumeration order is stable.</summary>
+    public IEnumerable<Chunk> Chunks => _chunks.Values.OrderBy(c => c.Coord.Y).ThenBy(c => c.Coord.Z).ThenBy(c => c.Coord.X);
 
     public int ChunkCount => _chunks.Count;
 
@@ -26,7 +28,7 @@ public sealed class VoxelWorld
         if (!_chunks.TryGetValue(coord, out var chunk))
         {
             chunk = new Chunk(coord);
-            _chunks.Add(coord, chunk);
+            _chunks[coord] = chunk;
             _topChunkY = Math.Max(_topChunkY, coord.Y);
         }
 

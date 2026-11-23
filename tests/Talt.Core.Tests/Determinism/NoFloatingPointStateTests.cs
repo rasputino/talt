@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Reflection;
 using Talt.Core.Commands;
 using Talt.Core.Content;
+using Talt.Core.Construction;
 using Talt.Core.Determinism;
 using Talt.Core.Industries;
 using Talt.Core.Maps;
@@ -46,6 +47,20 @@ public class NoFloatingPointStateTests
         typeof(IndustryDeliveryResult),
         typeof(Site),
         typeof(MapSettings),
+        typeof(ConstructionState),
+        typeof(ConstructionRules),
+        typeof(Company),
+        typeof(TileObjects),
+        typeof(TileOwner),
+        typeof(UndoRecord),
+        typeof(TileSnapshot),
+        typeof(MapData),
+        typeof(TerraformCommand),
+        typeof(ClearAreaCommand),
+        typeof(UndoConstructionCommand),
+        typeof(ConstructionPlanner),
+        typeof(ConstructionPlan),
+        typeof(TileChange),
     ];
 
     private static readonly Type[] Forbidden =

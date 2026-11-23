@@ -16,7 +16,9 @@ public class KeyBindingsTests
     [InlineData(Key.N, "addVehicle")]
     [InlineData(Key.Delete, "removeVehicle")]
     [InlineData(Key.F3, "statistics")]
-    [InlineData(Key.PageUp, "raiseTerrain")]
+    [InlineData(Key.PageUp, "toolRaise")]
+    [InlineData(Key.L, "toolLevel")]
+    [InlineData(Key.Backspace, "undoConstruction")]
     [InlineData(Key.Escape, "back")]
     public void Defaults_AreTheOriginalControls(Key key, string action)
     {
@@ -41,7 +43,7 @@ public class KeyBindingsTests
         Assert.True(bindings.TryGetAction(Key.Delete, true, out var action));
         Assert.Equal("closeAllWindows", action);
         Assert.True(bindings.TryGetAction(Key.PageUp, true, out action));
-        Assert.Equal("raiseTerrain", action); // Shift makes it an area edit.
+        Assert.Equal("toolRaise", action); // No Shift variant: falls back to the plain key.
     }
 
     [Fact]

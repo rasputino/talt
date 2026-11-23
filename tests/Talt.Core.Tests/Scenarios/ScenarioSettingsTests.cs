@@ -8,7 +8,7 @@ public class ScenarioSettingsTests
     [Fact]
     public void MapSettingsAreValidatedWithTheScenario()
     {
-        var settings = new ScenarioSettings(Map: new MapSettings(64, 64, 1, MaxHeight: 127));
+        var settings = new ScenarioSettings(MapSizeTiles: 64, Map: new MapSettings(64, 64, 1, MaxHeight: 127));
 
         settings.Validate(); // Does not throw.
         Assert.NotNull(settings.Map);

@@ -1,11 +1,13 @@
 using System.Numerics;
 using Silk.NET.Input;
+using Talt.Client.Construction;
 using Talt.Client.Input;
 using Talt.Client.Localization;
 using Talt.Client.Picking;
 using Talt.Client.Rendering;
 using Talt.Client.Ui;
 using Talt.Client.Ui.Widgets;
+using Talt.Core.Construction;
 using Talt.Core.Simulation;
 using Button = Talt.Client.Ui.Widgets.Button;
 
@@ -28,7 +30,6 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     private readonly IScreenHost _host;
     private readonly GameSession _session;
     private readonly OrbitCamera _camera;
-    private readonly Action<IReadOnlyList<(int X, int Y, int Z)>> _onTerrainEdited;
     private readonly Func<Key, bool> _isKeyDown;
     private readonly MapPicker _picker = new();
     private readonly PickContext _pickContext;
@@ -36,6 +37,11 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     private readonly StackPanel _messages = new(Orientation.Vertical) { Spacing = 4 };
     private readonly List<double> _messageExpiry = [];
     private readonly Panel _pauseMenu;
+    private readonly ToolController _tools = new();
+    private readonly PreviewBoxes _previewBoxes = new();
+    private readonly TreeInstances _trees = new();
+    private readonly Panel _cursorLabel;
+    private int _uploadedPreviewVersion = -1;
     private int _highlightCount;
     private PickResult _selected = PickResult.None;
     private PickResult _hoveredAtPress = PickResult.None;
@@ -43,13 +49,11 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     private bool _panning;
     private bool _pausedByMenu;
 
-    public InGameScreen(IScreenHost host, GameSession session, OrbitCamera camera,
-        Action<IReadOnlyList<(int X, int Y, int Z)>> onTerrainEdited, Func<Key, bool> isKeyDown)
+    public InGameScreen(IScreenHost host, GameSession session, OrbitCamera camera, Func<Key, bool> isKeyDown)
     {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _camera = camera ?? throw new ArgumentNullException(nameof(camera));
-        _onTerrainEdited = onTerrainEdited ?? throw new ArgumentNullException(nameof(onTerrainEdited));
         _isKeyDown = isKeyDown ?? throw new ArgumentNullException(nameof(isKeyDown));
         _pickContext = new PickContext
         {
@@ -58,6 +62,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             Industries = session.Simulation.Industries,
         };
         _session.Message += ShowMessage;
+        _cursorLabel = BuildCursorLabel();
         Root = BuildHud();
         _pauseMenu = BuildPauseMenu();
     }
@@ -77,6 +82,36 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     public ReadOnlySpan<HighlightBox> Highlights => _highlights.AsSpan(0, _highlightCount);
 
     public GameSession Session => _session;
+
+    /// <summary>The on-screen notifications (for tests).</summary>
+    internal StackPanel Messages => _messages;
+
+    /// <summary>The construction tool and its preview (feature 006).</summary>
+    internal ToolController Tools => _tools;
+
+    /// <summary>True while a tool drag is in progress (picking must keep running then).</summary>
+    public bool IsToolDragging => _tools.IsDragging;
+
+    /// <summary>Ghost preview boxes of the current tool (feature 006).</summary>
+    public ReadOnlySpan<BoxInstance> PreviewBoxes => _previewBoxes.Boxes;
+
+    /// <summary>Trees near the camera.</summary>
+    public ReadOnlySpan<BoxInstance> TreeBoxes => _trees.Boxes;
+
+    /// <summary>Returns true once each time the preview boxes changed (upload them then).</summary>
+    public bool TakePreviewChange()
+    {
+        if (_uploadedPreviewVersion == _tools.PreviewVersion)
+        {
+            return false;
+        }
+
+        _uploadedPreviewVersion = _tools.PreviewVersion;
+        return true;
+    }
+
+    /// <summary>Rebuilds the trees around the camera target when needed; true when they changed.</summary>
+    public bool UpdateTrees() => _trees.Update(_session.Construction.Map, _camera.Target, _session.SceneryVersion);
 
     /// <summary>Buttons of the top bar and toolbar (for tests and tooltips checks).</summary>
     internal List<Button> HudButtons { get; } = [];
@@ -117,6 +152,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             Hovered = _picker.Pick(ray, _pickContext);
         }
 
+        UpdateTool(cursor, cursorOverWorld && !IsPauseMenuOpen);
         FollowSelectedVehicle();
         FollowSelectedIndustry();
         _highlightCount = 0;
@@ -138,7 +174,20 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         switch (actionId)
         {
             case "back":
-                Back();
+                if (!_tools.Cancel())
+                {
+                    Back();
+                }
+
+                return true;
+            case "toolRaise":
+            case "toolLower":
+            case "toolLevel":
+            case "toolClear":
+                ToggleTool(actionId);
+                return true;
+            case "undoConstruction":
+                _session.Submit(new UndoConstructionCommand(_session.Construction.Player.Id));
                 return true;
             case "pause":
                 if (IsPauseMenuOpen)
@@ -181,16 +230,6 @@ internal sealed class InGameScreen : IScreen, IWorldInput
                 return true;
             case "statistics":
                 _host.ShowStatistics = !_host.ShowStatistics;
-                return true;
-            case "raiseTerrain":
-            case "lowerTerrain":
-                var edited = _session.EditTerrain(_camera.Target, raise: actionId == "raiseTerrain", area: shift);
-                if (edited.Count > 0)
-                {
-                    _host.Audio.PlayConstruction();
-                    _onTerrainEdited(edited);
-                }
-
                 return true;
             default:
                 return false;
@@ -263,7 +302,10 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             _messageExpiry.RemoveAt(0);
         }
 
-        _messages.Add(new Label(text) { HorizontalAlignment = Alignment.Center });
+        // On a panel so the text stays readable over bright terrain (hand test of feature 006).
+        var panel = new Panel { Style = PanelStyle.Panel, HorizontalAlignment = Alignment.Center, Padding = new Thickness(10, 4) };
+        panel.Add(new Label(text) { HorizontalAlignment = Alignment.Center });
+        _messages.Add(panel);
         _messageExpiry.Add(_host.Ui.Time + MessageSeconds);
     }
 
@@ -301,6 +343,23 @@ internal sealed class InGameScreen : IScreen, IWorldInput
 
     void IWorldInput.MouseDown(MouseButton button, Vector2 position)
     {
+        if (button == MouseButton.Left && _tools.Active is not null && !IsPauseMenuOpen)
+        {
+            // With a tool, a left drag builds instead of rotating (US4); over the sky nothing happens.
+            if (_pickContext.Terrain.Kind != PickKind.None)
+            {
+                _tools.Press((_pickContext.Terrain.TileX, _pickContext.Terrain.TileZ));
+            }
+
+            return;
+        }
+
+        if (button == MouseButton.Right && _tools.IsDragging)
+        {
+            _tools.Cancel(); // The right button cancels a drag (FR-012).
+            return;
+        }
+
         _rotating |= button == MouseButton.Left;
         _panning |= button == MouseButton.Right;
         if (button == MouseButton.Left)
@@ -328,10 +387,27 @@ internal sealed class InGameScreen : IScreen, IWorldInput
 
     void IWorldInput.MouseUp(MouseButton button, Vector2 position, bool isClick)
     {
+        if (button == MouseButton.Left && _tools.IsDragging)
+        {
+            // Releasing confirms (clarified): a valid action is submitted, an invalid one says why.
+            var command = _tools.Release(_session.Construction, out var reason);
+            if (command is not null)
+            {
+                _session.Submit(command);
+            }
+            else if (reason is not null)
+            {
+                var code = reason;
+                ShowMessage(TextRef.Dynamic(() => 0, s => s.Format("command.rejected", ("reason", s.Get($"construction.reason.{code}")))));
+            }
+
+            return;
+        }
+
         if (button == MouseButton.Left)
         {
             _rotating = false;
-            if (isClick && !IsPauseMenuOpen)
+            if (isClick && !IsPauseMenuOpen && _tools.Active is null)
             {
                 Select(_hoveredAtPress); // A click without movement selects (FR-012a); clicking the sky clears.
             }
@@ -376,7 +452,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             }
             else
             {
-                ((Label)_messages.GetChild(i)).Opacity = (float)Math.Min(1, left / 0.75); // Fades out at the end.
+                ((Label)((Panel)_messages.GetChild(i)).GetChild(0)).Opacity = (float)Math.Min(1, left / 0.75); // The text fades out at the end.
             }
         }
     }
@@ -476,10 +552,10 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         var bar = topBar.Add(new StackPanel(Orientation.Horizontal) { Spacing = 6 });
         HudButtons.Add(bar.Add(new Button(null, OpenPauseMenu, "menu") { Style = ButtonStyle.Flat, Tooltip = TextRef.Of("hud.menu.tooltip"), ShortcutAction = "back" }));
         bar.Add(new IconView("coin") { Tooltip = TextRef.Of("hud.money.tooltip") });
-        var company = CompanyData.Load();
+        var company = _session.Construction.Player;
         bar.Add(new Label(TextRef.Dynamic(
-            () => _host.Currency.Code.GetHashCode(StringComparison.Ordinal),
-            s => _host.Money.Format(company.StartingCapital, _host.Currency, s.Culture)), TextSize.Title)
+            () => company.Balance ^ ((long)_host.Currency.Code.GetHashCode(StringComparison.Ordinal) << 40),
+            s => _host.Money.Format(company.Balance, _host.Currency, s.Culture)), TextSize.Title)
         {
             MinWidth = 110,
             Tooltip = TextRef.Of("hud.money.tooltip"),
@@ -529,11 +605,22 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         HudButtons.Add(tools.Add(ToolButton("addVehicle", _session.SubmitAddVehicle, "toolbar.addVehicle.tooltip", "addVehicle")));
         HudButtons.Add(tools.Add(ToolButton("removeVehicle", _session.SubmitRemoveVehicle, "toolbar.removeVehicle.tooltip", "removeVehicle")));
 
+        // Construction tools (feature 006).
+        foreach (var tool in ConstructionTool.All)
+        {
+            var button = ToolButton(tool.Id, () => ToggleTool(tool.ActionId), $"tool.{tool.Id}.tooltip", tool.ActionId);
+            button.IsSelected = () => _tools.Active == tool;
+            HudButtons.Add(tools.Add(button));
+        }
+
+        HudButtons.Add(tools.Add(ToolButton("undo", () => HandleAction("undoConstruction", false), "tool.undo.tooltip", "undoConstruction")));
+
         // Notifications at the bottom centre (FR-007).
         _messages.HorizontalAlignment = Alignment.Center;
         _messages.VerticalAlignment = Alignment.End;
         _messages.Margin = new Thickness(0, 0, 0, 24);
         root.Add(_messages);
+        root.Add(_cursorLabel);
         return root;
     }
 
@@ -565,6 +652,74 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             ShortcutAction = action,
             Height = 36,
         };
+
+    private void ToggleTool(string actionId)
+    {
+        ConstructionTool? chosen = null;
+        foreach (var tool in ConstructionTool.All)
+        {
+            if (tool.ActionId == actionId)
+            {
+                chosen = tool;
+            }
+        }
+
+        _tools.Select(_tools.Active == chosen ? null : chosen);
+        if (_tools.Active is not null)
+        {
+            _selected = PickResult.None;
+        }
+    }
+
+    /// <summary>Feeds the tile under the cursor to the tool, plans the preview and places the cost label.</summary>
+    private void UpdateTool(Vector2 cursor, bool overWorld)
+    {
+        var terrain = _pickContext.Terrain;
+        _tools.Hover(overWorld && terrain.Kind != PickKind.None ? (terrain.TileX, terrain.TileZ) : null);
+        var state = _session.Construction;
+        if (_tools.UpdatePreview(state))
+        {
+            if (_tools.HasPreview)
+            {
+                _previewBoxes.Build(_tools.Preview, _tools.PreviewResult.Succeeded, state.Map, _host.Ui.Theme);
+            }
+            else
+            {
+                _previewBoxes.Clear();
+            }
+        }
+
+        _cursorLabel.Visible = _tools.HasPreview && overWorld;
+        var scale = _host.Ui.Scale;
+        _cursorLabel.Margin = new Thickness((cursor.X / scale) + 18, (cursor.Y / scale) + 18, 0, 0);
+    }
+
+    private Panel BuildCursorLabel()
+    {
+        var panel = new Panel
+        {
+            Style = PanelStyle.Panel,
+            HorizontalAlignment = Alignment.Start,
+            VerticalAlignment = Alignment.Start,
+            Padding = new Thickness(6, 3),
+            Visible = false,
+        };
+        panel.Add(new Label(TextRef.Dynamic(
+            () => _tools.PreviewVersion ^ ((long)_host.Currency.Code.GetHashCode(StringComparison.Ordinal) << 32),
+            ComposeCursorText)));
+        return panel;
+    }
+
+    /// <summary>"Cost: $1,250" and, when refused, the reason (US1).</summary>
+    private string ComposeCursorText(Strings s)
+    {
+        var plan = _tools.Preview;
+        var cost = s.Format("construction.cost", ("cost", _host.Money.Format(plan.Cost, _host.Currency, s.Culture)));
+        var reason = _tools.PreviewResult.ReasonCode;
+        return _tools.PreviewResult.Succeeded || reason is null
+            ? cost
+            : s.Format("construction.costAndReason", ("cost", cost), ("reason", s.Get($"construction.reason.{reason}")));
+    }
 
     private Panel BuildPauseMenu()
     {

@@ -9,7 +9,9 @@ Talt.slnx
 ├── src/
 │   ├── Talt.Core/          Game logic. No graphics, no window, no platform code.
 │   │   ├── Voxels/         Chunk, ChunkCoord, RegionCoord, VoxelWorld, VoxelMaterial
-│   │   ├── Terrain/        ValueNoise, Heightmap, TerrainEditor (debug edits)
+│   │   ├── Terrain/        ValueNoise, Heightmap
+│   │   ├── Construction/   ConstructionState, rules (Data/construction.json), planner, plan, commands
+│   │   │                   (terraform, clearArea, undoConstruction), Company, TileObjects, UndoRecord
 │   │   ├── Maps/           MapSettings, MapGenerator (+ Stages/), MapData, WorldBuilder (feature 004)
 │   │   ├── Content/        Cargo and industry definitions + embedded JSON data (feature 009)
 │   │   ├── Industries/     IndustryFleet (SoA state), placement, economy, delivery, read model (009)
@@ -34,8 +36,11 @@ Talt.slnx
 │       │                   object information (incl. industries) and sample windows; INewGameOptionsSource
 │       ├── Input/          KeyBindings (data-driven actions), InputRouter
 │       ├── Picking/        Ray, MapPicker and pick layers (terrain, road, vehicle, industry)
+│       ├── Construction/   ConstructionTool, ToolController (preview, drag, confirm), PreviewBoxes,
+│       │                   TerrainSync (tile changes → voxels, heightmap, renderer)
 │       ├── Localization/   Strings (en/es, plurals), MoneyFormatter and currencies
-│       └── Rendering/      WebGpuRenderer, WorldRenderer, UiRenderer, HighlightRenderer,
+│       └── Rendering/      WebGpuRenderer, WorldRenderer, UiRenderer, HighlightRenderer, BoxRenderer,
+│                           TreeInstances,
 │                           ChunkMeshScheduler, Frustum, LodSelector, RenderStatistics, OrbitCamera,
 │                           UnitCube, IndustryInstance, Shaders/*.wgsl
 ├── tools/
@@ -316,16 +321,91 @@ The same settings and the same commands produce the same state at every tick, on
 - **Randomness:** `DeterministicRandom` (xoshiro256**, seeded with SplitMix64). Systems use forked
   streams; the UI never uses the simulation's generator.
 - **Commands:** player actions are `ISimulationCommand` records applied at the start of the next
-  tick. First commands: `AddVehicleCommand`, `RemoveVehicleCommand`.
+  tick (or at once while paused, feature 006). Commands: `AddVehicleCommand`, `RemoveVehicleCommand`,
+  `TerraformCommand`, `ClearAreaCommand`, `UndoConstructionCommand`.
 - **Fingerprint:** `GameSimulation.ComputeFingerprint()` hashes the whole state with XxHash3. An
   industry fleet with no industries contributes nothing, so a map-less game keeps the fingerprints it
   had before feature 009; a populated fleet hashes its arrays, random stream and content fingerprint.
+  Construction state exists only when the scenario has map settings, and is hashed after the industries.
 - **Recorded sessions:** `SessionRecorder` writes settings + commands + checkpoints as JSON
   (`.talt-session.json`); `SessionReplayer` replays them and reports the first diverging tick. Sessions
   with map settings write a `"map"` text; replay regenerates the map and its industries.
 - **Golden fingerprints:** `GoldenFingerprintTests` pins the fingerprints of a fixed scenario,
   generated on Windows x64. Linux and macOS must produce exactly the same values. Regenerate only
   when simulation rules change on purpose and say so in the commit message.
+
+## Construction and terraforming (feature 006)
+
+Design: `specs/006-construction-framework/` (research R1–R14, data model, contracts).
+
+- **The simulation owns the map.** `ScenarioSettings.Map` (optional `MapSettings`) gives a game a map;
+  `GameSimulation.Create(settings, map)` takes the map the client generated (with progress) or generates
+  it (headless replay). `GameSimulation.Construction` (`ConstructionState`) holds the map's tile data,
+  a dense object/owner layer (`TileObjects`: kind byte + `TileOwner` ushort per tile; the prototype
+  roads are `PublicRoad` owned by town 0), the companies (only the player's for now, balance in whole
+  US dollars) and the one-level `UndoRecord`. It is hashed into the fingerprint only when a map exists,
+  so map-less scenarios (CI goldens, benchmarks) kept their fingerprints. Recorded sessions carry the map
+  as its shareable text (`settings.map`, format version unchanged).
+- **One planner for preview and command.** `ConstructionPlanner` fills a reusable `ConstructionPlan`
+  (changed tiles with before/after, problem tiles with reason codes, total cost). `ConstructionCommand`
+  (base of `TerraformCommand`, `ClearAreaCommand`) validates by planning and then `Check` (reason, money);
+  `Apply` commits the plan validated in the same tick. The client's `ToolController` plans with its own
+  planner and the same `Check`, so the preview's cost and reason always match what applying does. New
+  building features subclass `ConstructionCommand` and add a `ConstructionTool`.
+- **Terraform rules.** Raise/lower move every area tile one step; level fixes the area at the start
+  tile's height. A monotone cascade (raise only raises, lower only lowers; level alternates raise and
+  lower passes, then verifies) keeps neighbouring land tiles within one voxel wherever a tile changed;
+  untouched cliffs stay. Water tiles never change; land may not end below neighbouring water; tiles under
+  any object block (own objects: demolish first; others': owned by someone else); heights 1–`maxHeight`.
+  Trees on changed tiles are removed and paid; Rock becomes Grass where dug; Cliff/Buildable flags are
+  recomputed around the changes. Terraform actions are all-or-nothing; the clear tool removes trees and
+  the company's objects and leaves others' objects standing (shown orange).
+- **Costs and limits** come from `construction.json` (starting balance 500 000, 250 per tile per step,
+  40 per tree, demolish costs by object kind, undo window 200 ticks, max height 120, 16 384 tiles per
+  action), validated at load with the field's name in the error.
+- **Undo** stores every touched tile's before/after values; undo is valid within the window if every
+  tile still equals its after-values, restores exactly and refunds. Any later action replaces the record.
+- **While paused** `GameSession` calls `GameSimulation.ProcessPendingCommands()`: commands apply at once
+  without advancing time; they are recorded at the current tick and replay identically.
+- **Drawing.** `TerrainSync` drains the changed tiles after commands, rewrites their voxel columns with
+  `WorldBuilder.RebuildColumn` (creating the chunk above when needed), refreshes the heightmap and
+  notifies the renderer. `BoxRenderer` draws instanced boxes: trees (opaque, `TreeInstances` gathers up
+  to 48 000 trees within 160 tiles of the camera target, rebuilt every 16 tiles of movement or when
+  scenery changes) and the translucent ghost preview (`PreviewBoxes`: green, red where blocked, orange
+  where skipped). A label next to the cursor shows the cost in the display currency and the reason.
+- **Picking fix.** The terrain ray cast was limited to the first 32 voxels of height, so hills above
+  could not be picked; it now covers the world's highest chunk.
+
+### Construction numbers
+
+BenchmarkDotNet short job, AMD Ryzen 7 160, 2026-11-23 (`ConstructionBenchmarks`, hilly 1024² map,
+a 25 × 20 drag = 500 tiles, planning as the preview does on every new cursor tile):
+
+| Benchmark | Time | Allocated |
+|---|---|---|
+| Level preview (with cascade around the area) | 0.081 ms | 0 B |
+| Raise preview | 0.029 ms | 0 B |
+| Clear preview | 0.001 ms | 0 B |
+
+SC-001's budget (a 500-tile preview under 1 ms) holds with a factor of about 12; a unit test checks
+1 000 repeated previews through `ToolController` allocate nothing (SC-007).
+
+**Hand test (developer, Windows, 2026-11-23,** `--map 1024 --seed 11 --roughness 80 --max-height 64 --stats`):
+raise, lower, level, clear, cancel, undo and building while paused all work. From the log: 17 edits on
+screen after 23–33 ms (average 31 ms; SC-005 asks < 100 ms), 0 B allocated per frame and 60 FPS in every
+one-second sample while building. Found and fixed, each with a regression test: after cancelling, the
+preview marks (on roads) stayed on screen, because the controller did not report a preview that
+disappeared; and the player asked to see the whole dragged area, so tiles of the rectangle that do not
+change are now drawn in a neutral colour; on the retest, the "Not possible: …" notifications were hard to
+read straight over bright terrain, so notifications now sit on a panel. Open: about 3 s at 6 FPS shortly after the game started, before
+any tool was used, with every render phase under 2 ms (the time went outside the measured phases, as in
+feature 003's long frames caused by other processes); not seen again in the session.
+
+Meshing after the concurrent chunk dictionary (`ChunkMeshingBenchmarks`, short job, same day): greedy
+full detail 0.62–0.65 ms per chunk, region LOD 1/2/3 0.23/0.11/0.10 ms — the feature 003 numbers
+(0.62/0.22/0.12/0.10 ms). To keep it so, `GreedyMesher` now looks the 26 neighbour chunks up once per
+chunk instead of once per border voxel (output unchanged; the greedy-vs-naive tests cover it). A same-session
+"before" run could not be made: BenchmarkDotNet again failed to build from a temporary worktree.
 
 ## Headless runner
 
@@ -493,8 +573,10 @@ default statistical job):
   are uploaded within 4 MB or 2 ms per frame. Nothing is meshed before the window opens.
 - **Edits.** `NotifyVoxelsChanged` bumps the version of every chunk within one voxel of a change
   (`ChunkCoord.TouchedBy`) and of their regions' simplified levels; stale meshes are drawn until
-  their replacement arrives. The client reports when an edit is on screen (PageUp/PageDown debug
-  edits print "Edit visible after … ms").
+  their replacement arrives. The client reports when an edit is on screen (construction edits print
+  "Edit visible after … ms"). Chunks created after setup (a column raised into the chunk above, feature
+  006) are registered by `NotifyVoxelsChanged`; `VoxelWorld` uses a concurrent dictionary so the main
+  thread may create them while mesh workers read.
 - **Statistics.** F3 (or `--stats`) shows frame time average/worst, FPS, draw calls, triangles,
   regions per level, world GPU memory (and full-detail buffers released so far), pending mesh jobs
   and managed bytes allocated per frame by the draw path (0 in steady state) in the title bar and the console.
@@ -532,7 +614,9 @@ live in `src/Talt.Client/Input/Data/actions.json`):
 | Shift+Delete | Close all windows except pinned ones |
 | F10 | Settings |
 | F3 | Render statistics in the title bar and console (on / off) |
-| PageUp / PageDown | Raise / lower the tile under the camera target (debug edit; Shift: 32 × 32 area) |
+| PageUp / PageDown / L / X | Construction tools: raise, lower, level, clear (feature 006) |
+| Backspace | Undo the last construction (within 10 s of game time) |
+| Left drag with a tool | Preview and build over the rectangle; release builds, Esc or right button cancels |
 | Esc | Close the front window; then clear the selection; then open / close the pause menu |
 
 Options for measurements: `--stats` shows the statistics from the start, `--zoom <distance|max>` sets
@@ -577,8 +661,8 @@ The client draws its own interface on top of the world (research in `specs/005-u
 - **Localization**: `Strings` (en/es tables, English fallback, `key.one`/`key.other` plurals, culture
   numbers and dates) and `MoneyFormatter` (21 display currencies with fixed rates from
   `Localization/Data/currencies.json`; the internal unit is one US dollar; default USD in English, EUR in
-  Spanish). Until the finances feature exists, the top bar shows `startingCapital` from
-  `Ui/Data/company.json`. Tests check both languages have the same keys, every key in the code exists,
+  Spanish). The top bar shows the player company's balance from the simulation (feature 006; the
+  starting balance is in `Talt.Core/Construction/Data/construction.json`). Tests check both languages have the same keys, every key in the code exists,
   every text of every screen resolves in both languages and fixed-width labels fit.
 - **Settings**: `PlayerSettings` reads each property on its own (invalid values fall back alone and are
   reported once), saves after every change through a temporary file, and keeps the feature 001 file.
@@ -843,7 +927,8 @@ scripts in `ci/` that also run locally (`pwsh ci/check-fingerprints.ps1`).
   published executable (`ci/smoke-client.ps1`, option `--exit-after-fingerprint`), lets it simulate 20
   ticks and requires exit code 0. On Linux it uses a virtual display (xvfb) and the software Vulkan
   driver llvmpipe; on macOS the runner's Metal device. It passed on Linux x64, Linux arm64 and macOS
-  arm64 with the same fingerprint as Windows (`1475835573081C3A`, tick 20 of `4 1000 1`), so the
+  arm64 with the same fingerprint as Windows (`1475835573081C3A`, tick 20 of `4 1000 1`; since feature 006
+  the client's games include the map in the simulation state and the value is `578FD3BEDBF498BC`), so the
   downloaded builds start there. It is informational (not part of `ci-result`). Windows runners have no
   usable GPU (the renderer crashes creating its pipeline), so Windows is checked by hand.
   Finding: on Ubuntu 26.04, `dotnet run` of the client (not self-contained) cannot find the GLFW

@@ -87,25 +87,48 @@ public class WorldBuilderTests
     }
 
     [Fact]
-    public void TerrainEditor_RaisesColumns_InsideTallTerrain()
+    public void RebuildColumn_OfAnUnchangedColumn_ChangesNothing()
     {
         var map = MapTestSettings.Generate(Tall);
         var world = WorldBuilder.Build(map);
-        var heightmap = Heightmap.FromMapData(map);
-        var (x, z) = FindTallColumn(map);
-        var before = heightmap.Get(x, z);
-        Assert.True(before > Chunk.Size);
+        var fresh = WorldBuilder.Build(map);
+        for (var x = 0; x < map.Width; x += 9)
+        {
+            WorldBuilder.RebuildColumn(map, world, x, 40, map.SurfaceHeightAt(x, 40));
+            for (var y = 0; y < 160; y++)
+            {
+                Assert.Equal(fresh.GetVoxel(x, y, 40), world.GetVoxel(x, y, 40));
+            }
+        }
+    }
 
-        // Raising works unless the column already ends at the top of its chunk (then it must do nothing).
-        var changed = TerrainEditor.Raise(world, heightmap, x, z);
-        if (world.GetChunk(ChunkCoord.FromVoxel(x, before, z)) is null)
+    [Theory]
+    [InlineData(+1)]
+    [InlineData(+20)]
+    [InlineData(-3)]
+    public void RebuildColumn_AfterAHeightChange_MatchesAFreshWorld(int delta)
+    {
+        // Feature 006: terraforming edits the tile data, then rebuilds the column; growing into the chunk
+        // above creates it.
+        var map = MapGenerator.Generate(Tall);
+        var world = WorldBuilder.Build(map);
+        var (x, z) = FindTallColumn(map);
+        var before = map.SurfaceHeightAt(x, z);
+        map.SetHeight(map.Index(x, z), map.HeightAt(x, z) + delta);
+
+        var (minY, maxY) = WorldBuilder.RebuildColumn(map, world, x, z, before);
+        var fresh = WorldBuilder.Build(map);
+
+        for (var y = 0; y < 160; y++)
         {
-            Assert.Empty(changed);
+            Assert.Equal(fresh.GetVoxel(x, y, z), world.GetVoxel(x, y, z));
         }
-        else
-        {
-            Assert.Equal(before + 1, heightmap.Get(x, z));
-        }
+
+        Assert.True(minY <= Math.Min(before, before + delta) - 1);
+        Assert.True(maxY >= Math.Max(before, before + delta) - 1);
+        var heightmap = Heightmap.FromMapData(MapTestSettings.Generate(Tall));
+        heightmap.Refresh(map, x, z);
+        Assert.Equal(before + delta, heightmap.Get(x, z));
     }
 
     private static (int X, int Z) FindTallColumn(MapData map)

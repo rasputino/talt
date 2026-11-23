@@ -35,7 +35,7 @@ public class UiFrameBenchmarks
         };
         var host = new BenchmarkHost(_ui);
         var game = GameSetup.Create(new NewGameOptions(ChunksPerSide: 4, VehicleCount: 100, Seed: 1));
-        var screen = new InGameScreen(host, new GameSession(game, new SessionOptions(), false), new OrbitCamera(), _ => { }, _ => false);
+        var screen = new InGameScreen(host, new GameSession(game, new SessionOptions(), false), new OrbitCamera(), _ => false);
         _ui.Screen = screen.Root;
         for (var i = 1; i <= Windows; i++)
         {

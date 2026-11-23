@@ -69,6 +69,39 @@ public static class WorldBuilder
         return world;
     }
 
+    /// <summary>
+    /// Rewrites one voxel column from the tile data after construction changed it (feature 006, research
+    /// R6), with the same materials as <see cref="Build"/>. Creates the chunk above when the column grows
+    /// into it. Returns the inclusive range of voxel heights rewritten (for the renderer's dirty marking).
+    /// </summary>
+    /// <param name="previousSurface">Surface height of the column before the change (the old heightmap value).</param>
+    public static (int MinY, int MaxY) RebuildColumn(MapData map, VoxelWorld world, int x, int z, int previousSurface)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        ArgumentNullException.ThrowIfNull(world);
+        var i = map.Index(x, z);
+        var height = map.Heights[i];
+        var waterLevel = map.WaterLevels[i];
+        var type = (TerrainType)map.Terrain[i];
+        var flags = (TileTraits)map.Flags[i];
+        var surface = Math.Max(height, (int)waterLevel);
+        var top = Math.Max(surface, previousSurface);
+        // Materials depend on the depth below the top voxel, so rewrite a few voxels below the lower surface too.
+        var bottom = Math.Max(0, Math.Min(surface, previousSurface) - 4);
+        for (var y = bottom; y < top; y++)
+        {
+            var material = y >= surface ? VoxelMaterial.Air
+                : y >= height ? VoxelMaterial.Water
+                : Material(type, flags, y, height - 1);
+            if (material != VoxelMaterial.Air || world.GetChunk(ChunkCoord.FromVoxel(x, y, z)) is not null)
+            {
+                world.SetVoxel(x, y, z, material);
+            }
+        }
+
+        return (bottom, Math.Max(bottom, top - 1));
+    }
+
     private static void FillColumn(MapData map, Chunk[] layers, int cx, int cz)
     {
         for (var lz = 0; lz < Chunk.Size; lz++)
