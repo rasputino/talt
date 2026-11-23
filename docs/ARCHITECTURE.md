@@ -116,6 +116,19 @@ testable without a GPU. The client depends on the core, never the other way arou
 - **Tuning**: thresholds and densities live in `MapGenerationTuning` (changing a default alters maps and
   needs a `GeneratorVersion` bump).
 
+### Screenshots of generated maps (SC-007, T043)
+
+Three 1024×512 maps from the client at generator version `T1` (`-c Release`, whole map in view with
+`--zoom 1100`; the grid of roads is the prototype network of the sample simulation, not map data):
+
+| Image | Command line | Shows |
+|---|---|---|
+| [`004-seed-7.png`](screenshots/004-seed-7.png) | `dotnet run --project src/Talt.Client -c Release -- --map 1024x512 --seed 7 --water 35 --zoom 1100` | sea and bays, beaches, rivers, snowy peaks |
+| [`004-seed-11.png`](screenshots/004-seed-11.png) | `... -- --map 1024x512 --seed 11 --water 15 --roughness 80 --max-height 64 --zoom 1100` | rugged mountains with snow, many small lakes |
+| [`004-seed-42.png`](screenshots/004-seed-42.png) | `... -- --map 1024x512 --seed 42 --water 45 --roughness 30 --zoom 1100` | large inland sea, gentle hills, rivers |
+
+Project owner's verdict (2026-11-23): approved.
+
 ### New game in the client (command line only for now)
 
 `Talt.Client` accepts `--map <N|WxD>`, `--seed`, `--roughness`, `--max-height`, `--water`, `--sea-level`
