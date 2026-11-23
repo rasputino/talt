@@ -95,7 +95,7 @@
 - [x] T040 Measure 4096 × 4096 generation + world build (< 20 s), peak memory, and a 60 FPS check with `--max-height 127 --stats`; if memory or time miss budget apply research R8 mitigation or profile the slowest stage; record numbers in `docs/ARCHITECTURE.md`
 - [x] T041 [P] Update `docs/ARCHITECTURE.md` (replace the "Terrain generation" section, project tree, map generation pipeline, settings text, limits, deferrals), `README.md`/`docs/SPECKIT_GUIDE.md` status lines if they list features, and the 004 checklist
 - [x] T042 Run the full suite (`dotnet test`, Headless tests, 5-platform CI expectations) and confirm the simulation golden fingerprints; if they changed, regenerate on purpose and note it for the commit message
-- [ ] T043 Launch the client in a terminal tab with three different seeds and ask the user for screenshots (synthetic input does not reach the window); list them in the PR body when the user asks for the PR
+- [X] T043 Launch the client in a terminal tab with three different seeds and ask the user for screenshots (synthetic input does not reach the window); list them in the PR body when the user asks for the PR — screenshots of seeds 7, 11 and 42 (1024×512) in `docs/screenshots/004-seed-*.png`, linked from `docs/ARCHITECTURE.md`; owner verdict: approved (2026-11-23)
 - [ ] T044 Ask the user before any commit, push, PR or merge (project rule); prepare the commit message mentioning golden changes if any
 
 ## Dependencies and order
