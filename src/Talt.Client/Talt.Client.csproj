@@ -21,10 +21,13 @@
     <PackageReference Include="Silk.NET.WebGPU" />
     <PackageReference Include="Silk.NET.WebGPU.Native.WGPU" />
     <PackageReference Include="StbTrueTypeSharp" />
+    <PackageReference Include="JAJ.Packages.MiniAudioEx" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Rendering\Shaders\*.wgsl" />
+    <!-- Original audio assets; streamed music is read from disk at runtime. -->
+    <None Include="Assets\Audio\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="audio\%(RecursiveDir)%(Filename)%(Extension)" />
     <!-- WithCulture=false: otherwise MSBuild treats ".en"/".es" as cultures and builds satellite assemblies. -->
     <EmbeddedResource Include="Localization\Strings.*.json" WithCulture="false" LogicalName="Talt.Client.Localization.%(Filename)%(Extension)" />
     <!-- Data files are loaded by file name through DataFiles (resource name = "data/<file name>"). -->

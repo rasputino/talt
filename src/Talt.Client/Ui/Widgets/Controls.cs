@@ -314,6 +314,8 @@ internal sealed class Slider : Widget
 
     public override bool IsHitTestVisible => true;
 
+    public override bool IsFocusable => true;
+
     public override bool OnMouseDown(UiContext ui, MouseButton button, Vector2 position)
     {
         if (button != MouseButton.Left)
@@ -326,6 +328,32 @@ internal sealed class Slider : Widget
     }
 
     public override void OnDrag(UiContext ui, Vector2 position, Vector2 delta) => SetFrom(position);
+
+    public override bool OnKeyDown(UiContext ui, Key key, bool shift)
+    {
+        ArgumentNullException.ThrowIfNull(ui);
+        var step = Step > 0 ? Step : (Maximum - Minimum) / 20f;
+        if (shift)
+        {
+            step *= 5f;
+        }
+
+        var value = key switch
+        {
+            Key.Left or Key.Down => Value() - step,
+            Key.Right or Key.Up => Value() + step,
+            Key.Home => Minimum,
+            Key.End => Maximum,
+            _ => Value(),
+        };
+        if (value == Value())
+        {
+            return key is Key.Left or Key.Down or Key.Right or Key.Up or Key.Home or Key.End;
+        }
+
+        SetValue(value);
+        return true;
+    }
 
     /// <summary>The value for a cursor position, snapped to the step.</summary>
     public float ValueAt(float x)
@@ -346,13 +374,25 @@ internal sealed class Slider : Widget
         list.AddRect(new RectF(track.X, track.Y, track.Width * t, track.Height), theme.Accent, 3 * ui.Scale);
         var knob = 16 * ui.Scale;
         var hovered = ui.Hovered == this || ui.IsPressed(this);
+        var focused = ui.Focused == this;
         list.AddPanel(new RectF(track.X + track.Width * t - knob / 2, Bounds.Center.Y - knob / 2, knob, knob),
-            hovered ? theme.ButtonHover : theme.Button, theme.PanelBorder, MathF.Max(1, ui.Scale), knob / 2);
+            hovered ? theme.ButtonHover : theme.Button, focused ? theme.Accent : theme.PanelBorder, MathF.Max(1, ui.Scale), knob / 2);
     }
 
     private void SetFrom(Vector2 position)
     {
         var value = ValueAt(position.X);
+        SetValue(value);
+    }
+
+    private void SetValue(float value)
+    {
+        value = Math.Clamp(value, Minimum, Maximum);
+        if (Step > 0)
+        {
+            value = Math.Clamp(Minimum + MathF.Round((value - Minimum) / Step) * Step, Minimum, Maximum);
+        }
+
         if (value != Value())
         {
             OnChanged(value);

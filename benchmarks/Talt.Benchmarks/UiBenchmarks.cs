@@ -1,6 +1,7 @@
 using System.Numerics;
 using BenchmarkDotNet.Attributes;
 using Talt.Client;
+using Talt.Client.Audio;
 using Talt.Client.Input;
 using Talt.Client.Localization;
 using Talt.Client.Picking;
@@ -60,6 +61,7 @@ public class UiFrameBenchmarks
         public PlayerSettings Settings { get; } = new();
         public KeyBindings Bindings { get; } = new(KeyBindings.LoadDefinitions());
         public MoneyFormatter Money { get; } = MoneyFormatter.Load();
+        public AudioSystem Audio { get; } = AudioSystem.CreateSilent();
         public Currency Currency => Money.DefaultFor("es");
         public bool InGame => true;
         public bool ShowStatistics { get; set; }

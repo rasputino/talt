@@ -114,6 +114,7 @@ The game is developed mostly through AI-assisted coding. To keep the project man
 | 2026-11-22 | Map picking is done on the CPU (ray against tile columns and object boxes) so the answer is ready in the same frame. | specs/005 research R5 |
 | 2026-11-23 | Freight economy: 13 cargo types and 11 industry kinds, all in validated data files; raw materials and processed goods are destination-free, passengers/mail/town goods are destination-based. | specs/009 contracts/content-schema.md |
 | 2026-11-23 | About 75 % of the reserved industry sites start occupied; industries grow with deliveries, decline after ~24 months of neglect and may close after ~5 years, while new ones open on free sites. Waiting cargo is capped per cargo and production beyond the cap is discarded. | specs/009 clarifications |
+| 2026-11-23 | Audio lives only in the client (miniaudio through MiniAudioEx, MIT/Unlicense) and never touches the simulation; music starts in the main menu and continues through the game, with separate master/music/effects/ambient volumes, a mute control and a silent fallback when there is no device. All sounds and music are original. | specs/019 plan, research |
 
 ## Next steps
 

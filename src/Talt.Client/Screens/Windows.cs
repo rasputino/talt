@@ -332,11 +332,42 @@ internal static class SettingsWindow
             Tooltip = TextRef.Of("settings.scale.tooltip"),
         });
 
+        form.Add(new Label(TextRef.Of("settings.audio"), TextSize.Title) { Color = TextColor.Accent, Margin = new Thickness(0, 8, 0, 0) });
+        VolumeRow(form, "settings.masterVolume", "settings.masterVolume.tooltip", () => settings.MasterVolume, value =>
+        {
+            settings.MasterVolume = value;
+            host.ApplySettings();
+        });
+        VolumeRow(form, "settings.musicVolume", "settings.musicVolume.tooltip", () => settings.MusicVolume, value =>
+        {
+            settings.MusicVolume = value;
+            host.ApplySettings();
+        });
+        VolumeRow(form, "settings.effectsVolume", "settings.effectsVolume.tooltip", () => settings.EffectsVolume, value =>
+        {
+            settings.EffectsVolume = value;
+            host.ApplySettings();
+        });
+        VolumeRow(form, "settings.ambientVolume", "settings.ambientVolume.tooltip", () => settings.AmbientVolume, value =>
+        {
+            settings.AmbientVolume = value;
+            host.ApplySettings();
+        });
+        form.Add(new Checkbox(TextRef.Of("settings.mute"), () => settings.Muted, value =>
+        {
+            settings.Muted = value;
+            host.ApplySettings();
+        })
+        {
+            Tooltip = TextRef.Of("settings.mute.tooltip"),
+        });
+
         form.Add(new Checkbox(TextRef.Of("settings.fullscreen"), () => settings.Fullscreen, value =>
         {
             settings.Fullscreen = value;
             host.ApplySettings();
         }));
+
         form.Add(new Checkbox(TextRef.Of("settings.vsync"), () => settings.VSync, value =>
         {
             settings.VSync = value;
@@ -364,6 +395,24 @@ internal static class SettingsWindow
         row.Add(new Label(TextRef.Of(labelKey)) { Width = 180 });
         editor.Fill = true;
         row.Add(editor);
+    }
+
+    private static void VolumeRow(StackPanel form, string labelKey, string tooltipKey, Func<float> value, Action<float> onChanged)
+    {
+        var row = form.Add(new StackPanel(Orientation.Horizontal) { Spacing = 10 });
+        row.Add(new Label(TextRef.Of(labelKey)) { Width = 180, Tooltip = TextRef.Of(tooltipKey) });
+        row.Add(new Slider(0f, 1f, 0.05f, value, onChanged)
+        {
+            Fill = true,
+            Tooltip = TextRef.Of(tooltipKey),
+        });
+        row.Add(new Label(TextRef.Dynamic(
+            () => (long)(value() * 100),
+            s => s.Format("settings.volume.value", ("percent", ((int)(value() * 100)).ToString(CultureInfo.InvariantCulture)))))
+        {
+            Width = 56,
+            TextAlignment = Alignment.End,
+        });
     }
 
     private static int IndexOf<T>(IReadOnlyList<T> list, T value)

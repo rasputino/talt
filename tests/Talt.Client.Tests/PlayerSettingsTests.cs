@@ -18,6 +18,11 @@ public class PlayerSettingsTests
                 FastForwardUnlocked = true,
                 WindowWidth = 1280,
                 WindowHeight = 720,
+                MasterVolume = 0.7f,
+                MusicVolume = 0.4f,
+                EffectsVolume = 0.9f,
+                AmbientVolume = 0.3f,
+                Muted = true,
             };
             settings.KeyBindings["pause"] = ["P", ""];
             settings.Save(path);
@@ -31,6 +36,11 @@ public class PlayerSettingsTests
             Assert.False(loaded.VSync);
             Assert.True(loaded.FastForwardUnlocked);
             Assert.Equal(1280, loaded.WindowWidth);
+            Assert.Equal(0.7f, loaded.MasterVolume);
+            Assert.Equal(0.4f, loaded.MusicVolume);
+            Assert.Equal(0.9f, loaded.EffectsVolume);
+            Assert.Equal(0.3f, loaded.AmbientVolume);
+            Assert.True(loaded.Muted);
             Assert.Equal(["P", ""], loaded.KeyBindings["pause"]);
             Assert.False(File.Exists(path + ".tmp"));
         }
@@ -44,13 +54,16 @@ public class PlayerSettingsTests
     public void InvalidValues_FallBackOneByOne()
     {
         var settings = new PlayerSettings();
-        settings.ReadFrom("""{ "language": "fr", "uiScale": 3.3, "vsync": false, "windowWidth": 10, "currency": "GBP", "nonsense": 1 }""");
+        settings.ReadFrom("""{ "language": "fr", "uiScale": 3.3, "vsync": false, "windowWidth": 10, "currency": "GBP", "nonsense": 1, "masterVolume": 2, "musicVolume": "loud", "muted": "yes" }""");
         Assert.Null(settings.Language);
         Assert.Null(settings.UiScale);
         Assert.False(settings.VSync);
         Assert.Equal(1600, settings.WindowWidth);
         Assert.Equal("GBP", settings.Currency);
-        Assert.Equal(4, settings.LoadProblems.Count);
+        Assert.Equal(0.8f, settings.MasterVolume);
+        Assert.Equal(0.5f, settings.MusicVolume);
+        Assert.False(settings.Muted);
+        Assert.Equal(7, settings.LoadProblems.Count);
     }
 
     [Fact]

@@ -187,6 +187,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
                 var edited = _session.EditTerrain(_camera.Target, raise: actionId == "raiseTerrain", area: shift);
                 if (edited.Count > 0)
                 {
+                    _host.Audio.PlayConstruction();
                     _onTerrainEdited(edited);
                 }
 
