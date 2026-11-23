@@ -500,9 +500,14 @@ The client draws its own interface on top of the world (research in `specs/005-u
 - **Settings**: `PlayerSettings` reads each property on its own (invalid values fall back alone and are
   reported once), saves after every change through a temporary file, and keeps the feature 001 file.
 
-**Pending follow-up (T069):** once feature 004 is on `main`, bind an `INewGameOptionsSource` to its map
-generation settings record (size, seed, roughness, maximum height, water, sea level) and show its
-`IProgress<T>` on the generating screen. `Program.cs` will need a small merge with 004.
+**New-game screen and map generation (T069, after feature 004):** `DefaultNewGameOptionsSource` is bound
+to 004's `MapSettings`: width and depth (256–4096), roughness, maximum height, water and sea level as
+sliders, the seed, plus vehicles and start year; the sea level is kept at least 2 below the maximum height.
+The screen shows the shareable map code (`MapSettings.ToText`) as the values change. While generating,
+`GenerationProgress` receives 004's `MapGenerationProgress` (reported from parallel workers, so it is
+locked and only moves forward) and the screen shows the localized stage and a progress bar: map
+generation fills 0–80 % and building the voxel world 80–100 % (`GameSetup` scales each step). Before
+the first map stage the screen says the roads and traffic are being prepared.
 
 **Hand test (developer, Windows, 2026-11-23):** main menu, settings in both languages (live switch, currency
 following the language, settings kept after restarting), new game, top bar and toolbar, hover outlines,

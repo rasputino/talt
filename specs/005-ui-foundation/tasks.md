@@ -131,7 +131,7 @@ checked by hand (quickstart.md).
 - [X] T066 [P] Update `docs/ARCHITECTURE.md` (UI layer, picking, input, settings, numbers) and `docs/VISION.md` (currency and UI decisions)
 - [X] T067 [P] Update the controls documentation in `README.md`
 - [X] T068 Run the full test suite and the smoke test script `ci/smoke-client.ps1` locally
-- [ ] T069 Follow-up after feature 004 is merged into `main` (not in this branch): bind an `INewGameOptionsSource` to 004's map generation settings record (size, seed, roughness, maximum height, water, sea level) and show its `IProgress<T>` on the generating screen — record in `docs/ARCHITECTURE.md` as pending
+- [X] T069 Follow-up after feature 004 is merged into `main` (not in this branch): bind an `INewGameOptionsSource` to 004's map generation settings record (size, seed, roughness, maximum height, water, sea level) and show its `IProgress<T>` on the generating screen — record in `docs/ARCHITECTURE.md` as pending
 
 ## Dependencies & execution order
 

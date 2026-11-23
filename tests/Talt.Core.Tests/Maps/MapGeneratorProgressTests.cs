@@ -4,11 +4,33 @@ namespace Talt.Core.Tests.Maps;
 
 public class MapGeneratorProgressTests
 {
+    /// <summary>
+    /// Records reports. WorldBuilder reports from its parallel workers, so adding must be locked: an
+    /// unlocked List.Add failed intermittently ("Destination array was not long enough").
+    /// </summary>
     private sealed class Recorder : IProgress<MapGenerationProgress>
     {
-        public List<MapGenerationProgress> Reports { get; } = [];
+        private readonly Lock _lock = new();
+        private readonly List<MapGenerationProgress> _reports = [];
 
-        public void Report(MapGenerationProgress value) => Reports.Add(value);
+        public List<MapGenerationProgress> Reports
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return [.. _reports];
+                }
+            }
+        }
+
+        public void Report(MapGenerationProgress value)
+        {
+            lock (_lock)
+            {
+                _reports.Add(value);
+            }
+        }
     }
 
     [Fact]

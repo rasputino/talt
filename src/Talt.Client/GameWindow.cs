@@ -138,9 +138,11 @@ internal sealed class GameWindow : IDisposable, IScreenHost
             SetScreen(newGame);
         }
 
-        newGame.SetGenerating(true);
-        // Generation takes seconds on large maps: a background task keeps the window responsive.
-        _generation = Task.Run(() => GameSetup.Create(options, Console.WriteLine));
+        // Generation takes seconds on large maps: a background task keeps the window responsive, and the
+        // screen shows the stage and a progress bar (feature 004 progress, task T069).
+        var progress = new GenerationProgress();
+        newGame.SetGenerating(true, progress: progress);
+        _generation = Task.Run(() => GameSetup.Create(options, Console.WriteLine, progress));
     }
 
     public void OpenSettings() => Ui.Windows.Open(SettingsWindow.Create(this));

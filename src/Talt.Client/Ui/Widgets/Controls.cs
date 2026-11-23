@@ -500,3 +500,27 @@ internal sealed class TabControl : StackPanel
         SelectedIndex = index;
     }
 }
+
+/// <summary>A horizontal bar filled from 0 to 1 (map generation progress).</summary>
+internal sealed class ProgressBar : Widget
+{
+    public ProgressBar(Func<float> value)
+    {
+        Value = value;
+    }
+
+    public Func<float> Value { get; }
+
+    protected override Vector2 MeasureCore(UiContext ui, Vector2 available) => new(160 * ui.Scale, 10 * ui.Scale);
+
+    protected override void DrawSelf(UiContext ui, UiDrawList list)
+    {
+        var radius = Bounds.Height / 2;
+        list.AddRect(Bounds, ui.Theme.Input, radius);
+        var filled = Bounds.Width * Math.Clamp(Value(), 0f, 1f);
+        if (filled >= 1)
+        {
+            list.AddRect(new RectF(Bounds.X, Bounds.Y, MathF.Max(filled, Bounds.Height), Bounds.Height), ui.Theme.Accent, radius);
+        }
+    }
+}

@@ -8,21 +8,50 @@ namespace Talt.Client.Tests.Screens;
 public class NewGameOptionsTests
 {
     [Fact]
-    public void Defaults_GiveTheUsualGame()
+    public void Defaults_GiveA512MapWithTheMapGeneratorDefaults()
     {
         var source = new DefaultNewGameOptionsSource();
         var options = source.Create(source.Options.ToDictionary(o => o.Id, o => o.Default));
-        Assert.Equal(new NewGameOptions(16, 20_000, 2026, 1950), options);
+        var library = new Talt.Core.Maps.MapSettings();
+        Assert.Equal(new Talt.Core.Maps.MapSettings(512, 512, 2026, library.Roughness, library.MaxHeight, library.WaterAmount, library.SeaLevel), options.Map);
+        Assert.Equal((16, 20_000, 2026, 1950), (options.ChunksPerSide, options.VehicleCount, options.Seed, options.StartYear));
+    }
+
+    [Fact]
+    public void ChosenValues_ReachTheMapSettings()
+    {
+        // Task T069: the screen is bound to feature 004's MapSettings.
+        var source = new DefaultNewGameOptionsSource();
+        var options = source.Create(new Dictionary<string, int>
+        {
+            ["width"] = 1024, ["depth"] = 256, ["seed"] = 42, ["roughness"] = 80,
+            ["maxHeight"] = 60, ["water"] = 40, ["seaLevel"] = 12, ["vehicles"] = 1000,
+        });
+        Assert.Equal("T1-1024x256-s42-r80-h60-w40-l12", options.MapSettings.ToText());
+        Assert.Equal(256, options.MapSizeTiles); // The road network covers the square part.
+        Assert.Equal(1000, options.VehicleCount);
     }
 
     [Fact]
     public void InvalidValues_FallBackToDefaults()
     {
         var source = new DefaultNewGameOptionsSource();
-        var options = source.Create(new Dictionary<string, int> { ["mapSize"] = 777, ["seed"] = 42, ["vehicles"] = 1000 });
-        Assert.Equal(512, options.MapSizeTiles);
-        Assert.Equal(42, options.Seed);
-        Assert.Equal(1000, options.VehicleCount);
+        var options = source.Create(new Dictionary<string, int> { ["width"] = 777, ["roughness"] = 500, ["seed"] = 42 });
+        Assert.Equal(512, options.Map!.Width);
+        Assert.Equal(new Talt.Core.Maps.MapSettings().Roughness, options.Map.Roughness);
+        Assert.Equal(42, options.Map.Seed);
+    }
+
+    [Fact]
+    public void SeaLevel_StaysBelowTheMaximumHeight()
+    {
+        var host = new FakeHost(UiTestKit.CreateContext());
+        var screen = new NewGameScreen(host, new DefaultNewGameOptionsSource());
+        screen.SetValue("seaLevel", 50);
+        screen.SetValue("maxHeight", 20);
+        Assert.Equal(18, screen.Values["seaLevel"]);
+        screen.Start();
+        host.Started!.MapSettings.Validate();
     }
 
     [Fact]
@@ -30,10 +59,45 @@ public class NewGameOptionsTests
     {
         var host = new FakeHost(UiTestKit.CreateContext());
         var screen = new NewGameScreen(host, new DefaultNewGameOptionsSource());
+        screen.SetValue("width", 2048);
         screen.Start();
-        Assert.Equal(512, host.Started!.MapSizeTiles);
+        Assert.Equal(2048, host.Started!.Map!.Width);
         Assert.True(screen.HandleAction("back", false));
         Assert.Contains("mainMenu", host.Calls);
+    }
+
+    [Fact]
+    public void GeneratingScreen_ShowsTheStageAndPercentage()
+    {
+        var ui = UiTestKit.CreateContext("es");
+        var screen = new NewGameScreen(new FakeHost(ui), new DefaultNewGameOptionsSource());
+        var progress = new GenerationProgress();
+        screen.SetGenerating(true, progress: progress);
+        var status = UiTestKit.Walk(screen.Root).OfType<Talt.Client.Ui.Widgets.Label>().First(l => l.Visible && l.Wrap);
+        Assert.Equal("Preparando carreteras y tráfico…", status.Text.Resolve(ui));
+        progress.Report(new Talt.Core.Maps.MapGenerationProgress(Talt.Core.Maps.MapGenerationStage.Rivers, 0.42f));
+        Assert.Equal("Generando el mapa: Excavando ríos (42 %)", status.Text.Resolve(ui));
+    }
+
+    [Fact]
+    public void Progress_NeverGoesBackwards_WhenReportsArriveOutOfOrder()
+    {
+        var progress = new GenerationProgress();
+        progress.Report(new Talt.Core.Maps.MapGenerationProgress(Talt.Core.Maps.MapGenerationStage.World, 0.8f));
+        progress.Report(new Talt.Core.Maps.MapGenerationProgress(Talt.Core.Maps.MapGenerationStage.World, 0.6f));
+        progress.Report(new Talt.Core.Maps.MapGenerationProgress(Talt.Core.Maps.MapGenerationStage.Sites, 0.5f));
+        Assert.Equal(((int)Talt.Core.Maps.MapGenerationStage.World, 0.8f), (progress.Stage, progress.Fraction));
+    }
+
+    [Fact]
+    public void MapCode_FollowsTheChosenValues()
+    {
+        var ui = UiTestKit.CreateContext();
+        var screen = new NewGameScreen(new FakeHost(ui), new DefaultNewGameOptionsSource());
+        var code = UiTestKit.Walk(screen.Root).OfType<Talt.Client.Ui.Widgets.Label>().First(l => l.Text.Resolve(ui).StartsWith("Map code", StringComparison.Ordinal));
+        Assert.Contains("512x512-s2026", code.Text.Resolve(ui), StringComparison.Ordinal);
+        screen.SetValue("seed", 7);
+        Assert.Contains("512x512-s7-", code.Text.Resolve(ui), StringComparison.Ordinal);
     }
 }
 
