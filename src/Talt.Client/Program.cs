@@ -1,19 +1,15 @@
-﻿using System.Diagnostics;
-using System.Globalization;
+﻿using System.Globalization;
 using Talt.Client;
-using Talt.Client.Localization;
-using Talt.Core.Commands;
-using Talt.Core.Network;
-using Talt.Core.Scenarios;
-using Talt.Core.Simulation;
-using Talt.Core.Terrain;
-using Talt.Core.Voxels;
 
-// Technical prototype: voxel terrain with a road grid and simulated vehicles, rendered with WebGPU.
+// Transit & Logistics Tycoon client. Without game arguments it opens on the main menu (feature 005);
+// game arguments start a game straight away (development and the CI smoke test).
 //
 // Usage: Talt.Client [chunks-per-side] [vehicles] [seed] [options]
 //   --start-year <year>          first in-game year (default 1950)
-//   --language en|es             interface language (default: system language)
+//   --language en|es             interface language for this run (default: saved setting or system language)
+//   --play                       start a game with the default options without showing the menu
+//   --ui-scale <0.75-2>          interface scale for this run
+//   --ui-test-windows <n>        open n sample windows in game (measures the interface cost)
 //   --unlock-fast-forward        unlock the separate fast-forward control (saved in settings)
 //   --lock-fast-forward          lock it again (saved in settings)
 //   --record [file]              record the session (default session.talt-session.json)
@@ -30,6 +26,9 @@ long? printFingerprintAt = null;
 var exitAfterFingerprint = false;
 var showStatistics = false;
 float? zoom = null;
+var play = false;
+float? uiScale = null;
+var uiTestWindows = 0;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -65,6 +64,15 @@ for (var i = 0; i < args.Length; i++)
         case "--exit-after-fingerprint":
             exitAfterFingerprint = true;
             break;
+        case "--play":
+            play = true;
+            break;
+        case "--ui-scale":
+            uiScale = float.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        case "--ui-test-windows":
+            uiTestWindows = int.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
         default:
             positional.Add(int.Parse(args[i], CultureInfo.InvariantCulture));
             break;
@@ -75,7 +83,6 @@ var chunksPerSide = positional.Count > 0 ? positional[0] : 16;
 var vehicleCount = positional.Count > 1 ? positional[1] : 20_000;
 var seed = positional.Count > 2 ? positional[2] : 2026;
 
-var strings = Strings.Load(language ?? Strings.DetectLanguage());
 var playerSettings = PlayerSettings.Load(PlayerSettings.DefaultPath);
 if (unlockFastForward is { } unlock)
 {
@@ -83,35 +90,25 @@ if (unlockFastForward is { } unlock)
     playerSettings.Save(PlayerSettings.DefaultPath);
 }
 
-var settings = new ScenarioSettings(
-    Seed: seed,
-    StartYear: startYear,
-    MapSizeTiles: chunksPerSide * Chunk.Size,
-    VehicleCount: vehicleCount);
-var stopwatch = Stopwatch.StartNew();
-
-var simulation = GameSimulation.Create(settings);
-Report($"Created simulation ({simulation.Network.NodeCount:N0} junctions, {simulation.Vehicles.LineCount:N0} lines, {simulation.Vehicles.VehicleCount:N0} vehicles)");
-
-var world = TerrainGenerator.Generate(new TerrainSettings(Seed: seed, ChunksX: chunksPerSide, ChunksZ: chunksPerSide));
-NetworkTerrainPainter.PaintRoads(world, simulation.Network);
-var heightmap = Heightmap.FromWorld(world, settings.MapSizeTiles, settings.MapSizeTiles);
-Report($"Generated {settings.MapSizeTiles}×{settings.MapSizeTiles} terrain ({world.ChunkCount} chunks)");
-
-// No meshing here: the window opens now and the renderer fills the map in, nearest first (FR-012).
-SessionRecorder? recorder = null;
-if (recordPath is not null)
+if (language is not null && !Talt.Client.Localization.Strings.SupportedLanguages.Contains(language))
 {
-    recorder = new SessionRecorder(new RecordedSession(settings));
-    simulation.AttachRecorder(recorder);
+    throw new ArgumentException($"Unsupported language '{language}'.");
 }
 
-using var window = new GameWindow(new PrototypeScene(
-    world, heightmap, simulation, strings, playerSettings, recorder, recordPath, printFingerprintAt, exitAfterFingerprint, showStatistics, zoom));
+if (uiScale is { } scale && !PlayerSettings.IsValidScale(scale))
+{
+    throw new ArgumentException("--ui-scale must be one of 0.75, 1, 1.25, 1.5, 1.75 or 2.");
+}
+
+// Any game argument skips the menu (contracts/command-line.md).
+var startGame = play || positional.Count > 0 || recordPath is not null || printFingerprintAt is not null;
+using var window = new GameWindow(new ClientOptions(
+    playerSettings,
+    LanguageOverride: language,
+    UiScaleOverride: uiScale,
+    StartGame: startGame ? new NewGameOptions(chunksPerSide, vehicleCount, seed, startYear) : null,
+    Session: new SessionOptions(recordPath, printFingerprintAt, exitAfterFingerprint),
+    ShowStatistics: showStatistics,
+    InitialZoom: zoom,
+    UiTestWindows: uiTestWindows));
 window.Run();
-
-void Report(string message)
-{
-    Console.WriteLine($"{message} in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
-    stopwatch.Restart();
-}

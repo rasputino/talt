@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Talt.Client.Tests" />
+    <InternalsVisibleTo Include="Talt.Benchmarks" />
   </ItemGroup>
 
   <ItemGroup>
@@ -19,12 +20,18 @@
     <PackageReference Include="Silk.NET.Input" />
     <PackageReference Include="Silk.NET.WebGPU" />
     <PackageReference Include="Silk.NET.WebGPU.Native.WGPU" />
+    <PackageReference Include="StbTrueTypeSharp" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Rendering\Shaders\*.wgsl" />
     <!-- WithCulture=false: otherwise MSBuild treats ".en"/".es" as cultures and builds satellite assemblies. -->
     <EmbeddedResource Include="Localization\Strings.*.json" WithCulture="false" LogicalName="Talt.Client.Localization.%(Filename)%(Extension)" />
+    <!-- Data files are loaded by file name through DataFiles (resource name = "data/<file name>"). -->
+    <EmbeddedResource Include="**\Data\*.json" WithCulture="false" LogicalName="data/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Ui\Font\NotoSans-Regular.ttf" LogicalName="font/NotoSans-Regular.ttf" />
+    <!-- The OFL requires the licence to travel with the font. -->
+    <None Include="Ui\Font\OFL.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\NotoSans-OFL.txt" />
   </ItemGroup>
 
 </Project>

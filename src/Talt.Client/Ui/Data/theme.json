@@ -1,0 +1,33 @@
+{
+  // Interface theme (feature 005, data-model.md Theme). Colours are sRGB #RRGGBB or #RRGGBBAA.
+  // Sizes are logical pixels; the interface scale multiplies them.
+  "colors": {
+    "panel": "#26303BF2",
+    "panelBorder": "#4A5A6BFF",
+    "titleBar": "#33475CFF",
+    "text": "#F1F4F7FF",
+    "textMuted": "#A9B6C3FF",
+    "accent": "#F2B33DFF",
+    "button": "#3B4B5CFF",
+    "buttonHover": "#4D6278FF",
+    "buttonPressed": "#2C3946FF",
+    "buttonDisabled": "#323B45FF",
+    "buttonSelected": "#C98A1EFF",
+    "tooltip": "#141A21F5",
+    "overlay": "#0B0F1499",
+    "input": "#1B232CFF",
+    "highlightHover": "#FFFFFFFF",
+    "highlightSelection": "#F2B33DFF",
+    "background": "#1E3346FF"
+  },
+  "cornerRadius": 6,
+  "borderWidth": 1,
+  "spacing": 6,
+  "padding": 8,
+  "fontSizes": { "small": 13, "body": 16, "title": 17, "heading": 40 },
+  "tooltipDelaySeconds": 0.5,
+  "topBarHeight": 38,
+  "toolbarWidth": 46,
+  "buttonHeight": 30,
+  "iconSize": 16
+}

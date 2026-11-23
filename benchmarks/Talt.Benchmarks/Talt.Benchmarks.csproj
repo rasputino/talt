@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Talt.Core\Talt.Core.csproj" />
+    <!-- UI and picking benchmarks (feature 005) measure client code on the CPU, without a window. -->
+    <ProjectReference Include="..\..\src\Talt.Client\Talt.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>
