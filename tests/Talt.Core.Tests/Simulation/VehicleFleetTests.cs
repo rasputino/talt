@@ -186,6 +186,19 @@ public class VehicleFleetTests
         Assert.Equal(sequential.TotalDistance, parallel.TotalDistance);
     }
 
+    [Theory]
+    [InlineData(150)] // Reference removal chance: a few pairs are unreachable.
+    [InlineData(600)] // Very disconnected: many attempts fail, so several batches are needed.
+    public void ParallelAndSequentialCreation_GiveIdenticalFleets(int removalChancePerMille)
+    {
+        var network = GridNetworkGenerator.Generate(40, 40, spacingTiles: 8, seed: 5, removalChancePerMille);
+        var parallel = SyntheticTraffic.Create(network, lineCount: 300, vehicleCount: 5_000, seed: 7, parallel: true);
+        var sequential = SyntheticTraffic.Create(network, lineCount: 300, vehicleCount: 5_000, seed: 7, parallel: false);
+
+        Assert.Equal(sequential.LineCount, parallel.LineCount);
+        Assert.Equal(Fingerprint(sequential), Fingerprint(parallel));
+    }
+
     [Fact]
     public void Tick_DoesNotAllocatePerVehicle()
     {
