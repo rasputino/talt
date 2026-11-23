@@ -1,5 +1,7 @@
 using Talt.Core.Commands;
+using Talt.Core.Construction;
 using Talt.Core.Determinism;
+using Talt.Core.Maps;
 using Talt.Core.Network;
 using Talt.Core.Scenarios;
 
@@ -26,11 +28,12 @@ public sealed class GameSimulation : IStateHashable
     private readonly CommandInbox _commands = new();
     private SessionRecorder? _recorder;
 
-    private GameSimulation(ScenarioSettings settings, TransportNetwork network, VehicleFleet vehicles)
+    private GameSimulation(ScenarioSettings settings, TransportNetwork network, VehicleFleet vehicles, ConstructionState? construction)
     {
         Settings = settings;
         Network = network;
         Vehicles = vehicles;
+        Construction = construction;
         Clock = new GameClock(settings.StartYear);
         Random = new DeterministicRandom(unchecked((ulong)settings.Seed)).Fork(streamId: 0x51_4D);
     }
@@ -50,6 +53,12 @@ public sealed class GameSimulation : IStateHashable
 
     public SimulationEvents Events { get; } = new();
 
+    /// <summary>
+    /// The map's tile data, objects, companies and undo record (feature 006); null when the scenario has
+    /// no map, in which case construction commands are rejected.
+    /// </summary>
+    public ConstructionState? Construction { get; }
+
     /// <summary>Root random generator of the simulation; systems should <see cref="DeterministicRandom.Fork"/> it.</summary>
     public DeterministicRandom Random { get; }
 
@@ -59,11 +68,31 @@ public sealed class GameSimulation : IStateHashable
     /// <summary>Raised during <see cref="Tick"/> for every processed command, in processing order.</summary>
     public event Action<CommandProcessed>? CommandProcessed;
 
-    public static GameSimulation Create(ScenarioSettings settings)
+    /// <summary>Creates a game from its settings.</summary>
+    /// <param name="settings">The scenario; with a map, the simulation owns the map's tile data.</param>
+    /// <param name="map">
+    /// The scenario's map when the caller already generated it (the client, to show progress); it must
+    /// have been generated from exactly <see cref="ScenarioSettings.Map"/>. When null and the scenario has
+    /// a map, it is generated here (replays, headless runs).
+    /// </param>
+    /// <param name="rules">Construction balancing; null for the game's data file.</param>
+    public static GameSimulation Create(ScenarioSettings settings, MapData? map = null, ConstructionRules? rules = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        if (map is not null && map.Settings != settings.Map)
+        {
+            throw new ArgumentException("The map was not generated from the scenario's map settings.", nameof(map));
+        }
+
         var (network, fleet) = ScenarioBuilder.Build(settings);
-        return new GameSimulation(settings, network, fleet);
+        ConstructionState? construction = null;
+        if (settings.Map is not null)
+        {
+            map ??= MapGenerator.Generate(settings.Map);
+            construction = new ConstructionState(rules ?? ConstructionRules.Default, map, network);
+        }
+
+        return new GameSimulation(settings, network, fleet, construction);
     }
 
     /// <summary>Queues a command; it is processed at the start of the next tick.</summary>
@@ -72,6 +101,14 @@ public sealed class GameSimulation : IStateHashable
 
     /// <summary>Records every processed command from now on.</summary>
     public void AttachRecorder(SessionRecorder recorder) => _recorder = recorder ?? throw new ArgumentNullException(nameof(recorder));
+
+    /// <summary>
+    /// Processes the queued commands now, without advancing time or running any system (research R3):
+    /// the client calls it while the game is paused so construction applies immediately (FR-018).
+    /// Commands are recorded with the current tick, exactly as if processed at the start of the next
+    /// <see cref="Tick"/>, so replays are unchanged.
+    /// </summary>
+    public void ProcessPendingCommands() => ProcessCommands();
 
     /// <summary>Advances the simulation by exactly one tick.</summary>
     /// <param name="parallel">Use all CPU cores where possible. Results are identical either way.</param>
@@ -106,6 +143,11 @@ public sealed class GameSimulation : IStateHashable
         hasher.Append(Random);
         hasher.Append(Network);
         hasher.Append(Vehicles);
+        if (Construction is not null)
+        {
+            // Only games with a map have construction state, so map-less goldens are unchanged (research R2).
+            hasher.Append(Construction);
+        }
     }
 
     private void ProcessCommands()

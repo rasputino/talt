@@ -63,6 +63,16 @@ public sealed class Heightmap
         }
     }
 
+    /// <summary>Recomputes one column from the tile data after construction changed it (feature 006).</summary>
+    public void Refresh(MapData map, int x, int z)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        if ((uint)x < Width && (uint)z < Depth)
+        {
+            _heights[x + z * Width] = map.SurfaceHeightAt(x, z);
+        }
+    }
+
     /// <summary>Surface height at a column. Positions outside the map use the nearest edge column.</summary>
     public int Get(int x, int z) =>
         _heights[Math.Clamp(x, 0, Width - 1) + Math.Clamp(z, 0, Depth - 1) * Width];

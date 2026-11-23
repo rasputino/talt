@@ -13,4 +13,9 @@
     <PackageReference Include="System.IO.Hashing" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Balancing data shared by the client and the headless tool (feature 006, research R13). -->
+    <EmbeddedResource Include="Construction\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Construction.Data.%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

@@ -34,6 +34,18 @@ internal sealed class Theme
     public required UiColor Input { get; init; }
     public required UiColor HighlightHover { get; init; }
     public required UiColor HighlightSelection { get; init; }
+
+    /// <summary>Construction preview: tiles that would change (feature 006).</summary>
+    public required UiColor PreviewValid { get; init; }
+
+    /// <summary>Construction preview: tiles that block the action.</summary>
+    public required UiColor PreviewInvalid { get; init; }
+
+    /// <summary>Construction preview: tiles the action leaves out (objects of others when clearing).</summary>
+    public required UiColor PreviewSkipped { get; init; }
+
+    /// <summary>Construction preview: tiles of the dragged area that do not change.</summary>
+    public required UiColor PreviewArea { get; init; }
     public required UiColor Background { get; init; }
 
     public required float CornerRadius { get; init; }
@@ -94,6 +106,10 @@ internal sealed class Theme
             Input = C("input"),
             HighlightHover = C("highlightHover"),
             HighlightSelection = C("highlightSelection"),
+            PreviewValid = C("previewValid"),
+            PreviewInvalid = C("previewInvalid"),
+            PreviewSkipped = C("previewSkipped"),
+            PreviewArea = C("previewArea"),
             Background = C("background"),
             CornerRadius = data.CornerRadius,
             BorderWidth = data.BorderWidth,

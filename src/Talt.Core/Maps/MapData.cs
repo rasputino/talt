@@ -91,6 +91,63 @@ public sealed class MapData
         return Math.Max(_height[i], _waterLevel[i]);
     }
 
+    /// <summary>Water tile: sea, lake or river, or any water surface above the ground.</summary>
+    public bool IsWater(int index) =>
+        _waterLevel[index] > 0 || (_flags[index] & (byte)(TileTraits.Sea | TileTraits.Lake | TileTraits.River)) != 0;
+
+    // Mutators for construction (feature 006). Only ConstructionState calls them, inside commands.
+    internal void SetHeight(int index, int height) => _height[index] = (byte)height;
+
+    internal void SetTerrain(int index, TerrainType terrain) => _terrain[index] = (byte)terrain;
+
+    internal void SetFlags(int index, TileTraits flags) => _flags[index] = (byte)flags;
+
+    internal void SetScenery(int index, byte scenery) => _scenery[index] = scenery;
+
+    /// <summary>
+    /// Recomputes the Cliff and Buildable flags of one land tile from its neighbours, with the rules of
+    /// the generator's classifier: a cliff has a land neighbour more than one voxel higher or lower;
+    /// buildable land is neither cliff nor bare rock. Water tiles are left as they are.
+    /// </summary>
+    internal void RecomputeTraits(int x, int z)
+    {
+        var i = Index(x, z);
+        if (IsWater(i))
+        {
+            return;
+        }
+
+        var h = _height[i];
+        var cliff = Steep(h, x > 0, i - 1) || Steep(h, x < Width - 1, i + 1)
+            || Steep(h, z > 0, i - Width) || Steep(h, z < Depth - 1, i + Width);
+        var flags = (TileTraits)_flags[i] & ~(TileTraits.Cliff | TileTraits.Buildable);
+        if (cliff)
+        {
+            flags |= TileTraits.Cliff;
+        }
+        else if ((TerrainType)_terrain[i] != TerrainType.Rock)
+        {
+            flags |= TileTraits.Buildable;
+        }
+
+        _flags[i] = (byte)flags;
+
+        bool Steep(int height, bool inside, int neighbour) =>
+            inside && !IsWater(neighbour) && Math.Abs(height - _height[neighbour]) > 1;
+    }
+
+    /// <summary>Appends every mutable tile array to a simulation fingerprint (feature 006).</summary>
+    internal void AppendStateTo(StateHasher hasher)
+    {
+        hasher.Append(Width);
+        hasher.Append(Depth);
+        hasher.Append<byte>(_height);
+        hasher.Append<byte>(_terrain);
+        hasher.Append<byte>(_waterLevel);
+        hasher.Append<byte>(_flags);
+        hasher.Append<byte>(_scenery);
+    }
+
     /// <summary>64-bit fingerprint of the settings, all tile arrays and all sites (determinism checks and goldens).</summary>
     public ulong Fingerprint()
     {

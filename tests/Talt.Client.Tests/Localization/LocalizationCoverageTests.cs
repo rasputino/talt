@@ -19,7 +19,7 @@ public partial class LocalizationCoverageTests
     {
         var host = new FakeHost(ui);
         var session = new GameSession(SmallGame.Value, new SessionOptions(), fastForwardUnlocked: true);
-        var game = new InGameScreen(host, session, new Talt.Client.Rendering.OrbitCamera(), _ => { }, _ => false);
+        var game = new InGameScreen(host, session, new Talt.Client.Rendering.OrbitCamera(), _ => false);
         session.BuildInstances();
         game.OpenPauseMenu();
         return

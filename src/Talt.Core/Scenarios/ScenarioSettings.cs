@@ -1,3 +1,5 @@
+using Talt.Core.Maps;
+
 namespace Talt.Core.Scenarios;
 
 /// <summary>
@@ -11,6 +13,10 @@ namespace Talt.Core.Scenarios;
 /// <param name="RoadRemovalChancePerMille">Chance (0 to 900 per mille) that each grid road is left out.</param>
 /// <param name="VehicleCount">Number of vehicles at start (0 or more).</param>
 /// <param name="LineCount">Number of lines; null means one line per 10 vehicles (at least 1).</param>
+/// <param name="Map">
+/// Generated map of the game (feature 004); null for map-less scenarios (benchmarks, the CI goldens).
+/// With a map the simulation owns its tile data and can be built on (feature 006, research R1).
+/// </param>
 public sealed record ScenarioSettings(
     int Seed = 2026,
     int StartYear = 1950,
@@ -18,7 +24,8 @@ public sealed record ScenarioSettings(
     int RoadSpacing = 16,
     int RoadRemovalChancePerMille = 150,
     int VehicleCount = 20_000,
-    int? LineCount = null)
+    int? LineCount = null,
+    MapSettings? Map = null)
 {
     public const int MinStartYear = 1;
     public const int MaxStartYear = 9000;
@@ -57,6 +64,15 @@ public sealed record ScenarioSettings(
         if (LineCount is < 1)
         {
             throw new ArgumentException($"Line count must be at least 1 when given (was {LineCount}).");
+        }
+
+        if (Map is not null)
+        {
+            Map.Validate();
+            if (MapSizeTiles > Math.Min(Map.Width, Map.Depth))
+            {
+                throw new ArgumentException($"Map size {MapSizeTiles} must fit inside the {Map.Width}×{Map.Depth} map.");
+            }
         }
     }
 }

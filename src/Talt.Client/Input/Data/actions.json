@@ -21,8 +21,11 @@
     { "id": "back", "label": "action.back", "category": "interface", "kind": "press", "keys": ["Escape"] },
     { "id": "closeAllWindows", "label": "action.closeAllWindows", "category": "interface", "kind": "press", "keys": ["Shift+Delete"] },
     { "id": "settings", "label": "action.settings", "category": "interface", "kind": "press", "keys": ["F10"] },
-    { "id": "statistics", "label": "action.statistics", "category": "debug", "kind": "press", "keys": ["F3"] },
-    { "id": "raiseTerrain", "label": "action.raiseTerrain", "category": "debug", "kind": "press", "keys": ["PageUp"] },
-    { "id": "lowerTerrain", "label": "action.lowerTerrain", "category": "debug", "kind": "press", "keys": ["PageDown"] }
+    { "id": "toolRaise", "label": "action.toolRaise", "category": "tools", "kind": "press", "keys": ["PageUp"] },
+    { "id": "toolLower", "label": "action.toolLower", "category": "tools", "kind": "press", "keys": ["PageDown"] },
+    { "id": "toolLevel", "label": "action.toolLevel", "category": "tools", "kind": "press", "keys": ["L"] },
+    { "id": "toolClear", "label": "action.toolClear", "category": "tools", "kind": "press", "keys": ["X"] },
+    { "id": "undoConstruction", "label": "action.undoConstruction", "category": "tools", "kind": "press", "keys": ["Backspace"] },
+    { "id": "statistics", "label": "action.statistics", "category": "debug", "kind": "press", "keys": ["F3"] }
   ]
 }

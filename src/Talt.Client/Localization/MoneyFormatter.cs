@@ -105,20 +105,3 @@ internal sealed class MoneyFormatter
         public int Decimals { get; set; }
     }
 }
-
-/// <summary>Display-only company figures until the finances feature exists (data file company.json).</summary>
-internal sealed class CompanyData
-{
-    public long StartingCapital { get; set; }
-
-    public static CompanyData Load()
-    {
-        var data = DataFiles.Load<CompanyData>("company.json");
-        if (data.StartingCapital < 0)
-        {
-            throw DataFiles.Invalid("company.json", "'startingCapital' must not be negative.");
-        }
-
-        return data;
-    }
-}

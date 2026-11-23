@@ -42,11 +42,14 @@ Client options: `--start-year <year>`, `--language en|es` and `--ui-scale <0.75�
 (initial camera distance), `--ui-test-windows <n>` (opens sample windows to measure the interface).
 
 In game: the top bar shows money, date and speed buttons, the toolbar on the left opens settings and
-the other tools, and clicking the map selects the tile, road or vehicle under the cursor. Default keys:
+the other tools, and clicking the map selects the tile, road or vehicle under the cursor. Construction
+tools (toolbar or keys): `PageUp` raise land, `PageDown` lower land, `L` level, `X` clear trees and
+demolish your own objects, `Backspace` undo the last construction for a few seconds. Hover to see a
+green/red preview with the cost, drag over an area, release to build, `Esc` or the right button to
+cancel; building works while paused. Default keys:
 Space pause, `1`/`2`/`3` speed ×1/×3/×8, `F` fast forward (once unlocked), `N` add a vehicle, `Delete`
 remove the last vehicle you added, `Shift+Delete` close all windows, `F10` settings, `F3` render
-statistics, `PageUp`/`PageDown` raise/lower the tile under the camera (debug; Shift for a 32 × 32 area),
-`Esc` close window / pause menu, mouse and WASD/arrows/Q/E for the camera. All keys can be changed in
+statistics, `Esc` close window / pause menu, mouse and WASD/arrows/Q/E for the camera. All keys can be changed in
 Settings → Key bindings; settings (language, currency, interface size, full screen, vertical sync) are
 saved in your user profile.
 

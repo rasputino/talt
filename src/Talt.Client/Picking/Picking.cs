@@ -334,7 +334,8 @@ internal sealed class MapPicker
     public PickResult Pick(in Ray ray, PickContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        context.Terrain = TerrainPickLayer.Cast(ray, context.Heightmap, context.World);
+        // Up to the top of the highest chunk: hills above the first 32 voxels must be pickable too.
+        context.Terrain = TerrainPickLayer.Cast(ray, context.Heightmap, context.World, (context.World.TopChunkY + 1) * Chunk.Size);
         var visibleUpTo = context.Terrain.Kind == PickKind.None ? float.PositiveInfinity : context.Terrain.Distance + OcclusionTolerance;
         var best = PickResult.None;
         var bestPriority = int.MinValue;

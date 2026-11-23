@@ -20,11 +20,13 @@ internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount =
     /// <summary>The map settings: the given ones, or the defaults for the chosen size and seed.</summary>
     public MapSettings MapSettings => Map ?? new MapSettings(ChunksPerSide * Chunk.Size, ChunksPerSide * Chunk.Size, Seed);
 
+    /// <summary>The scenario, map included: the simulation owns the map's tile data (feature 006).</summary>
     public ScenarioSettings ToScenario() => new(
         Seed: Seed,
         StartYear: StartYear,
         MapSizeTiles: MapSizeTiles,
-        VehicleCount: VehicleCount);
+        VehicleCount: VehicleCount,
+        Map: MapSettings);
 }
 
 /// <summary>A freshly generated game: simulation, voxel world and heightmap.</summary>
@@ -43,20 +45,24 @@ internal static class GameSetup
         settings.Validate();
         var stopwatch = Stopwatch.StartNew();
 
-        var simulation = GameSimulation.Create(settings);
-        report?.Invoke($"Created simulation ({simulation.Network.NodeCount:N0} junctions, {simulation.Vehicles.LineCount:N0} lines, {simulation.Vehicles.VehicleCount:N0} vehicles) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
-        stopwatch.Restart();
-
-        var mapSettings = options.MapSettings;
+        var mapSettings = settings.Map!;
         report?.Invoke($"Map settings: {mapSettings.ToText()}");
         // The screen's bar: map generation fills 0–80 %, building the voxel world 80–100 %
         // (WorldBuilder reports a fraction of its own step).
         var map = MapGenerator.Generate(mapSettings, Combine(report is null ? null : new StageReporter(report), Scaled(progress, 0f, MapShare)));
+        report?.Invoke($"Generated the {map.Width}×{map.Depth} map in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
+        stopwatch.Restart();
+
+        // The simulation takes the map: construction commands change its tile data (feature 006).
+        var simulation = GameSimulation.Create(settings, map);
+        report?.Invoke($"Created simulation ({simulation.Network.NodeCount:N0} junctions, {simulation.Vehicles.LineCount:N0} lines, {simulation.Vehicles.VehicleCount:N0} vehicles) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
+        stopwatch.Restart();
+
         var world = WorldBuilder.Build(map, Scaled(progress, MapShare, 1f - MapShare));
         NetworkTerrainPainter.PaintRoads(world, simulation.Network);
         var heightmap = Heightmap.FromMapData(map);
         report?.Invoke(
-            $"Generated {map.Width}×{map.Depth} terrain ({world.ChunkCount} chunks, {map.Statistics.RiverTiles:N0} river tiles, {map.TownSites.Count()} town and {map.IndustrySites.Count()} industry sites) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
+            $"Built the world ({world.ChunkCount} chunks, {map.Statistics.RiverTiles:N0} river tiles, {map.TownSites.Count()} town and {map.IndustrySites.Count()} industry sites) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
 
         // No meshing here: the renderer fills the map in, nearest first (feature 003 FR-012).
         return new GeneratedGame(options, settings, simulation, world, heightmap);

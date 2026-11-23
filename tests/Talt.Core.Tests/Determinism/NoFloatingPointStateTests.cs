@@ -1,6 +1,8 @@
 using System.Numerics;
 using System.Reflection;
 using Talt.Core.Commands;
+using Talt.Core.Construction;
+using Talt.Core.Maps;
 using Talt.Core.Determinism;
 using Talt.Core.Network;
 using Talt.Core.Scenarios;
@@ -30,6 +32,21 @@ public class NoFloatingPointStateTests
         typeof(AddVehicleCommand),
         typeof(RemoveVehicleCommand),
         typeof(SimulationEvents),
+        typeof(ConstructionState),
+        typeof(ConstructionRules),
+        typeof(Company),
+        typeof(TileObjects),
+        typeof(TileOwner),
+        typeof(UndoRecord),
+        typeof(TileSnapshot),
+        typeof(MapData),
+        typeof(MapSettings),
+        typeof(TerraformCommand),
+        typeof(ClearAreaCommand),
+        typeof(UndoConstructionCommand),
+        typeof(ConstructionPlanner),
+        typeof(ConstructionPlan),
+        typeof(TileChange),
     ];
 
     private static readonly Type[] Forbidden =
