@@ -1,5 +1,7 @@
 namespace Talt.Core.Scenarios;
 
+using Talt.Core.Maps;
+
 /// <summary>
 /// Everything needed to create a game deterministically (data-model.md, ScenarioSettings).
 /// All values are integers so the settings themselves are exact on every platform.
@@ -11,6 +13,7 @@ namespace Talt.Core.Scenarios;
 /// <param name="RoadRemovalChancePerMille">Chance (0 to 900 per mille) that each grid road is left out.</param>
 /// <param name="VehicleCount">Number of vehicles at start (0 or more).</param>
 /// <param name="LineCount">Number of lines; null means one line per 10 vehicles (at least 1).</param>
+/// <param name="Map">Full map settings used to regenerate the map and its industries on replay; optional.</param>
 public sealed record ScenarioSettings(
     int Seed = 2026,
     int StartYear = 1950,
@@ -18,7 +21,8 @@ public sealed record ScenarioSettings(
     int RoadSpacing = 16,
     int RoadRemovalChancePerMille = 150,
     int VehicleCount = 20_000,
-    int? LineCount = null)
+    int? LineCount = null,
+    MapSettings? Map = null)
 {
     public const int MinStartYear = 1;
     public const int MaxStartYear = 9000;
@@ -58,5 +62,7 @@ public sealed record ScenarioSettings(
         {
             throw new ArgumentException($"Line count must be at least 1 when given (was {LineCount}).");
         }
+
+        Map?.Validate();
     }
 }

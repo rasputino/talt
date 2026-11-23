@@ -6,6 +6,8 @@ using Talt.Client.Picking;
 using Talt.Client.Ui;
 using Talt.Client.Ui.Widgets;
 using Talt.Client.Ui.Windows;
+using Talt.Core.Content;
+using Talt.Core.Industries;
 using Button = Talt.Client.Ui.Widgets.Button;
 using MouseButton = Silk.NET.Input.MouseButton;
 
@@ -25,6 +27,7 @@ internal static class ObjectInfoWindow
         {
             PickKind.Vehicle => TextRef.Of("info.vehicle.title", ("id", pick.VehicleId.ToString(CultureInfo.InvariantCulture))),
             PickKind.Road => TextRef.Of("info.road.title"),
+            PickKind.Industry => IndustryTitle(pick.IndustryId, session),
             _ => TextRef.Of("info.tile.title"),
         };
         var window = new UiWindow(Kind, title) { Key = pick.Key };
@@ -39,6 +42,10 @@ internal static class ObjectInfoWindow
             })));
             content.Add(new Label(TextRef.Of("info.vehicle.note")) { Color = TextColor.Muted, Wrap = true, Width = 240 });
         }
+        else if (pick.Kind == PickKind.Industry)
+        {
+            AddIndustry(content, pick.IndustryId, session);
+        }
         else
         {
             content.Add(new Label(TextRef.Of("info.position", ("x", x), ("z", z))));
@@ -48,6 +55,217 @@ internal static class ObjectInfoWindow
 
         window.Content = content;
         return window;
+    }
+
+    private static TextRef IndustryTitle(int industryId, GameSession session)
+    {
+        var industries = session.Simulation.Industries;
+        var slot = industries.SlotOf(industryId);
+        return slot < 0
+            ? TextRef.Of("info.industry.title")
+            : TextRef.Of(industries.Content.IndustryKind(industries.KindIndexAt(slot)).NameKey);
+    }
+
+    /// <summary>Industry window: production, acceptance, recipes, stock and last month's figures (FR-015).</summary>
+    private static void AddIndustry(StackPanel content, int industryId, GameSession session)
+    {
+        var industries = session.Simulation.Industries;
+        if (industries.SlotOf(industryId) < 0)
+        {
+            content.Add(new Label(TextRef.Of("info.industry.gone")) { Color = TextColor.Muted, Wrap = true, Width = 280 });
+            return;
+        }
+
+        content.Add(new Label(TextRef.Dynamic(() => session.Simulation.CurrentTick, s => FormatRate(s, industryId, session))) { Color = TextColor.Muted });
+
+        if (!industries.TryGetIndustry(industryId, out var info))
+        {
+            content.Add(new Label(TextRef.Of("info.industry.gone")) { Color = TextColor.Muted, Wrap = true, Width = 280 });
+            return;
+        }
+
+        if (info.Production.Count == 0)
+        {
+            content.Add(new Label(TextRef.Of("info.industry.production.none")) { Color = TextColor.Muted });
+        }
+        else
+        {
+            foreach (var production in info.Production)
+            {
+                var entry = production;
+                content.Add(new Label(TextRef.Dynamic(() => session.Simulation.CurrentTick, s => FormatProduction(s, entry, industryId, session))));
+            }
+        }
+
+        content.Add(new Label(TextRef.Dynamic(() => session.Simulation.CurrentTick, s => FormatAccepts(s, info, industryId, session))));
+        foreach (var recipe in info.Recipes)
+        {
+            var entry = recipe;
+            content.Add(new Label(TextRef.Dynamic(() => 0, s => FormatRecipe(s, entry, session))));
+        }
+
+        foreach (var cargo in info.Cargo)
+        {
+            var cargoId = cargo.CargoId;
+            content.Add(new Label(TextRef.Dynamic(() => session.Simulation.CurrentTick, s => FormatStock(s, cargoId, industryId, session))));
+            content.Add(new Label(TextRef.Dynamic(() => session.Simulation.CurrentTick, s => FormatLastMonth(s, cargoId, industryId, session))) { Color = TextColor.Muted });
+        }
+
+        foreach (var cargo in info.Cargo)
+        {
+            var definition = session.Simulation.Content.Cargo(session.Simulation.Content.CargoIndex(cargo.CargoId));
+            var properties = TextRef.Dynamic(() => 0, s => s.Format(
+                "info.cargo.properties",
+                ("cargo", s.Get($"cargo.{cargo.CargoId}")),
+                ("category", s.Get(CategoryKey(definition.Category))),
+                ("unit", s.Get(definition.UnitKey)),
+                ("decay", definition.ValueDecayPerDayPerMille.ToString(CultureInfo.InvariantCulture)),
+                ("floor", definition.MinimumValuePercent.ToString(CultureInfo.InvariantCulture)),
+                ("vehicles", VehicleNames(definition.VehicleKinds, s))));
+            content.Add(new Label(properties) { Color = TextColor.Muted, Wrap = true, Width = 320 });
+        }
+    }
+
+    private static string FormatRate(Strings s, int industryId, GameSession session)
+    {
+        var industries = session.Simulation.Industries;
+        var slot = industries.SlotOf(industryId);
+        return slot < 0
+            ? s.Get("info.industry.gone")
+            : s.Format("info.industry.rate", ("percent", (industries.RatePerMilleAt(slot) / 10).ToString(CultureInfo.InvariantCulture)));
+    }
+
+    private static string FormatProduction(Strings s, ProductionEntry production, int industryId, GameSession session)
+    {
+        var industries = session.Simulation.Industries;
+        var slot = industries.SlotOf(industryId);
+        if (slot < 0)
+        {
+            return s.Get("info.industry.gone");
+        }
+
+        var cargo = session.Simulation.Content.Cargo(session.Simulation.Content.CargoIndex(production.CargoId));
+        return s.Format(
+            "info.industry.production",
+            ("amount", industries.EffectiveProductionPerMonth(slot, session.Simulation.Content.CargoIndex(production.CargoId)).ToString(CultureInfo.InvariantCulture)),
+            ("unit", s.Get(cargo.UnitKey)),
+            ("cargo", s.Get($"cargo.{production.CargoId}")));
+    }
+
+    private static string FormatAccepts(Strings s, IndustryInfo info, int industryId, GameSession session)
+    {
+        var slot = session.Simulation.Industries.SlotOf(industryId);
+        if (slot < 0)
+        {
+            return s.Get("info.industry.gone");
+        }
+
+        if (info.Accepts.Count == 0)
+        {
+            return s.Get("info.industry.accepts.none");
+        }
+
+        var names = new List<string>(info.Accepts.Count);
+        foreach (var cargo in info.Accepts)
+        {
+            names.Add(s.Get($"cargo.{cargo}"));
+        }
+
+        return s.Format("info.industry.accepts", ("cargos", string.Join(", ", names)));
+    }
+
+    private static string FormatRecipe(Strings s, RecipeDefinition recipe, GameSession session)
+    {
+        var content = session.Simulation.Content;
+        var input = content.Cargo(content.CargoIndex(recipe.InputCargoId));
+        var output = content.Cargo(content.CargoIndex(recipe.OutputCargoId));
+        return s.Format(
+            "info.industry.recipe",
+            ("inputAmount", recipe.InputAmount.ToString(CultureInfo.InvariantCulture)),
+            ("inputUnit", s.Get(input.UnitKey)),
+            ("input", s.Get($"cargo.{recipe.InputCargoId}")),
+            ("outputAmount", recipe.OutputAmount.ToString(CultureInfo.InvariantCulture)),
+            ("outputUnit", s.Get(output.UnitKey)),
+            ("output", s.Get($"cargo.{recipe.OutputCargoId}")));
+    }
+
+    private static string FormatStock(Strings s, string cargoId, int industryId, GameSession session)
+    {
+        var industries = session.Simulation.Industries;
+        var slot = industries.SlotOf(industryId);
+        if (slot < 0)
+        {
+            return s.Get("info.industry.gone");
+        }
+
+        var index = session.Simulation.Content.CargoIndex(cargoId);
+        var cargo = session.Simulation.Content.Cargo(index);
+        var available = industries.AvailableAt(slot, index);
+        var pending = industries.PendingInputAt(slot, index);
+        var availableText = s.Format(
+            "info.industry.available",
+            ("amount", available.ToString(CultureInfo.InvariantCulture)),
+            ("unit", s.Get(cargo.UnitKey)),
+            ("cargo", s.Get($"cargo.{cargoId}")));
+        return pending > 0
+            ? availableText + "  " + s.Format(
+                "info.industry.pending",
+                ("amount", pending.ToString(CultureInfo.InvariantCulture)),
+                ("unit", s.Get(cargo.UnitKey)),
+                ("cargo", s.Get($"cargo.{cargoId}")))
+            : availableText;
+    }
+
+    private static string FormatLastMonth(Strings s, string cargoId, int industryId, GameSession session)
+    {
+        var industries = session.Simulation.Industries;
+        var slot = industries.SlotOf(industryId);
+        if (slot < 0)
+        {
+            return s.Get("info.industry.gone");
+        }
+
+        var index = session.Simulation.Content.CargoIndex(cargoId);
+        return s.Format(
+            "info.industry.lastMonth",
+            ("accepted", industries.AcceptedLastMonthAt(slot, index).ToString(CultureInfo.InvariantCulture)),
+            ("shipped", industries.ShippedLastMonthAt(slot, index).ToString(CultureInfo.InvariantCulture)),
+            ("cargo", s.Get($"cargo.{cargoId}")));
+    }
+
+    private static string CategoryKey(CargoCategory category) => category switch
+    {
+        CargoCategory.RawMaterial => "cargo.category.raw",
+        CargoCategory.ProcessedGood => "cargo.category.processed",
+        CargoCategory.Passenger => "cargo.category.passenger",
+        CargoCategory.Mail => "cargo.category.mail",
+        _ => "cargo.category.goods",
+    };
+
+    private static string VehicleNames(VehicleKind kinds, Strings s)
+    {
+        var names = new List<string>(4);
+        if ((kinds & VehicleKind.Road) != 0)
+        {
+            names.Add(s.Get("vehicle.road"));
+        }
+
+        if ((kinds & VehicleKind.Rail) != 0)
+        {
+            names.Add(s.Get("vehicle.rail"));
+        }
+
+        if ((kinds & VehicleKind.Ship) != 0)
+        {
+            names.Add(s.Get("vehicle.ship"));
+        }
+
+        if ((kinds & VehicleKind.Air) != 0)
+        {
+            names.Add(s.Get("vehicle.air"));
+        }
+
+        return string.Join(", ", names);
     }
 
     private static (int X, int Z) VehicleTile(GameSession session, int id)

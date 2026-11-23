@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Talt.Core.Determinism;
+using Talt.Core.Maps;
 using Talt.Core.Scenarios;
 
 namespace Talt.Core.Commands;
@@ -57,6 +58,11 @@ public sealed class RecordedSession
             writer.WriteNumber("roadRemovalChancePerMille", Settings.RoadRemovalChancePerMille);
             writer.WriteNumber("lineCount", Settings.EffectiveLineCount);
             writer.WriteNumber("vehicleCount", Settings.VehicleCount);
+            if (Settings.Map is not null)
+            {
+                writer.WriteString("map", Settings.Map.ToText());
+            }
+
             writer.WriteEndObject();
 
             writer.WriteStartArray("entries");
@@ -106,6 +112,16 @@ public sealed class RecordedSession
         }
 
         var s = root.GetProperty("settings");
+        MapSettings? map = null;
+        if (s.TryGetProperty("map", out var mapElement))
+        {
+            var mapText = mapElement.GetString();
+            if (!MapSettings.TryParse(mapText, out map, out var mapError))
+            {
+                throw new JsonException($"Invalid map settings in the session: {mapError}");
+            }
+        }
+
         var settings = new ScenarioSettings(
             Seed: s.GetProperty("seed").GetInt32(),
             StartYear: s.GetProperty("startYear").GetInt32(),
@@ -113,7 +129,8 @@ public sealed class RecordedSession
             RoadSpacing: s.GetProperty("roadSpacing").GetInt32(),
             RoadRemovalChancePerMille: s.GetProperty("roadRemovalChancePerMille").GetInt32(),
             VehicleCount: s.GetProperty("vehicleCount").GetInt32(),
-            LineCount: s.GetProperty("lineCount").GetInt32());
+            LineCount: s.GetProperty("lineCount").GetInt32(),
+            Map: map);
 
         var gameVersion = root.TryGetProperty("gameVersion", out var gv) ? gv.GetString() ?? "unknown" : "unknown";
         var session = new RecordedSession(settings, gameVersion);

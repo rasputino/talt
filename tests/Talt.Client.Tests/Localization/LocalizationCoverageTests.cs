@@ -22,8 +22,12 @@ public partial class LocalizationCoverageTests
         var game = new InGameScreen(host, session, new Talt.Client.Rendering.OrbitCamera(), _ => { }, _ => false);
         session.BuildInstances();
         game.OpenPauseMenu();
-        return
-        [
+        var industryId = session.Simulation.Industries.Count > 0 ? session.Simulation.Industries.IdAt(0) : -1;
+        var industryWindow = industryId >= 0
+            ? ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Industry, 3, 4, 10, Core.Voxels.VoxelMaterial.Air, -1, industryId, default, default, 1), session)
+            : null;
+        var screens = new List<Widget>
+        {
             new MainMenuScreen(host).Root,
             new NewGameScreen(host, new DefaultNewGameOptionsSource()).Root,
             game.Root,
@@ -31,10 +35,16 @@ public partial class LocalizationCoverageTests
             SettingsWindow.Create(host),
             KeyBindingsWindow.Create(host),
             SampleWindows.Create(1),
-            ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Tile, 3, 4, 10, Core.Voxels.VoxelMaterial.Grass, -1, default, default, 1), session),
-            ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Road, 3, 4, 10, Core.Voxels.VoxelMaterial.Road, -1, default, default, 1), session),
-            ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Vehicle, 3, 4, 0, Core.Voxels.VoxelMaterial.Air, session.InstanceIds[0], default, default, 1), session),
-        ];
+            ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Tile, 3, 4, 10, Core.Voxels.VoxelMaterial.Grass, -1, -1, default, default, 1), session),
+            ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Road, 3, 4, 10, Core.Voxels.VoxelMaterial.Road, -1, -1, default, default, 1), session),
+            ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Vehicle, 3, 4, 0, Core.Voxels.VoxelMaterial.Air, session.InstanceIds[0], -1, default, default, 1), session),
+        };
+        if (industryWindow is not null)
+        {
+            screens.Add(industryWindow);
+        }
+
+        return screens;
     }
 
     private static IEnumerable<TextRef> Texts(Widget widget)

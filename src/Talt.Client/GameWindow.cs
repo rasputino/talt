@@ -398,6 +398,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         {
             _session.BuildInstances(); // Once per drawn frame, so uploads never outpace submissions.
             _renderer.UpdateVehicles(_session.Instances);
+            _renderer.UpdateIndustries(_session.IndustryInstances);
         }
 
         var uiStart = Stopwatch.GetTimestamp();

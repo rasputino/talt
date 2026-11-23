@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Talt.Core.Commands;
+using Talt.Core.Maps;
 using Talt.Core.Scenarios;
 using Talt.Core.Tests.TestCommands;
 
@@ -56,6 +57,35 @@ public class RecordedSessionTests
     {
         var json = new RecordedSession(new ScenarioSettings()).ToJson()
             .Replace("\"entries\": []", "\"entries\": [ { \"tick\": 1, \"outcome\": \"applied\", \"command\": { \"type\": \"nope\" } } ]", StringComparison.Ordinal);
+        Assert.Throws<JsonException>(() => RecordedSession.FromJson(json));
+    }
+
+    [Fact]
+    public void MapSettings_RoundTrip()
+    {
+        var map = new MapSettings(512, 256, 7, 40, 28, 35, 7);
+        var session = new RecordedSession(new ScenarioSettings(Seed: 7, MapSizeTiles: 256, VehicleCount: 0, LineCount: 1, Map: map));
+
+        var copy = RecordedSession.FromJson(session.ToJson());
+
+        Assert.Equal(map, copy.Settings.Map);
+        Assert.Equal(session.Settings, copy.Settings);
+    }
+
+    [Fact]
+    public void SessionsWithoutAMapStayValid()
+    {
+        var session = RecordedSession.FromJson(new RecordedSession(new ScenarioSettings()).ToJson());
+
+        Assert.Null(session.Settings.Map);
+    }
+
+    [Fact]
+    public void InvalidMapText_IsRejected()
+    {
+        var json = new RecordedSession(new ScenarioSettings()).ToJson()
+            .Replace("\"vehicleCount\": 20000", "\"vehicleCount\": 20000, \"map\": \"nope\"", StringComparison.Ordinal);
+
         Assert.Throws<JsonException>(() => RecordedSession.FromJson(json));
     }
 }

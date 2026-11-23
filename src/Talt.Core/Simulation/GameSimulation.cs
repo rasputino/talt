@@ -1,5 +1,8 @@
 using Talt.Core.Commands;
+using Talt.Core.Content;
 using Talt.Core.Determinism;
+using Talt.Core.Industries;
+using Talt.Core.Maps;
 using Talt.Core.Network;
 using Talt.Core.Scenarios;
 
@@ -26,13 +29,24 @@ public sealed class GameSimulation : IStateHashable
     private readonly CommandInbox _commands = new();
     private SessionRecorder? _recorder;
 
-    private GameSimulation(ScenarioSettings settings, TransportNetwork network, VehicleFleet vehicles)
+    private GameSimulation(
+        ScenarioSettings settings,
+        TransportNetwork network,
+        VehicleFleet vehicles,
+        GameContent content,
+        MapData? map)
     {
         Settings = settings;
+        Content = content;
         Network = network;
         Vehicles = vehicles;
         Clock = new GameClock(settings.StartYear);
         Random = new DeterministicRandom(unchecked((ulong)settings.Seed)).Fork(streamId: 0x51_4D);
+        Industries = map is null
+            ? IndustryFleet.CreateEmpty(content, settings.MapSizeTiles, settings.MapSizeTiles)
+            : IndustryFleet.Create(content, map, settings.StartYear, Random.Fork(0x1D_05));
+        Events.OnDayEnded(simulation => Industries.AdvanceDay(simulation.Date));
+        Events.OnMonthEnded(simulation => Industries.AdvanceMonth(simulation.Date));
     }
 
     /// <summary>Number of completed ticks since the game started (data-model.md GameSimulation.CurrentTick).</summary>
@@ -43,6 +57,12 @@ public sealed class GameSimulation : IStateHashable
     public GameClock Clock { get; }
 
     public ScenarioSettings Settings { get; }
+
+    /// <summary>Validated cargo and industry catalogue used by this game.</summary>
+    public GameContent Content { get; }
+
+    /// <summary>All industries of the world; empty when the game was created without a map.</summary>
+    public IndustryFleet Industries { get; }
 
     public TransportNetwork Network { get; }
 
@@ -59,11 +79,14 @@ public sealed class GameSimulation : IStateHashable
     /// <summary>Raised during <see cref="Tick"/> for every processed command, in processing order.</summary>
     public event Action<CommandProcessed>? CommandProcessed;
 
-    public static GameSimulation Create(ScenarioSettings settings)
+    public static GameSimulation Create(ScenarioSettings settings, MapData? map = null, GameContent? content = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        settings.Validate();
+        content ??= GameContent.Default;
+        var mapData = map ?? (settings.Map is null ? null : MapGenerator.Generate(settings.Map));
         var (network, fleet) = ScenarioBuilder.Build(settings);
-        return new GameSimulation(settings, network, fleet);
+        return new GameSimulation(settings, network, fleet, content, mapData);
     }
 
     /// <summary>Queues a command; it is processed at the start of the next tick.</summary>
@@ -106,6 +129,7 @@ public sealed class GameSimulation : IStateHashable
         hasher.Append(Random);
         hasher.Append(Network);
         hasher.Append(Vehicles);
+        hasher.Append(Industries);
     }
 
     private void ProcessCommands()

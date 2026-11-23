@@ -43,6 +43,28 @@ public class HeadlessArgumentsTests
         Assert.Null(options.Ticks);
     }
 
+    [Fact]
+    public void Run_WithMapTextSetsMapSettings()
+    {
+        Assert.True(HeadlessArguments.TryParse(
+            ["run", "--ticks", "10", "--map-text", "T1-512x256-s7-r40-h28-w35-l7"],
+            out var options,
+            out _));
+
+        Assert.NotNull(options!.Settings.Map);
+        Assert.Equal(512, options.Settings.Map!.Width);
+        Assert.Equal(256, options.Settings.Map.Depth);
+        Assert.Equal(7, options.Settings.Map.Seed);
+    }
+
+    [Fact]
+    public void Run_WithoutMapTextHasNoMap()
+    {
+        Assert.True(HeadlessArguments.TryParse(["run", "--ticks", "10"], out var options, out _));
+
+        Assert.Null(options!.Settings.Map);
+    }
+
     public static TheoryData<string[]> InvalidArgumentSets => new()
     {
         Array.Empty<string>(),
@@ -53,6 +75,7 @@ public class HeadlessArgumentsTests
         new[] { "run", "--ticks", "10", "--map", "100" }, // Invalid map size.
         new[] { "run", "--ticks" },                       // Missing value.
         new[] { "run", "--ticks", "10", "--bogus" },
+        new[] { "run", "--ticks", "10", "--map-text", "nope" },
         new[] { "replay" },                               // Missing session file.
     };
 
