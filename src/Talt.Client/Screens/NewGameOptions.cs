@@ -1,3 +1,4 @@
+using Talt.Core.Maps;
 using Talt.Core.Voxels;
 
 namespace Talt.Client.Screens;
@@ -10,6 +11,9 @@ internal enum NewGameOptionKind
 
     /// <summary>A whole number typed by the player (map seed).</summary>
     Seed,
+
+    /// <summary>A number in a range, with a slider.</summary>
+    Slider,
 }
 
 /// <summary>One value of a <see cref="NewGameOptionKind.Choice"/> option and its label.</summary>
@@ -19,7 +23,7 @@ internal sealed record NewGameChoice(int Value, string LabelKey);
 
 /// <summary>
 /// One row of the new-game screen (data-model.md NewGameOptionDescriptor). The screen is built only
-/// from these descriptors, so feature 004's map generation options can be added without changing it.
+/// from these descriptors, so new map options can be added without changing it.
 /// </summary>
 internal sealed record NewGameOptionDescriptor(
     string Id,
@@ -28,10 +32,18 @@ internal sealed record NewGameOptionDescriptor(
     IReadOnlyList<NewGameChoice> Choices,
     int Default,
     string? TooltipKey = null,
-    bool GroupDigits = false)
+    bool GroupDigits = false,
+    int Minimum = 0,
+    int Maximum = 0,
+    int Step = 1)
 {
     /// <summary>Whether <paramref name="value"/> is allowed for this option.</summary>
-    public bool Accepts(int value) => Kind == NewGameOptionKind.Seed ? value >= 0 : Choices.Any(c => c.Value == value);
+    public bool Accepts(int value) => Kind switch
+    {
+        NewGameOptionKind.Seed => value >= 0,
+        NewGameOptionKind.Slider => value >= Minimum && value <= Maximum,
+        _ => Choices.Any(c => c.Value == value),
+    };
 }
 
 /// <summary>Supplies the options of the new-game screen and turns the chosen values into a game.</summary>
@@ -39,28 +51,50 @@ internal interface INewGameOptionsSource
 {
     IReadOnlyList<NewGameOptionDescriptor> Options { get; }
 
+    /// <summary>Adjusts values that depend on each other (called after every change).</summary>
+    void Normalize(IDictionary<string, int> values);
+
     /// <summary>Builds the game options from the values chosen (option id → value).</summary>
     NewGameOptions Create(IReadOnlyDictionary<string, int> values);
 }
 
 /// <summary>
-/// The options this branch supports (what <see cref="Talt.Core.Scenarios.ScenarioSettings"/> takes):
-/// map size, vehicles, start year and seed. Follow-up after feature 004: a source bound to its map
-/// generation settings record (roughness, maximum height, water, sea level).
+/// The new-game options: the map generation settings of feature 004 (<see cref="MapSettings"/>: width,
+/// depth, seed, roughness, maximum height, water, sea level) plus vehicles and start year
+/// (<see cref="Talt.Core.Scenarios.ScenarioSettings"/>). Defaults are <see cref="MapSettings"/>'s,
+/// with a 512-tile map so a first game starts quickly.
 /// </summary>
 internal sealed class DefaultNewGameOptionsSource : INewGameOptionsSource
 {
-    public const string MapSize = "mapSize";
+    public const string Width = "width";
+    public const string Depth = "depth";
+    public const string Seed = "seed";
+    public const string Roughness = "roughness";
+    public const string MaxHeight = "maxHeight";
+    public const string Water = "water";
+    public const string SeaLevel = "seaLevel";
     public const string Vehicles = "vehicles";
     public const string StartYear = "startYear";
-    public const string Seed = "seed";
+
+    private static readonly MapSettings Defaults = new(Width: 512, Depth: 512, Seed: 2026);
+
+    private static readonly NewGameChoice[] Sizes =
+    [
+        new(256, "newGame.side.value"), new(512, "newGame.side.value"), new(1024, "newGame.side.value"),
+        new(2048, "newGame.side.value"), new(4096, "newGame.side.value"),
+    ];
 
     public IReadOnlyList<NewGameOptionDescriptor> Options { get; } =
     [
-        new(MapSize, "newGame.mapSize", NewGameOptionKind.Choice,
-            [new(256, "newGame.mapSize.value"), new(512, "newGame.mapSize.value"), new(1024, "newGame.mapSize.value"),
-             new(2048, "newGame.mapSize.value"), new(4096, "newGame.mapSize.value")],
-            512, "newGame.mapSize.tooltip"),
+        new(Width, "newGame.width", NewGameOptionKind.Choice, Sizes, Defaults.Width, "newGame.mapSize.tooltip"),
+        new(Depth, "newGame.depth", NewGameOptionKind.Choice, Sizes, Defaults.Depth, "newGame.mapSize.tooltip"),
+        new(Roughness, "newGame.roughness", NewGameOptionKind.Slider, [], Defaults.Roughness, "newGame.roughness.tooltip", Minimum: 0, Maximum: 100, Step: 5),
+        new(MaxHeight, "newGame.maxHeight", NewGameOptionKind.Slider, [], Defaults.MaxHeight, "newGame.maxHeight.tooltip",
+            Minimum: MapSettings.MinMaxHeight, Maximum: MapSettings.MaxMaxHeight, Step: 1),
+        new(Water, "newGame.water", NewGameOptionKind.Slider, [], Defaults.WaterAmount, "newGame.water.tooltip", Minimum: 0, Maximum: MapSettings.MaxWaterAmount, Step: 5),
+        new(SeaLevel, "newGame.seaLevel", NewGameOptionKind.Slider, [], Defaults.SeaLevel, "newGame.seaLevel.tooltip",
+            Minimum: MapSettings.MinSeaLevel, Maximum: MapSettings.MaxMaxHeight - 2, Step: 1),
+        new(Seed, "newGame.seed", NewGameOptionKind.Seed, [], (int)Defaults.Seed, "newGame.seed.tooltip"),
         new(Vehicles, "newGame.vehicles", NewGameOptionKind.Choice,
             [new(0, "newGame.vehicles.none"), new(1000, "newGame.vehicles.value"), new(5000, "newGame.vehicles.value"),
              new(20000, "newGame.vehicles.value"), new(50000, "newGame.vehicles.value")],
@@ -68,8 +102,17 @@ internal sealed class DefaultNewGameOptionsSource : INewGameOptionsSource
         new(StartYear, "newGame.startYear", NewGameOptionKind.Choice,
             [new(1920, "newGame.year.value"), new(1950, "newGame.year.value"), new(1980, "newGame.year.value"), new(2010, "newGame.year.value")],
             1950),
-        new(Seed, "newGame.seed", NewGameOptionKind.Seed, [], 2026, "newGame.seed.tooltip"),
     ];
+
+    /// <summary>The sea must stay at least 2 voxels below the highest terrain (<see cref="MapSettings.Validate"/>).</summary>
+    public void Normalize(IDictionary<string, int> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        if (values.TryGetValue(MaxHeight, out var max) && values.TryGetValue(SeaLevel, out var sea) && sea > max - 2)
+        {
+            values[SeaLevel] = Math.Max(MapSettings.MinSeaLevel, max - 2);
+        }
+    }
 
     public NewGameOptions Create(IReadOnlyDictionary<string, int> values)
     {
@@ -80,10 +123,23 @@ internal sealed class DefaultNewGameOptionsSource : INewGameOptionsSource
             return values.TryGetValue(id, out var v) && option.Accepts(v) ? v : option.Default;
         }
 
+        var maxHeight = Value(MaxHeight);
+        var map = new MapSettings(
+            Width: Value(Width),
+            Depth: Value(Depth),
+            Seed: Value(Seed),
+            Roughness: Value(Roughness),
+            MaxHeight: maxHeight,
+            WaterAmount: Value(Water),
+            SeaLevel: Math.Min(Value(SeaLevel), maxHeight - 2));
+        map.Validate();
+
+        // The road network covers the square part of the map (feature 004 keeps ScenarioSettings square).
         return new NewGameOptions(
-            ChunksPerSide: Value(MapSize) / Chunk.Size,
+            ChunksPerSide: Math.Min(map.Width, map.Depth) / Chunk.Size,
             VehicleCount: Value(Vehicles),
             Seed: Value(Seed),
-            StartYear: Value(StartYear));
+            StartYear: Value(StartYear),
+            Map: map);
     }
 }

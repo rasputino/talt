@@ -33,7 +33,10 @@ internal sealed record GeneratedGame(NewGameOptions Options, ScenarioSettings Sc
 /// <summary>Creates the simulation and the world of a new game (runs on a background thread).</summary>
 internal static class GameSetup
 {
-    public static GeneratedGame Create(NewGameOptions options, Action<string>? report = null)
+    /// <param name="options">What to generate.</param>
+    /// <param name="report">Console lines (timings, map text), optional.</param>
+    /// <param name="progress">Map generation progress for the new-game screen (feature 005 T069), optional.</param>
+    public static GeneratedGame Create(NewGameOptions options, Action<string>? report = null, IProgress<MapGenerationProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         var settings = options.ToScenario();
@@ -46,8 +49,10 @@ internal static class GameSetup
 
         var mapSettings = options.MapSettings;
         report?.Invoke($"Map settings: {mapSettings.ToText()}");
-        var map = MapGenerator.Generate(mapSettings, report is null ? null : new StageReporter(report));
-        var world = WorldBuilder.Build(map);
+        // The screen's bar: map generation fills 0–80 %, building the voxel world 80–100 %
+        // (WorldBuilder reports a fraction of its own step).
+        var map = MapGenerator.Generate(mapSettings, Combine(report is null ? null : new StageReporter(report), Scaled(progress, 0f, MapShare)));
+        var world = WorldBuilder.Build(map, Scaled(progress, MapShare, 1f - MapShare));
         NetworkTerrainPainter.PaintRoads(world, simulation.Network);
         var heightmap = Heightmap.FromMapData(map);
         report?.Invoke(
@@ -57,7 +62,33 @@ internal static class GameSetup
         return new GeneratedGame(options, settings, simulation, world, heightmap);
     }
 
-    /// <summary>Prints one console line each time generation enters a new stage (progress for the future new-game screen).</summary>
+    /// <summary>Share of the progress bar taken by map generation; the rest is building the world.</summary>
+    private const float MapShare = 0.8f;
+
+    private static ScaledProgress? Scaled(IProgress<MapGenerationProgress>? progress, float offset, float scale) =>
+        progress is null ? null : new ScaledProgress(progress, offset, scale);
+
+    /// <summary>Maps a step's 0–1 fraction into its part of the overall bar.</summary>
+    private sealed class ScaledProgress(IProgress<MapGenerationProgress> target, float offset, float scale) : IProgress<MapGenerationProgress>
+    {
+        public void Report(MapGenerationProgress value) =>
+            target.Report(value with { Fraction = offset + (scale * Math.Clamp(value.Fraction, 0f, 1f)) });
+    }
+
+    private static IProgress<MapGenerationProgress>? Combine(IProgress<MapGenerationProgress>? first, IProgress<MapGenerationProgress>? second) =>
+        first is null ? second : second is null ? first : new BothProgress(first, second);
+
+    /// <summary>Sends progress to two receivers (console and screen).</summary>
+    private sealed class BothProgress(IProgress<MapGenerationProgress> first, IProgress<MapGenerationProgress> second) : IProgress<MapGenerationProgress>
+    {
+        public void Report(MapGenerationProgress value)
+        {
+            first.Report(value);
+            second.Report(value);
+        }
+    }
+
+    /// <summary>Prints one console line each time generation enters a new stage.</summary>
     private sealed class StageReporter(Action<string> report) : IProgress<MapGenerationProgress>
     {
         private MapGenerationStage? _last;
