@@ -20,21 +20,32 @@ Talt.slnx
 │   │   │                   RecordedSession, SessionRecorder, SessionReplayer, CommandSerializer
 │   │   ├── Determinism/    FixedMath, DeterministicRandom (xoshiro256**), StateHasher (XxHash3)
 │   │   └── Scenarios/      ScenarioSettings, ScenarioBuilder (shared by client and headless runner)
-│   └── Talt.Client/        Executable: window, input, rendering, runs the simulation.
-│       ├── GameWindow.cs   Window lifecycle, camera, speed keys, pose interpolation, title status
-│       ├── PlayerSettings.cs  Persisted player settings (fast-forward unlock)
-│       ├── Localization/   Minimal en/es string table (Strings.cs + JSON resources)
-│       └── Rendering/      WebGpuRenderer, WorldRenderer, ChunkMeshScheduler, Frustum,
-│                           LodSelector, RenderStatistics, OrbitCamera, UnitCube, Shaders/*.wgsl
+│   └── Talt.Client/        Executable: window, input, rendering, interface, runs the simulation.
+│       ├── GameWindow.cs   Window lifecycle, screens, input routing, settings, UI pass, title status
+│       ├── GameSetup.cs    Builds simulation + world + heightmap from NewGameOptions (background task)
+│       ├── GameSession.cs  A running game: runner, pose interpolation, vehicle instances, commands
+│       ├── PlayerSettings.cs  Persisted settings (language, currency, scale, display, bindings...)
+│       ├── DataFiles.cs    Embedded JSON data files with validation errors
+│       ├── Ui/             Retained-mode interface: UiContext, widgets, windows, SDF font, icons, theme
+│       ├── Screens/        Main menu, new game, in-game HUD and pause menu, settings, key bindings,
+│       │                   object information and sample windows; INewGameOptionsSource
+│       ├── Input/          KeyBindings (data-driven actions), InputRouter
+│       ├── Picking/        Ray, MapPicker and pick layers (terrain, road, vehicle)
+│       ├── Localization/   Strings (en/es, plurals), MoneyFormatter and currencies
+│       └── Rendering/      WebGpuRenderer, WorldRenderer, UiRenderer, HighlightRenderer,
+│                           ChunkMeshScheduler, Frustum, LodSelector, RenderStatistics, OrbitCamera,
+│                           UnitCube, Shaders/*.wgsl
 ├── tools/
 │   └── Talt.Headless/      Console runner: run and replay simulations without a window
 ├── tests/
 │   ├── Talt.Core.Tests/    xUnit tests for Talt.Core (determinism, calendar, runner, commands...)
-│   ├── Talt.Client.Tests/  String table, frustum, LOD selection, camera, frame-time tests
+│   ├── Talt.Client.Tests/  Strings and localization coverage, money, layout, draw list, input
+│   │                       routing, windows, tooltips, key bindings, settings, picking, screens,
+│   │                       frustum, LOD selection, camera, frame-time tests
 │   └── Talt.Headless.Tests/ Command-line parsing tests
 └── benchmarks/
     └── Talt.Benchmarks/    BenchmarkDotNet: full tick, vehicle tick, pathfinding, SoA vs Arch ECS,
-                            chunk meshing (naive vs greedy, LOD)
+                            chunk meshing (naive vs greedy, LOD), UI frame cost, picking
 ```
 
 **Rule:** `Talt.Core` must never reference graphics or windowing libraries. Everything in it must be
@@ -335,26 +346,116 @@ default statistical job):
 `OrbitCamera` orbits a target point on the ground. The target follows the terrain height and stays
 inside the map, and the camera tilts up automatically so it never goes inside a hill.
 
+Default controls (feature 005 makes every key rebindable in Settings → Key bindings; the defaults
+live in `src/Talt.Client/Input/Data/actions.json`):
+
 | Input | Action |
 |---|---|
-| Left mouse drag | Rotate |
+| Left mouse drag on the map | Rotate |
 | Right mouse drag, WASD, arrows | Pan |
-| Mouse wheel | Zoom (the farthest zoom shows the whole map: up to 2 × the map side) |
+| Mouse wheel, `=` / `-` | Zoom (the farthest zoom shows the whole map: up to 2 × the map side) |
 | Q / E | Rotate |
+| Left click on the map (no drag) | Select the object under the cursor and open its information window |
 | Space | Pause / resume |
 | 1 / 2 / 3 | Speed ×1 / ×3 / ×8 |
-| F | Fast forward on / off (only when unlocked: `--unlock-fast-forward`) |
+| F | Fast forward on / off (only when unlocked in Settings or with `--unlock-fast-forward`) |
 | N | Add a vehicle to a random line |
 | Delete | Remove the last vehicle you added |
+| Shift+Delete | Close all windows except pinned ones |
+| F10 | Settings |
 | F3 | Render statistics in the title bar and console (on / off) |
 | PageUp / PageDown | Raise / lower the tile under the camera target (debug edit; Shift: 32 × 32 area) |
-| Esc | Quit |
+| Esc | Close the front window; then clear the selection; then open / close the pause menu |
 
 Options for measurements: `--stats` shows the statistics from the start, `--zoom <distance|max>` sets
-the initial camera distance.
+the initial camera distance, `--ui-test-windows <n>` opens n sample windows.
 
-The title bar shows the date, speed, effective speed, FPS, vehicles, average tick time and the
-result of the last command, in English or Spanish (`--language en|es`).
+The date, money and speed are in the top bar (feature 005); the window title shows the game name, or
+the render statistics with `--stats`/F3, including the interface time per frame and the window count.
+
+## User interface (feature 005)
+
+The client draws its own interface on top of the world (research in `specs/005-ui-foundation/research.md`).
+
+- **Framework (`Ui/`)**: a retained widget tree with two-pass layout (measure, arrange) in logical
+  pixels multiplied by the interface scale (75–200 %). `UiContext` holds the layers drawn back to front
+  (screen, overlay such as the pause menu, windows, popup such as an open drop-down, tooltip), hover,
+  mouse capture, keyboard focus and the tooltip timer. Widgets: panel, stack, spacer, label, button,
+  icon, check box, drop-down, text input, slider, scroll area, list, tabs, window. Widgets only take
+  `TextRef` (a localization key, or a dynamic text composed from localized formats), never literals.
+  `WindowManager` keeps z-order, cascades windows of the same kind, focuses an open window with the same
+  key (one window per map object), pins, closes all unpinned, keeps title bars on screen, at most 64.
+- **Drawing**: `UiContext.Draw` fills a `UiDrawList` (44-byte vertices, four per quad, a draw command
+  per clip rectangle) with no allocations in steady frames. `UiRenderer` uploads it and draws it in a
+  second render pass (`LoadOp.Load`, premultiplied alpha) with one pipeline and one 1024 × 1024 atlas:
+  rounded rectangles are exact signed-distance shapes in the shader, text is an SDF font atlas generated
+  at startup from the bundled Noto Sans (OFL) with StbTrueTypeSharp (395 glyphs in ~140 ms: Latin-1,
+  Latin Extended-A, typography and currency symbols), icons are original 16 × 16 pixel art from
+  `Ui/Data/icons.json`. Theme colours and sizes are in `Ui/Data/theme.json`.
+- **Input (`Input/`)**: `InputRouter` gives each event to the owner of the current drag, then the
+  interface (front to back), then the focused text input, then the key bindings, then the world (camera
+  and picking). A press and release within 4 logical pixels on the map is a click; a drag that started
+  on the map never clicks the interface.
+- **Picking (`Picking/`)**: CPU ray from the cursor each frame. The terrain is a 2D walk over the tile
+  columns the ray crosses (exact for voxel columns at any zoom), roads are tiles whose top voxel is road,
+  and vehicles are ray/box tests against the instances drawn this frame, pre-filtered by their distance
+  to the ray's ground footprint. `IPickLayer` lets later features add stations or buildings with a
+  priority. Hits behind the terrain are ignored. `HighlightRenderer` outlines the hovered and selected
+  objects with wire boxes in the world pass.
+- **Screens (`Screens/`)**: the window opens on the main menu with no world; a new game is generated on
+  a background task while the new-game screen shows "Generating…", then the renderer receives the world
+  (`SetWorld`; `ClearWorld` when going back to the menu). Game arguments on the command line skip the
+  menu, so the CI smoke test is unchanged.
+- **Localization**: `Strings` (en/es tables, English fallback, `key.one`/`key.other` plurals, culture
+  numbers and dates) and `MoneyFormatter` (21 display currencies with fixed rates from
+  `Localization/Data/currencies.json`; the internal unit is one US dollar; default USD in English, EUR in
+  Spanish). Until the finances feature exists, the top bar shows `startingCapital` from
+  `Ui/Data/company.json`. Tests check both languages have the same keys, every key in the code exists,
+  every text of every screen resolves in both languages and fixed-width labels fit.
+- **Settings**: `PlayerSettings` reads each property on its own (invalid values fall back alone and are
+  reported once), saves after every change through a temporary file, and keeps the feature 001 file.
+
+**Pending follow-up (T069):** once feature 004 is on `main`, bind an `INewGameOptionsSource` to its map
+generation settings record (size, seed, roughness, maximum height, water, sea level) and show its
+`IProgress<T>` on the generating screen. `Program.cs` will need a small merge with 004.
+
+**Hand test (developer, Windows, 2026-11-23):** main menu, settings in both languages (live switch, currency
+following the language, settings kept after restarting), new game, top bar and toolbar, hover outlines,
+one information window per tile, road and vehicle, pinning and closing all windows, tooltips with
+shortcuts, pause menu and rebinding a key all work. Found and fixed during the test, each with a
+regression test: the menu title and the Spanish subtitle were cut with an ellipsis; the menu background
+was almost black because this driver stores clear colours without the sRGB conversion (menus now draw
+their background as an interface rectangle); clicking the map selected nothing, because picking pauses
+while a button is held and the click looked at the cursor on release instead of at the press.
+
+### Interface cost (feature 005)
+
+BenchmarkDotNet, short job, AMD Ryzen 7 160, 2026-11-23 (`UiFrameBenchmarks`, `PickingBenchmarks`):
+
+| Benchmark | Time | Allocated |
+|---|---|---|
+| Interface frame (layout + draw list), in-game HUD, 0 windows | 0.002 ms | 0 B |
+| Interface frame, HUD + 20 sample windows (every widget kind) | 0.076 ms | 0 B |
+| Terrain pick, grazing ray across a 4096 map | 0.030 ms | 0 B |
+| Full pick with 50 000 vehicles, ray straight down | 0.073 ms | 0 B |
+| Full pick with 50 000 vehicles, default camera view | 0.076 ms (0.45 ms before the footprint rectangle test) | 0 B |
+
+The vehicle test first rejects vehicles outside the bounding rectangle of the ray's ground footprint
+with four comparisons combined with a non-short-circuit `&` (one well-predicted branch; with `||` the
+random positions mispredicted and cost 0.2 ms), then measures the distance to the footprint, and only
+then tests the box.
+
+**In the client** (`--stats`, 4096 × 4096 map, 50 000 vehicles, normal speed, 1600 × 900, 2026-11-23),
+"interface" = picking + layout + draw list + GPU upload and encoding:
+
+| Case | FPS | Worst frame per second | Interface per frame |
+|---|---|---|---|
+| Cursor over the map, 0 windows | 60 | 17.5–18.7 ms | 0.17–0.20 ms |
+| 20 sample windows open (`--ui-test-windows 20`) | 60 | 17.9–19.4 ms | 0.25–0.34 ms |
+
+SC-001 (20 windows add less than 1 ms) and SC-005 (4096 at 60 FPS with the interface, 0 B allocated per
+frame in steady state) hold. The main menu costs 0.1 ms per frame. The first in-game frame takes about
+9 ms of interface time once (texts and layouts are created).
 
 ## Rendering performance (feature 003)
 

@@ -108,6 +108,10 @@ The game is developed mostly through AI-assisted coding. To keep the project man
 | 2026-11-22 | 40 simulation ticks per in-game day, 20 per second at normal speed (one day ≈ 2 s). | specs/001 research R2 |
 | 2026-11-22 | Speeds ×1, ×3, ×8 always available; unlimited fast forward is unlocked in the settings and has its own control. | specs/001 clarifications |
 | 2026-11-22 | Player actions are commands applied at the next tick; sessions can be recorded and replayed. | specs/001 research R7 |
+| 2026-11-22 | The interface is our own retained-mode UI drawn with WebGPU, with an SDF font atlas from the bundled Noto Sans (OFL) rasterized by StbTrueTypeSharp; no UI library. | specs/005 research R1, R2 |
+| 2026-11-22 | Money is counted in one internal unit (one US dollar) and shown in a player-chosen currency with fixed exchange rates (21 currencies); the default follows the language (USD in English, EUR in Spanish). | specs/005 clarifications |
+| 2026-11-22 | Settings apply and are saved as soon as they change; each clicked map object gets its own information window. | specs/005 clarifications |
+| 2026-11-22 | Map picking is done on the CPU (ray against tile columns and object boxes) so the answer is ready in the same frame. | specs/005 research R5 |
 
 ## Next steps
 

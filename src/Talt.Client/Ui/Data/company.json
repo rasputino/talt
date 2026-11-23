@@ -1,0 +1,5 @@
+{
+  // Money shown in the top bar until the finances feature gives the company a real balance
+  // (feature 005 assumption). Internal units (1 unit = 1 US dollar).
+  "startingCapital": 500000
+}

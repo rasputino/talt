@@ -6,9 +6,9 @@ using Talt.Core.Simulation;
 namespace Talt.Client.Localization;
 
 /// <summary>
-/// Minimal localizable string table (English and Spanish) for player-facing text, until the user
-/// interface feature (005) provides full localization. Texts live in embedded JSON resources
-/// <c>Strings.en.json</c> and <c>Strings.es.json</c>; placeholders are written as <c>{name}</c>.
+/// Localizable string tables (English and Spanish) for all player-facing text (FR-020). Texts live in
+/// embedded JSON resources <c>Strings.en.json</c> and <c>Strings.es.json</c>; placeholders are written
+/// as <c>{name}</c>, plurals as <c>key.one</c>/<c>key.other</c>. Missing texts fall back to English.
 /// </summary>
 internal sealed class Strings
 {
@@ -73,6 +73,7 @@ internal sealed class Strings
         {
             var formatted = value switch
             {
+                LocalizedName localized => Get(localized.Key),
                 int or long => ((IFormattable)value).ToString("N0", Culture), // Thousands separators.
                 IFormattable formattable => formattable.ToString(null, Culture),
                 _ => value?.ToString() ?? string.Empty,
@@ -82,6 +83,26 @@ internal sealed class Strings
 
         return text;
     }
+
+    /// <summary>
+    /// Plural text (FR-021): <c>key.one</c> when |count| is 1, <c>key.other</c> otherwise (the rule of
+    /// English and Spanish). The count is available as the <c>{count}</c> placeholder.
+    /// </summary>
+    public string Plural(string key, long count, params (string Name, object Value)[] values)
+    {
+        var form = PluralForm(Language, count);
+        var all = new (string, object)[values.Length + 1];
+        all[0] = ("count", count);
+        values.CopyTo(all, 1);
+        return Format($"{key}.{form}", all);
+    }
+
+    /// <summary>Plural category of a count in a language ("one" or "other").</summary>
+    public static string PluralForm(string language, long count) => language switch
+    {
+        "en" or "es" => Math.Abs(count) == 1 ? "one" : "other",
+        _ => "other",
+    };
 
     public string FormatDate(GameDate date) =>
         // Day and year as plain digits (no thousands separator in years).
@@ -99,3 +120,6 @@ internal sealed class Strings
         _ => "speed.normal",
     });
 }
+
+/// <summary>A localization key used as a placeholder value: replaced by its text in the current language.</summary>
+internal sealed record LocalizedName(string Key);

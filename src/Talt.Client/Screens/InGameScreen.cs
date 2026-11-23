@@ -1,0 +1,544 @@
+using System.Numerics;
+using Silk.NET.Input;
+using Talt.Client.Input;
+using Talt.Client.Localization;
+using Talt.Client.Picking;
+using Talt.Client.Rendering;
+using Talt.Client.Ui;
+using Talt.Client.Ui.Widgets;
+using Talt.Core.Simulation;
+using Button = Talt.Client.Ui.Widgets.Button;
+
+namespace Talt.Client.Screens;
+
+/// <summary>
+/// The game: top bar (money, date, speed controls), toolbar, notifications, pause menu, map picking
+/// with hover and selection highlights, object information windows and camera control (US1, US2).
+/// </summary>
+internal sealed class InGameScreen : IScreen, IWorldInput
+{
+    private const float KeyboardPanSpeed = 1.2f;    // Fraction of the camera distance per second.
+    private const float KeyboardRotateSpeed = 1.5f; // Radians per second.
+    private const float KeyboardZoomSpeed = 1.8f;   // Zoom factor per second.
+    private const float MouseRotateSpeed = 0.005f;  // Radians per pixel.
+    private const float CameraClearance = 4f;       // Minimum height of the camera above the ground.
+    private const double MessageSeconds = 4;
+    private const int MaxMessages = 4;
+
+    private readonly IScreenHost _host;
+    private readonly GameSession _session;
+    private readonly OrbitCamera _camera;
+    private readonly Action<IReadOnlyList<(int X, int Y, int Z)>> _onTerrainEdited;
+    private readonly Func<Key, bool> _isKeyDown;
+    private readonly MapPicker _picker = new();
+    private readonly PickContext _pickContext;
+    private readonly HighlightBox[] _highlights = new HighlightBox[2];
+    private readonly StackPanel _messages = new(Orientation.Vertical) { Spacing = 4 };
+    private readonly List<double> _messageExpiry = [];
+    private readonly Panel _pauseMenu;
+    private int _highlightCount;
+    private PickResult _selected = PickResult.None;
+    private PickResult _hoveredAtPress = PickResult.None;
+    private bool _rotating;
+    private bool _panning;
+    private bool _pausedByMenu;
+
+    public InGameScreen(IScreenHost host, GameSession session, OrbitCamera camera,
+        Action<IReadOnlyList<(int X, int Y, int Z)>> onTerrainEdited, Func<Key, bool> isKeyDown)
+    {
+        _host = host ?? throw new ArgumentNullException(nameof(host));
+        _session = session ?? throw new ArgumentNullException(nameof(session));
+        _camera = camera ?? throw new ArgumentNullException(nameof(camera));
+        _onTerrainEdited = onTerrainEdited ?? throw new ArgumentNullException(nameof(onTerrainEdited));
+        _isKeyDown = isKeyDown ?? throw new ArgumentNullException(nameof(isKeyDown));
+        _pickContext = new PickContext { Heightmap = session.Heightmap, World = session.World };
+        _session.Message += ShowMessage;
+        Root = BuildHud();
+        _pauseMenu = BuildPauseMenu();
+    }
+
+    public Widget Root { get; }
+
+    public bool ShowsWorld => true;
+
+    /// <summary>The object under the cursor this frame.</summary>
+    public PickResult Hovered { get; private set; } = PickResult.None;
+
+    public PickResult Selected => _selected;
+
+    public bool IsPauseMenuOpen => _host.Ui.Overlay == _pauseMenu;
+
+    /// <summary>Boxes to outline this frame (hover and selection).</summary>
+    public ReadOnlySpan<HighlightBox> Highlights => _highlights.AsSpan(0, _highlightCount);
+
+    public GameSession Session => _session;
+
+    /// <summary>Buttons of the top bar and toolbar (for tests and tooltips checks).</summary>
+    internal List<Button> HudButtons { get; } = [];
+
+    public void Update(double deltaSeconds)
+    {
+        var dt = (float)deltaSeconds;
+        if (!_host.Ui.HasKeyboardFocus && !IsPauseMenuOpen)
+        {
+            var bindings = _host.Bindings;
+            var right = Held(bindings, "panRight") - Held(bindings, "panLeft");
+            var forward = Held(bindings, "panForward") - Held(bindings, "panBack");
+            var rotate = Held(bindings, "rotateRight") - Held(bindings, "rotateLeft");
+            var zoom = Held(bindings, "zoomOut") - Held(bindings, "zoomIn");
+            var pan = _camera.Distance * KeyboardPanSpeed * dt;
+            _camera.Pan(right * pan, forward * pan);
+            _camera.Yaw += rotate * KeyboardRotateSpeed * dt;
+            if (zoom != 0)
+            {
+                _camera.Distance *= MathF.Pow(KeyboardZoomSpeed, zoom * dt);
+            }
+        }
+
+        FollowTerrain(dt);
+        ExpireMessages();
+    }
+
+    /// <summary>Finds the object under the cursor and prepares the highlight boxes (call after the vehicles are built).</summary>
+    public void UpdatePicking(Vector2 cursor, Vector2 viewport, bool cursorOverWorld)
+    {
+        _pickContext.Vehicles = _session.InstanceBuffer;
+        _pickContext.VehicleIds = _session.InstanceIdBuffer;
+        _pickContext.VehicleCount = _session.Instances.Length;
+        Hovered = PickResult.None;
+        if (cursorOverWorld && viewport.X >= 1 && viewport.Y >= 1 && !IsPauseMenuOpen)
+        {
+            var ray = Ray.FromScreen(_camera.ViewProjection(viewport.X / viewport.Y), cursor, viewport);
+            Hovered = _picker.Pick(ray, _pickContext);
+        }
+
+        FollowSelectedVehicle();
+        _highlightCount = 0;
+        var theme = _host.Ui.Theme;
+        if (_selected.Kind != PickKind.None)
+        {
+            _highlights[_highlightCount++] = new HighlightBox(_selected.BoundsMin, _selected.BoundsMax, theme.HighlightSelection);
+        }
+
+        if (Hovered.Kind != PickKind.None && !Hovered.SameObject(_selected))
+        {
+            _highlights[_highlightCount++] = new HighlightBox(Hovered.BoundsMin, Hovered.BoundsMax, theme.HighlightHover);
+        }
+    }
+
+    public bool HandleAction(string actionId, bool shift)
+    {
+        var runner = _session.Runner;
+        switch (actionId)
+        {
+            case "back":
+                Back();
+                return true;
+            case "pause":
+                if (IsPauseMenuOpen)
+                {
+                    ClosePauseMenu();
+                }
+                else
+                {
+                    runner.TogglePause();
+                }
+
+                return true;
+            case "speedNormal":
+                SetSpeed(GameSpeed.Normal);
+                return true;
+            case "speedFast":
+                SetSpeed(GameSpeed.Fast);
+                return true;
+            case "speedVeryFast":
+                SetSpeed(GameSpeed.VeryFast);
+                return true;
+            case "fastForward":
+                if (!runner.ToggleFastForward())
+                {
+                    ShowMessage(TextRef.Of("hud.fastForward.locked"));
+                }
+
+                return true;
+            case "addVehicle":
+                _session.SubmitAddVehicle();
+                return true;
+            case "removeVehicle":
+                _session.SubmitRemoveVehicle();
+                return true;
+            case "closeAllWindows":
+                _host.Ui.Windows.CloseAll();
+                return true;
+            case "settings":
+                _host.OpenSettings();
+                return true;
+            case "statistics":
+                _host.ShowStatistics = !_host.ShowStatistics;
+                return true;
+            case "raiseTerrain":
+            case "lowerTerrain":
+                var edited = _session.EditTerrain(_camera.Target, raise: actionId == "raiseTerrain", area: shift);
+                if (edited.Count > 0)
+                {
+                    _onTerrainEdited(edited);
+                }
+
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>Esc: closes the front window, then clears the selection, then opens or closes the pause menu (FR-006).</summary>
+    public void Back()
+    {
+        var ui = _host.Ui;
+        if (ui.Popup is not null)
+        {
+            ui.ClosePopup();
+        }
+        else if (ui.Windows.CloseFront())
+        {
+        }
+        else if (_selected.Kind != PickKind.None)
+        {
+            _selected = PickResult.None;
+        }
+        else if (IsPauseMenuOpen)
+        {
+            ClosePauseMenu();
+        }
+        else
+        {
+            OpenPauseMenu();
+        }
+    }
+
+    public void OpenPauseMenu()
+    {
+        if (IsPauseMenuOpen)
+        {
+            return;
+        }
+
+        _pausedByMenu = !_session.Runner.IsPaused;
+        if (_pausedByMenu)
+        {
+            _session.Runner.TogglePause();
+        }
+
+        _host.Ui.Overlay = _pauseMenu;
+    }
+
+    public void ClosePauseMenu()
+    {
+        if (!IsPauseMenuOpen)
+        {
+            return;
+        }
+
+        _host.Ui.Overlay = null;
+        if (_pausedByMenu && _session.Runner.IsPaused)
+        {
+            _session.Runner.TogglePause(); // Restores the speed from before the menu.
+        }
+
+        _pausedByMenu = false;
+    }
+
+    /// <summary>Shows a short on-screen message that disappears after a few seconds (FR-007).</summary>
+    public void ShowMessage(TextRef text)
+    {
+        if (_messages.ChildCount >= MaxMessages)
+        {
+            _messages.Remove(_messages.GetChild(0));
+            _messageExpiry.RemoveAt(0);
+        }
+
+        _messages.Add(new Label(text) { HorizontalAlignment = Alignment.Center });
+        _messageExpiry.Add(_host.Ui.Time + MessageSeconds);
+    }
+
+    /// <summary>Opens (or focuses) the information window of an object (FR-010).</summary>
+    public void Select(PickResult pick)
+    {
+        _selected = pick;
+        if (pick.Kind == PickKind.None)
+        {
+            return;
+        }
+
+        var window = ObjectInfoWindow.Create(pick, _session);
+        var opened = _host.Ui.Windows.Open(window);
+        if (opened == window)
+        {
+            window.Closed += closed =>
+            {
+                if (_selected.Kind != PickKind.None && _selected.Key == closed.Key)
+                {
+                    _selected = PickResult.None;
+                }
+            };
+        }
+    }
+
+    public void Leave()
+    {
+        _session.Message -= ShowMessage;
+        if (IsPauseMenuOpen)
+        {
+            _host.Ui.Overlay = null;
+        }
+    }
+
+    void IWorldInput.MouseDown(MouseButton button, Vector2 position)
+    {
+        _rotating |= button == MouseButton.Left;
+        _panning |= button == MouseButton.Right;
+        if (button == MouseButton.Left)
+        {
+            // Picking pauses while a button is held (the camera may be dragged), so the click selects
+            // what was under the cursor when the button went down. Found in the hand test.
+            _hoveredAtPress = Hovered;
+        }
+    }
+
+    void IWorldInput.Drag(Vector2 position, Vector2 delta)
+    {
+        if (_rotating)
+        {
+            _camera.Yaw -= delta.X * MouseRotateSpeed;
+            _camera.Pitch += delta.Y * MouseRotateSpeed;
+        }
+        else if (_panning)
+        {
+            // Scale with distance so the ground follows the cursor roughly.
+            var scale = _camera.Distance * 0.0015f;
+            _camera.Pan(-delta.X * scale, delta.Y * scale);
+        }
+    }
+
+    void IWorldInput.MouseUp(MouseButton button, Vector2 position, bool isClick)
+    {
+        if (button == MouseButton.Left)
+        {
+            _rotating = false;
+            if (isClick && !IsPauseMenuOpen)
+            {
+                Select(_hoveredAtPress); // A click without movement selects (FR-012a); clicking the sky clears.
+            }
+        }
+        else if (button == MouseButton.Right)
+        {
+            _panning = false;
+        }
+    }
+
+    void IWorldInput.Scroll(float delta)
+    {
+        if (!IsPauseMenuOpen)
+        {
+            _camera.Distance *= MathF.Pow(0.88f, delta);
+        }
+    }
+
+    private float Held(KeyBindings bindings, string action) =>
+        bindings.IsHeld(action, _isKeyDown, _isKeyDown(Key.ShiftLeft) || _isKeyDown(Key.ShiftRight)) ? 1f : 0f;
+
+    private void SetSpeed(GameSpeed speed)
+    {
+        if (IsPauseMenuOpen)
+        {
+            ClosePauseMenu();
+        }
+
+        _session.Runner.SetStandardSpeed(speed);
+    }
+
+    private void ExpireMessages()
+    {
+        var now = _host.Ui.Time;
+        for (var i = _messageExpiry.Count - 1; i >= 0; i--)
+        {
+            var left = _messageExpiry[i] - now;
+            if (left <= 0)
+            {
+                _messages.Remove(_messages.GetChild(i));
+                _messageExpiry.RemoveAt(i);
+            }
+            else
+            {
+                ((Label)_messages.GetChild(i)).Opacity = (float)Math.Min(1, left / 0.75); // Fades out at the end.
+            }
+        }
+    }
+
+    private void FollowSelectedVehicle()
+    {
+        if (_selected.Kind != PickKind.Vehicle)
+        {
+            return;
+        }
+
+        var ids = _session.InstanceIds;
+        var vehicles = _session.Instances;
+        for (var v = 0; v < ids.Length; v++)
+        {
+            if (ids[v] == _selected.VehicleId)
+            {
+                var (min, max) = VehiclePickLayer.Box(vehicles[v], 1f);
+                _selected = _selected with { BoundsMin = min, BoundsMax = max };
+                return;
+            }
+        }
+
+        _selected = PickResult.None; // The vehicle was removed.
+    }
+
+    /// <summary>
+    /// Keeps the camera target on the ground and inside the map, and the camera above the terrain,
+    /// so the view never ends up inside a hill.
+    /// </summary>
+    private void FollowTerrain(float dt)
+    {
+        var map = _session.Heightmap;
+        var target = _camera.Target;
+        target.X = Math.Clamp(target.X, 0f, map.Width);
+        target.Z = Math.Clamp(target.Z, 0f, map.Depth);
+        var ground = map.Get(target.X, target.Z);
+        target.Y += (ground - target.Y) * MathF.Min(1f, dt * 6f);
+        _camera.Target = target;
+
+        for (var i = 0; i < 40; i++)
+        {
+            var position = _camera.Position;
+            var previousPitch = _camera.Pitch;
+            if (position.Y >= map.Get(position.X, position.Z) + CameraClearance)
+            {
+                break;
+            }
+
+            _camera.Pitch += 0.02f;
+            if (_camera.Pitch == previousPitch)
+            {
+                break; // Already looking straight down.
+            }
+        }
+    }
+
+    private Panel BuildHud()
+    {
+        var theme = _host.Ui.Theme;
+        var runner = _session.Runner;
+        var simulation = _session.Simulation;
+        var root = new Panel { Style = PanelStyle.None };
+
+        // Top bar: menu, money, date, speed controls (FR-004).
+        var topBar = root.Add(new Panel { Style = PanelStyle.Panel, VerticalAlignment = Alignment.Start, Height = theme.TopBarHeight, Padding = new Thickness(6, 3) });
+        var bar = topBar.Add(new StackPanel(Orientation.Horizontal) { Spacing = 6 });
+        HudButtons.Add(bar.Add(new Button(null, OpenPauseMenu, "menu") { Style = ButtonStyle.Flat, Tooltip = TextRef.Of("hud.menu.tooltip"), ShortcutAction = "back" }));
+        bar.Add(new IconView("coin") { Tooltip = TextRef.Of("hud.money.tooltip") });
+        var company = CompanyData.Load();
+        bar.Add(new Label(TextRef.Dynamic(
+            () => _host.Currency.Code.GetHashCode(StringComparison.Ordinal),
+            s => _host.Money.Format(company.StartingCapital, _host.Currency, s.Culture)), TextSize.Title)
+        {
+            MinWidth = 110,
+            Tooltip = TextRef.Of("hud.money.tooltip"),
+        });
+        bar.Add(new IconView("calendar") { Margin = new Thickness(12, 0, 0, 0), Tooltip = TextRef.Of("hud.date.tooltip") });
+        bar.Add(new Label(TextRef.Dynamic(() => simulation.Date.DayNumber, s => s.FormatDate(simulation.Date)), TextSize.Title)
+        {
+            MinWidth = 110,
+            Tooltip = TextRef.Of("hud.date.tooltip"),
+        });
+        bar.Add(new Spacer { Fill = true });
+        bar.Add(new Label(TextRef.Dynamic(() => (long)runner.Speed, s => s.FormatSpeed(runner.Speed))) { Color = TextColor.Muted, Margin = new Thickness(0, 0, 8, 0) });
+        HudButtons.Add(bar.Add(new Button(null, () => HandleAction("pause", false), "pause")
+        {
+            Style = ButtonStyle.Flat,
+            IsSelected = () => runner.IsPaused,
+            Tooltip = TextRef.Of("hud.pause.tooltip"),
+            ShortcutAction = "pause",
+        }));
+        HudButtons.Add(bar.Add(SpeedButton("speed1", GameSpeed.Normal, "speedNormal", "hud.speedNormal.tooltip")));
+        HudButtons.Add(bar.Add(SpeedButton("speed2", GameSpeed.Fast, "speedFast", "hud.speedFast.tooltip")));
+        HudButtons.Add(bar.Add(SpeedButton("speed3", GameSpeed.VeryFast, "speedVeryFast", "hud.speedVeryFast.tooltip")));
+        var fastForward = bar.Add(new Button(null, () => HandleAction("fastForward", false), "fastForward")
+        {
+            Style = ButtonStyle.Flat,
+            IsSelected = () => runner.Speed == GameSpeed.FastForward,
+            Tooltip = TextRef.Of("hud.fastForward.tooltip"),
+            ShortcutAction = "fastForward",
+        });
+        HudButtons.Add(fastForward);
+        FastForwardButton = fastForward;
+
+        // Toolbar along the left edge (FR-005).
+        var toolbar = root.Add(new Panel
+        {
+            Style = PanelStyle.Panel,
+            HorizontalAlignment = Alignment.Start,
+            VerticalAlignment = Alignment.Start,
+            Width = theme.ToolbarWidth,
+            Margin = new Thickness(6, theme.TopBarHeight + 8, 0, 0),
+            Padding = new Thickness(4),
+        });
+        var tools = toolbar.Add(new StackPanel(Orientation.Vertical) { Spacing = 4 });
+        HudButtons.Add(tools.Add(ToolButton("settings", () => _host.OpenSettings(), "toolbar.settings.tooltip", "settings")));
+        HudButtons.Add(tools.Add(ToolButton("closeAll", () => _host.Ui.Windows.CloseAll(), "toolbar.closeAll.tooltip", "closeAllWindows")));
+        HudButtons.Add(tools.Add(ToolButton("statistics", () => _host.ShowStatistics = !_host.ShowStatistics, "toolbar.statistics.tooltip", "statistics")));
+        HudButtons.Add(tools.Add(ToolButton("addVehicle", _session.SubmitAddVehicle, "toolbar.addVehicle.tooltip", "addVehicle")));
+        HudButtons.Add(tools.Add(ToolButton("removeVehicle", _session.SubmitRemoveVehicle, "toolbar.removeVehicle.tooltip", "removeVehicle")));
+
+        // Notifications at the bottom centre (FR-007).
+        _messages.HorizontalAlignment = Alignment.Center;
+        _messages.VerticalAlignment = Alignment.End;
+        _messages.Margin = new Thickness(0, 0, 0, 24);
+        root.Add(_messages);
+        return root;
+    }
+
+    /// <summary>The fast-forward button, shown only when fast forward is unlocked (US1-4).</summary>
+    internal Button FastForwardButton { get; private set; } = null!;
+
+    /// <summary>Applies settings that change the HUD (fast-forward unlock).</summary>
+    public void ApplySettings(PlayerSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        _session.Runner.SetFastForwardUnlocked(settings.FastForwardUnlocked);
+        FastForwardButton.Visible = settings.FastForwardUnlocked;
+    }
+
+    private Button SpeedButton(string icon, GameSpeed speed, string action, string tooltip) =>
+        new(null, () => HandleAction(action, false), icon)
+        {
+            Style = ButtonStyle.Flat,
+            IsSelected = () => _session.Runner.Speed == speed,
+            Tooltip = TextRef.Of(tooltip),
+            ShortcutAction = action,
+        };
+
+    private static Button ToolButton(string icon, Action onClick, string tooltip, string action) =>
+        new(null, onClick, icon)
+        {
+            Style = ButtonStyle.Flat,
+            Tooltip = TextRef.Of(tooltip),
+            ShortcutAction = action,
+            Height = 36,
+        };
+
+    private Panel BuildPauseMenu()
+    {
+        var overlay = new Panel { Style = PanelStyle.Overlay };
+        var panel = overlay.Add(new Panel { Style = PanelStyle.Panel, HorizontalAlignment = Alignment.Center, VerticalAlignment = Alignment.Center, Width = 320, Padding = new Thickness(18) });
+        var column = panel.Add(new StackPanel(Orientation.Vertical) { Spacing = 10 });
+        column.Add(new Label(TextRef.Of("pause.title"), TextSize.Heading) { TextAlignment = Alignment.Center });
+        column.Add(new Button(TextRef.Of("pause.resume"), ClosePauseMenu) { Style = ButtonStyle.Menu, TextSize = TextSize.Title, ShortcutAction = "back", Tooltip = TextRef.Of("pause.resume.tooltip") });
+        column.Add(new Button(TextRef.Of("pause.settings"), _host.OpenSettings) { Style = ButtonStyle.Menu, TextSize = TextSize.Title });
+        column.Add(new Button(TextRef.Of("pause.mainMenu"), _host.ShowMainMenu) { Style = ButtonStyle.Menu, TextSize = TextSize.Title, Tooltip = TextRef.Of("pause.mainMenu.tooltip") });
+        column.Add(new Button(TextRef.Of("pause.quit"), _host.Quit) { Style = ButtonStyle.Menu, TextSize = TextSize.Title });
+        return overlay;
+    }
+}
