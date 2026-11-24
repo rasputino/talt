@@ -51,8 +51,8 @@ public sealed record MapGenerationTuning
     /// <summary>Land tiles per town site (sets the spacing between towns).</summary>
     public int TownAreaPerSite { get; init; } = 25_000;
 
-    /// <summary>Land tiles per industry site.</summary>
-    public int IndustryAreaPerSite { get; init; } = 16_000;
+    /// <summary>Land tiles per industry site (denser than towns: only land near a town may host one).</summary>
+    public int IndustryAreaPerSite { get; init; } = 12_000;
 
     /// <summary>Smallest allowed distance between two towns.</summary>
     public int MinTownDistance { get; init; } = 48;
@@ -60,8 +60,14 @@ public sealed record MapGenerationTuning
     /// <summary>Smallest allowed distance between two industries.</summary>
     public int MinIndustryDistance { get; init; } = 24;
 
-    /// <summary>Smallest allowed distance between a town and an industry.</summary>
-    public int MinTownIndustryDistance { get; init; } = 16;
+    /// <summary>
+    /// Smallest allowed distance between a town and an industry. It leaves room for a town to grow to the
+    /// clearance population of <c>Towns/Data/towns.json</c> without reaching the industry (a test checks it).
+    /// </summary>
+    public int MinTownIndustryDistance { get; init; } = 60;
+
+    /// <summary>Largest allowed distance between an industry and the nearest town, the town it belongs to.</summary>
+    public int MaxTownIndustryDistance { get; init; } = 120;
 
     /// <summary>Land components smaller than this host no industry sites.</summary>
     public int MinIndustryComponentArea { get; init; } = 2_000;
@@ -75,4 +81,19 @@ public sealed record MapGenerationTuning
 
     /// <summary>Largest height difference inside the free square of an industry.</summary>
     public int IndustryMaxRelief { get; init; } = 3;
+
+    /// <summary>Throws <see cref="ArgumentException"/> when the town–industry distances are inconsistent.</summary>
+    public void Validate()
+    {
+        if (MinTownIndustryDistance < 0)
+        {
+            throw new ArgumentException($"{nameof(MinTownIndustryDistance)} must not be negative (is {MinTownIndustryDistance}).");
+        }
+
+        if (MaxTownIndustryDistance <= MinTownIndustryDistance)
+        {
+            throw new ArgumentException(
+                $"{nameof(MaxTownIndustryDistance)} ({MaxTownIndustryDistance}) must be greater than {nameof(MinTownIndustryDistance)} ({MinTownIndustryDistance}).");
+        }
+    }
 }

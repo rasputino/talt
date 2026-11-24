@@ -24,7 +24,11 @@
     "streetSegmentMin": 3,
     "streetSegmentMax": 7,
     // Most growth actions a town may use to reach its starting population.
-    "foundingAttemptBudget": 6000
+    "foundingAttemptBudget": 6000,
+    // Population up to which a town's radius stays clear of every industry. Map generation keeps industry
+    // sites at least MapGenerationTuning.MinTownIndustryDistance from towns; a test checks that distance
+    // covers this radius plus the largest industry footprint.
+    "industryClearancePopulation": 25000
   },
   // Starting population distribution (before the size option's scale).
   "sizes": [

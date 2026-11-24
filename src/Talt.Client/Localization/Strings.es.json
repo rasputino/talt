@@ -138,6 +138,7 @@
   "vehicle.rail": "ferrocarril",
   "vehicle.ship": "barco",
   "vehicle.air": "avión",
+  "industry.name": "{kind} de {town}",
   "industry.coal-mine": "Mina de carbón",
   "industry.iron-mine": "Mina de hierro",
   "industry.forest": "Bosque",

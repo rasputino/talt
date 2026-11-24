@@ -121,6 +121,7 @@ The game is developed mostly through AI-assisted coding. To keep the project man
 | 2026-11-24 | Games with a map start with small street grids on the town sites and no synthetic traffic (real road vehicles arrive with feature 012); map-less scenarios keep the prototype grid for benchmarks and the CI goldens. | specs/007 research R1 |
 | 2026-11-24 | Towns grow only when served (share of passengers and mail transported); unserved towns stay as founded. Starting sizes are varied (many villages, some towns, a few cities) with a Small/Normal/Large option; names are generated from original English- and Spanish-style parts (new-game option, default mixed). | specs/008 clarifications |
 | 2026-11-24 | Town ratings per company (0–1 000, bands hostile/poor/neutral/good/excellent): demolishing town buildings or roads and cutting trees near towns lower them, service raises them; below "poor" a town refuses demolition of its property, below "hostile" stations in it (feature 010). Demolishing town buildings cannot be undone. | specs/008 clarifications, research R9–R10 |
+| 2026-11-24 | Every industry belongs to a nearby town: it stands 60–120 tiles from the nearest town, far enough that the town can grow to about 25 000 inhabitants without reaching it, and is named after it and its kind ("Fallowstead Steel Mill", "Acería de Fallowstead"). | docs/ARCHITECTURE.md (map generation, sites) |
 
 ## Next steps
 

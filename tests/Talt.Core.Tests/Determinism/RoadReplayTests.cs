@@ -18,7 +18,7 @@ namespace Talt.Core.Tests.Determinism;
 /// </remarks>
 public class RoadReplayTests
 {
-    private const string ExpectedAtTick400 = "23CC3799C290F8C5";
+    private const string ExpectedAtTick400 = "4C9FAF5BCA22A066";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 21,

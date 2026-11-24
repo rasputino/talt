@@ -27,8 +27,10 @@ public static class MapGenerator
     {
         ArgumentNullException.ThrowIfNull(settings);
         settings.Validate();
+        tuning ??= MapGenerationTuning.Default;
+        tuning.Validate();
 
-        var builder = new MapBuilder(settings, tuning ?? MapGenerationTuning.Default, maxDegreeOfParallelism, cancellationToken);
+        var builder = new MapBuilder(settings, tuning, maxDegreeOfParallelism, cancellationToken);
         var reporter = new ProgressReporter(progress);
         Drainage? drainage = null;
 

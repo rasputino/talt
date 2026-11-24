@@ -156,11 +156,7 @@ public sealed partial class TownRegistry : IStateHashable
     public int BuildingCountOf(int town) => _buildingCount[town];
 
     /// <summary>Current growth radius in tiles (research R5).</summary>
-    public int RadiusOf(int town)
-    {
-        var growth = Rules.Growth;
-        return growth.RadiusBase + ((int)FixedMath.IntegerSqrt((ulong)_population[town]) * growth.RadiusPerSqrtPopulation / 100);
-    }
+    public int RadiusOf(int town) => Rules.Growth.RadiusAt(_population[town]);
 
     /// <summary>Share of last month's passengers and mail that were transported, per mille.</summary>
     public int ServiceOf(int town) => _serviceLastMonth[town];

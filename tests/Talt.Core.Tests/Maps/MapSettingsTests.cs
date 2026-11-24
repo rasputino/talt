@@ -50,15 +50,15 @@ public class MapSettingsTests
 
     [Fact]
     public void Text_HasTheDocumentedShape() =>
-        Assert.Equal("T1-1024x512-s2026-r50-h28-w25-l7", new MapSettings(1024, 512, 2026).ToText());
+        Assert.Equal("T2-1024x512-s2026-r50-h28-w25-l7", new MapSettings(1024, 512, 2026).ToText());
 
     [Theory]
     [InlineData("")]
     [InlineData("hello")]
-    [InlineData("T1-1024x512-s2026-r50-h28-w25")]
-    [InlineData("T1-1024-s2026-r50-h28-w25-l7")]
-    [InlineData("T1-1024x512-sabc-r50-h28-w25-l7")]
-    [InlineData("T1-1000x512-s1-r50-h28-w25-l7")]
+    [InlineData("T2-1024x512-s2026-r50-h28-w25")]
+    [InlineData("T2-1024-s2026-r50-h28-w25-l7")]
+    [InlineData("T2-1024x512-sabc-r50-h28-w25-l7")]
+    [InlineData("T2-1000x512-s1-r50-h28-w25-l7")]
     public void Text_Invalid_IsRejectedWithAMessage(string text)
     {
         Assert.False(MapSettings.TryParse(text, out var parsed, out var error));
@@ -77,7 +77,7 @@ public class MapSettingsTests
     public void Builder_AppliesOptionsInOrder_AndTextCanBeOverridden()
     {
         var builder = new MapSettingsBuilder();
-        Assert.True(builder.TryApply("--map-text", "T1-512x256-s9-r10-h40-w30-l8", out _));
+        Assert.True(builder.TryApply("--map-text", "T2-512x256-s9-r10-h40-w30-l8", out _));
         Assert.True(builder.TryApply("--water", "50", out _));
         Assert.True(builder.TryApply("--map", "1024", out _));
 

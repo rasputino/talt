@@ -26,7 +26,7 @@ internal static class HeadlessArguments
     public const string Usage = """
         Usage:
           Talt.Headless run [--seed <int>] [--map <tiles>] [--vehicles <int>] [--lines <int>]
-                            [--start-year <int>] [--map-text <T1-...>] --ticks <int> [--sequential]
+                            [--start-year <int>] [--map-text <T2-...>] --ticks <int> [--sequential]
                             [--record <session.json>] [--town-names mixed|english|spanish]
                             [--town-size small|normal|large] [--town-service <0-100>]
           Talt.Headless replay <session.json> [--ticks <int>] [--checkpoint-every <int>] [--sequential]

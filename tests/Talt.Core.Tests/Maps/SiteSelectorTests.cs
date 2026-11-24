@@ -91,6 +91,30 @@ public class SiteSelectorTests
         }
     }
 
+    [Theory]
+    [MemberData(nameof(MapTestSettings.MatrixData), MemberType = typeof(MapTestSettings))]
+    public void EveryIndustrySite_IsNearATown_ButNotTooNear(MapSettings settings)
+    {
+        var map = MapTestSettings.Generate(settings);
+        var tuning = MapGenerationTuning.Default;
+        var towns = map.TownSites.ToList();
+        foreach (var industry in map.IndustrySites)
+        {
+            var nearest = towns.Min(t => Distance(t, industry));
+            Assert.InRange(nearest, tuning.MinTownIndustryDistance, tuning.MaxTownIndustryDistance);
+        }
+    }
+
+    [Theory]
+    [InlineData(-1, 120)]
+    [InlineData(60, 60)]
+    [InlineData(80, 40)]
+    public void InconsistentTownIndustryDistances_AreRefused(int min, int max)
+    {
+        var tuning = MapGenerationTuning.Default with { MinTownIndustryDistance = min, MaxTownIndustryDistance = max };
+        Assert.Throws<ArgumentException>(() => MapGenerator.Generate(new MapSettings(256, 256, 1), tuning: tuning));
+    }
+
     [Fact]
     public void LargerMaps_GetMoreSites()
     {

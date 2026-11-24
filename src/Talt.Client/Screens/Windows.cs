@@ -110,9 +110,20 @@ internal static class ObjectInfoWindow
     {
         var industries = session.Simulation.Industries;
         var slot = industries.SlotOf(industryId);
-        return slot < 0
-            ? TextRef.Of("info.industry.title")
-            : TextRef.Of(industries.Content.IndustryKind(industries.KindIndexAt(slot)).NameKey);
+        return slot < 0 ? TextRef.Of("info.industry.title") : IndustryName(industries, session.Simulation.Towns, slot);
+    }
+
+    /// <summary>
+    /// Name of an industry: its town's name (a proper noun, never translated) and its localized kind, as
+    /// <c>industry.name</c> arranges them; the kind alone when the industry has no town.
+    /// </summary>
+    internal static TextRef IndustryName(Talt.Core.Industries.IndustryFleet industries, Talt.Core.Towns.TownRegistry? towns, int slot)
+    {
+        var kindKey = industries.Content.IndustryKind(industries.KindIndexAt(slot)).NameKey;
+        var town = industries.TownIdAt(slot);
+        return towns is not null && (uint)town < (uint)towns.Count
+            ? TextRef.Of("industry.name", ("town", towns.NameOf(town)), ("kind", new LocalizedName(kindKey)))
+            : TextRef.Of(kindKey);
     }
 
     /// <summary>Industry window: production, acceptance, recipes, stock and last month's figures (FR-015).</summary>
