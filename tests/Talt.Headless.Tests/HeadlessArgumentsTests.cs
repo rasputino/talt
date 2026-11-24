@@ -47,7 +47,7 @@ public class HeadlessArgumentsTests
     public void Run_WithMapTextSetsMapSettings()
     {
         Assert.True(HeadlessArguments.TryParse(
-            ["run", "--ticks", "10", "--map-text", "T1-512x256-s7-r40-h28-w35-l7"],
+            ["run", "--ticks", "10", "--map-text", "T2-512x256-s7-r40-h28-w35-l7"],
             out var options,
             out _));
 

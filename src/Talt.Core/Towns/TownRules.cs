@@ -18,7 +18,13 @@ public sealed record TownGrowthRules(
     int GridPatternPercent,
     int StreetSegmentMin,
     int StreetSegmentMax,
-    int FoundingAttemptBudget);
+    int FoundingAttemptBudget,
+    int IndustryClearancePopulation)
+{
+    /// <summary>Growth radius in tiles of a town with this population (research R5).</summary>
+    public int RadiusAt(int population) =>
+        RadiusBase + ((int)FixedMath.IntegerSqrt((ulong)Math.Max(0, population)) * RadiusPerSqrtPopulation / 100);
+}
 
 /// <summary>One band of the starting population distribution.</summary>
 public readonly record struct TownSizeBand(int Weight, int MinPopulation, int MaxPopulation);
@@ -143,7 +149,7 @@ public sealed class TownRules
         json.Known(g, "growth.", "radiusBase", "radiusPerSqrtPopulation", "centreZonePercent", "innerZonePercent",
             "attemptsPerAction", "failuresBeforeStreet", "growthPerMilleOfBuildings", "replaceChancePercent",
             "replaceMinPopulation", "gridSpacing", "gridPatternPercent", "streetSegmentMin", "streetSegmentMax",
-            "foundingAttemptBudget");
+            "foundingAttemptBudget", "industryClearancePopulation");
         var growth = new TownGrowthRules(
             json.Int(g, "radiusBase", "growth.", 1, 64),
             json.Int(g, "radiusPerSqrtPopulation", "growth.", 0, 1000),
@@ -158,7 +164,8 @@ public sealed class TownRules
             json.Int(g, "gridPatternPercent", "growth.", 0, 100),
             json.Int(g, "streetSegmentMin", "growth.", 1, 64),
             json.Int(g, "streetSegmentMax", "growth.", 1, 64),
-            json.Int(g, "foundingAttemptBudget", "growth.", 1, 1_000_000));
+            json.Int(g, "foundingAttemptBudget", "growth.", 1, 1_000_000),
+            json.Int(g, "industryClearancePopulation", "growth.", 1, 10_000_000));
         if (growth.CentreZonePercent >= growth.InnerZonePercent)
         {
             throw json.Invalid("'growth.centreZonePercent' must be below 'growth.innerZonePercent'");
@@ -357,6 +364,7 @@ public sealed class TownRules
             g.RadiusBase, g.RadiusPerSqrtPopulation, g.CentreZonePercent, g.InnerZonePercent, g.AttemptsPerAction,
             g.FailuresBeforeStreet, g.GrowthPerMilleOfBuildings, g.ReplaceChancePercent, g.ReplaceMinPopulation,
             g.GridSpacing, g.GridPatternPercent, g.StreetSegmentMin, g.StreetSegmentMax, g.FoundingAttemptBudget,
+            g.IndustryClearancePopulation,
         })
         {
             h.Append(v);

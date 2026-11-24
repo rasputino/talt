@@ -19,7 +19,7 @@ public class MapCommandTests
             out var options,
             out var error), error);
 
-        Assert.Equal("T1-1024x512-s-3-r70-h96-w35-l9", options!.Settings.ToText());
+        Assert.Equal("T2-1024x512-s-3-r70-h96-w35-l9", options!.Settings.ToText());
         Assert.Equal(2, options.Threads);
         Assert.True(options.BuildWorld);
     }
@@ -27,8 +27,8 @@ public class MapCommandTests
     [Fact]
     public void MapText_IsAccepted_AndLaterOptionsOverrideIt()
     {
-        Assert.True(MapCommand.TryParse(["map", "--map-text", "T1-512x256-s9-r10-h40-w30-l8", "--water", "50"], out var options, out _));
-        Assert.Equal("T1-512x256-s9-r10-h40-w30-l8".Replace("w30", "w50", StringComparison.Ordinal), options!.Settings.ToText());
+        Assert.True(MapCommand.TryParse(["map", "--map-text", "T2-512x256-s9-r10-h40-w30-l8", "--water", "50"], out var options, out _));
+        Assert.Equal("T2-512x256-s9-r10-h40-w30-l8".Replace("w30", "w50", StringComparison.Ordinal), options!.Settings.ToText());
     }
 
     [Theory]

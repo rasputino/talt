@@ -27,7 +27,7 @@ public class NewGameOptionsTests
             ["width"] = 1024, ["depth"] = 256, ["seed"] = 42, ["roughness"] = 80,
             ["maxHeight"] = 60, ["water"] = 40, ["seaLevel"] = 12, ["vehicles"] = 1000,
         });
-        Assert.Equal("T1-1024x256-s42-r80-h60-w40-l12", options.MapSettings.ToText());
+        Assert.Equal("T2-1024x256-s42-r80-h60-w40-l12", options.MapSettings.ToText());
         Assert.Equal(256, options.MapSizeTiles); // The road network covers the square part.
         Assert.Equal(1000, options.VehicleCount);
     }

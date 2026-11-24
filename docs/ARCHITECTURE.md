@@ -88,7 +88,7 @@ testable without a GPU. The client depends on the core, never the other way arou
 - **Settings**: `MapSettings` (width and depth in tiles, multiples of 32, 64 to 16 384 – players 256 and
   up; seed; roughness 0–100; maximum height 8–127; water amount 0–90 %; sea level). Validation errors
   name the setting and its range. `ToText()`/`TryParse` turn a map into one shareable text such as
-  `T1-1024x512-s2026-r50-h28-w25-l7`; the leading `T1` is the generator version, bumped whenever the
+  `T2-1024x512-s2026-r50-h28-w25-l7`; the leading `T2` is the generator version, bumped whenever the
   same settings would produce a different map. `MapSettingsBuilder` parses the same option names for the
   client and the headless tool.
 - **Result**: `MapData` holds five bytes per tile in separate arrays (ground height, terrain type, water
@@ -117,8 +117,13 @@ testable without a GPU. The client depends on the core, never the other way arou
   7. *Sites* – land is split into connected components; Poisson-disc sampling (Bridson, integer
      arithmetic) places town sites only on the largest landmass and industry sites on components of at
      least 2 000 tiles, on spots whose surrounding square (towns 9 × 9, industries 5 × 5) is buildable and
-     nearly flat, spaced by land area (towns about one per 25 000 land tiles, industries one per 16 000;
-     minimums 48/24/16 tiles). Industry sites are classified as coast, forest, hills or plain.
+     nearly flat, spaced by land area (towns about one per 25 000 land tiles, industries one per 12 000;
+     minimums 48 town–town and 24 industry–industry). Towns are sampled first; an industry site must lie
+     60 to 120 tiles from the nearest town site (`MinTownIndustryDistance`, `MaxTownIndustryDistance`,
+     checked by `MapGenerationTuning.Validate`), so every industry belongs to a nearby town that can grow
+     to `industryClearancePopulation` (25 000 inhabitants, radius 52, `towns.json`) without reaching it.
+     Land with no town in reach (small islands) gets no industry. Industry sites are classified as coast,
+     forest, hills or plain. Generator version 2 (the town–industry rule) changed every map.
 - **Determinism**: float math is limited to `+ − × ÷`, `MathF.Sqrt`, floor and casts (no `Pow`, `Exp`,
   trigonometry; a test scans the sources); parallel stages split the map into fixed 16-row bands that do
   not depend on core count and sequential stages stay sequential. Tests compare 1, 3 and all threads, and
@@ -363,7 +368,11 @@ player only transports it. Everything is data-driven (constitution VII).
 - **Placement**: `IndustryFleet.Create` walks the industry sites reserved by feature 004 and places a
   kind compatible with the site kind and era on about 75 % of them, weighted by the data. A quarter of
   the sites stay free for later openings. Positions and kinds are a pure function of map settings and
-  the industry random stream.
+  the industry random stream. Each site belongs to the town of its nearest town site
+  (`IndustryPlacement.NearestTowns`, ties to the lower index; town ids follow town-site order, feature
+  008), and an industry opening on it, at the start or later, takes that town id (`TownIdAt`,
+  `IndustryInfo.TownId`, hashed with the other arrays). The client names it with `industry.name`:
+  "{town} {kind}" in English, "{kind} de {town}" in Spanish; the town name is never translated.
 - **Storage** is structure-of-arrays: scalar arrays per industry plus flat `int[]` tables indexed
   `slot * cargoCount + cargoIndex` for available cargo, pending recipe input, and accepted/shipped
   this and last month. Removal swaps the last industry into the free slot; ids never repeat. No
@@ -580,7 +589,7 @@ chunk instead of once per border voxel (output unchanged; the greedy-vs-naive te
 ```
 dotnet run -c Release --project tools/Talt.Headless -- run --map 4096 --vehicles 50000 --ticks 10000
 dotnet run -c Release --project tools/Talt.Headless -- run --ticks 10000 --record session.json
-dotnet run -c Release --project tools/Talt.Headless -- run --ticks 4000 --map-text T1-512x512-s7-r50-h28-w25-l7
+dotnet run -c Release --project tools/Talt.Headless -- run --ticks 4000 --map-text T2-512x512-s7-r50-h28-w25-l7
 dotnet run -c Release --project tools/Talt.Headless -- replay session.json --checkpoint-every 1000
 ```
 
@@ -674,6 +683,11 @@ all its sites (about 1 000), then measures the economy:
 | `AdvanceDay` for every industry | 20.3 µs | 0 B | < 1 ms |
 | `AdvanceMonth` for every industry | 51.7 µs | 0 B | < 5 ms |
 | `PlaceOnMap` (initial placement) | 424 µs | 1.4 MB once | informational |
+
+After the town–industry rule (2026-11-24, same machine and job): `AdvanceDay` 26.4 µs, `AdvanceMonth`
+56.9 µs (both 0 B, within noise), `PlaceOnMap` 1.32 ms (1.5 MB once; the nearest-town search is
+industry sites × town sites, about 1 000 × 700 on a 4096 map). `MapGenerationBenchmarks.Generate`:
+7.2 ms / 100 ms / 408 ms / 2.1 s for 256 / 1024 / 2048 / 4096, unchanged within noise.
 
 The full simulation tick budget is unaffected: industries only work on day and month boundaries.
 

@@ -29,7 +29,7 @@ internal static class SiteSelector
 
         var townDistance = Spacing(tuning.TownAreaPerSite, tuning.MinTownDistance);
         var industryDistance = Spacing(tuning.IndustryAreaPerSite, tuning.MinIndustryDistance);
-        var rules = new SpacingRules(townDistance, industryDistance, tuning.MinTownIndustryDistance);
+        var rules = new SpacingRules(townDistance, industryDistance, tuning.MinTownIndustryDistance, tuning.MaxTownIndustryDistance);
         var grid = new SiteGrid(b.Width, b.Depth, rules);
         var random = new DeterministicRandom(unchecked((ulong)b.Settings.Seed)).Fork(100);
 
@@ -51,7 +51,7 @@ internal static class SiteSelector
             industryDistance,
             tuning.IndustryFreeRadius,
             tuning.IndustryMaxRelief,
-            (x, z) => sizes[components[x + z * b.Width]] >= tuning.MinIndustryComponentArea);
+            (x, z) => sizes[components[x + z * b.Width]] >= tuning.MinIndustryComponentArea && grid.NearTown(x, z));
 
         var sites = grid.Sites.Select(site => Classify(b, site)).ToList();
         sites.Sort(static (a, c) =>
@@ -300,7 +300,7 @@ internal static class SiteSelector
         }
     }
 
-    private readonly record struct SpacingRules(int TownTown, int IndustryIndustry, int TownIndustry);
+    private readonly record struct SpacingRules(int TownTown, int IndustryIndustry, int TownIndustry, int MaxTownIndustry);
 
     /// <summary>Sites bucketed in a coarse grid so spacing checks only look at nearby sites.</summary>
     private sealed class SiteGrid
@@ -349,6 +349,33 @@ internal static class SiteSelector
                         long dx = other.X - x;
                         long dz = other.Z - z;
                         if ((dx * dx) + (dz * dz) < min * min)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>Whether a town site lies within the largest town–industry distance of a tile.</summary>
+        public bool NearTown(int x, int z)
+        {
+            long max = _rules.MaxTownIndustry;
+            var cells = (_rules.MaxTownIndustry / GridCell) + 1;
+            var cx = x / GridCell;
+            var cz = z / GridCell;
+            for (var gz = Math.Max(0, cz - cells); gz <= Math.Min(_cellsZ - 1, cz + cells); gz++)
+            {
+                for (var gx = Math.Max(0, cx - cells); gx <= Math.Min(_cellsX - 1, cx + cells); gx++)
+                {
+                    for (var s = _first[gx + (gz * _cellsX)]; s >= 0; s = _next[s])
+                    {
+                        var other = Sites[s];
+                        long dx = other.X - x;
+                        long dz = other.Z - z;
+                        if (other.Kind == SiteKind.Town && (dx * dx) + (dz * dz) <= max * max)
                         {
                             return true;
                         }

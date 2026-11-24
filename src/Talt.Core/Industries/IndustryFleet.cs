@@ -21,9 +21,13 @@ public sealed class IndustryFleet : IStateHashable
 {
     private const int InitialCapacity = 64;
 
+    /// <summary>Most towns a game founds (feature 008: one per town site, up to the tile-owner index limit).</summary>
+    private const int TownLimit = Construction.TileOwner.MaxIndex + 1;
+
     private readonly GameContent _content;
     private readonly int _cargoCount;
     private readonly Site[] _sites;
+    private readonly int[] _siteTown;
     private readonly bool[] _siteOccupied;
     private readonly int[] _freeSites;
     private readonly Dictionary<int, int> _tileOwner = [];
@@ -50,6 +54,7 @@ public sealed class IndustryFleet : IStateHashable
     private int[] _ratePerMille = new int[InitialCapacity];
     private int[] _monthsNeglected = new int[InitialCapacity];
     private int[] _siteIndex = new int[InitialCapacity];
+    private int[] _town = new int[InitialCapacity];
     private int[] _deliveredThisMonth = new int[InitialCapacity];
 
     private int[] _available = new int[InitialCapacity * 1];
@@ -64,11 +69,12 @@ public sealed class IndustryFleet : IStateHashable
     private int _nextId = 1;
     private int _version;
 
-    private IndustryFleet(GameContent content, Site[] sites, int mapWidth, int mapDepth, DeterministicRandom random)
+    private IndustryFleet(GameContent content, Site[] sites, Site[] townSites, int mapWidth, int mapDepth, DeterministicRandom random)
     {
         _content = content;
         _cargoCount = content.CargoCount;
         _sites = sites;
+        _siteTown = IndustryPlacement.NearestTowns(sites, townSites);
         _mapWidth = mapWidth;
         _mapDepth = mapDepth;
         _random = random;
@@ -130,7 +136,8 @@ public sealed class IndustryFleet : IStateHashable
         ArgumentNullException.ThrowIfNull(map);
         ArgumentNullException.ThrowIfNull(random);
         var sites = map.IndustrySites.ToArray();
-        var fleet = new IndustryFleet(content, sites, map.Width, map.Depth, random);
+        var towns = map.TownSites.Take(TownLimit).ToArray();
+        var fleet = new IndustryFleet(content, sites, towns, map.Width, map.Depth, random);
         fleet.PlaceInitial(startYear, initialOccupancyPerMille);
         return fleet;
     }
@@ -139,7 +146,7 @@ public sealed class IndustryFleet : IStateHashable
     public static IndustryFleet CreateEmpty(GameContent content, int mapWidth, int mapDepth)
     {
         ArgumentNullException.ThrowIfNull(content);
-        return new IndustryFleet(content, [], mapWidth, mapDepth, new DeterministicRandom(0x1D05));
+        return new IndustryFleet(content, [], [], mapWidth, mapDepth, new DeterministicRandom(0x1D05));
     }
 
     public int IdAt(int slot) => _id[slot];
@@ -147,6 +154,12 @@ public sealed class IndustryFleet : IStateHashable
     public int KindIndexAt(int slot) => _kind[slot];
 
     public string KindIdAt(int slot) => _content.IndustryKind(_kind[slot]).Id;
+
+    /// <summary>
+    /// Id of the town the industry belongs to: the town founded on the nearest town site (feature 008 town
+    /// ids follow town-site order), or -1 when the map has no town.
+    /// </summary>
+    public int TownIdAt(int slot) => _town[slot];
 
     public int XAt(int slot) => _x[slot];
 
@@ -236,6 +249,7 @@ public sealed class IndustryFleet : IStateHashable
             _z[slot],
             kind.Id,
             kind.NameKey,
+            _town[slot],
             _ratePerMille[slot],
             _monthsNeglected[slot],
             kind.Production,
@@ -444,6 +458,7 @@ public sealed class IndustryFleet : IStateHashable
         hasher.Append<int>(_ratePerMille.AsSpan(0, _count));
         hasher.Append<int>(_monthsNeglected.AsSpan(0, _count));
         hasher.Append<int>(_siteIndex.AsSpan(0, _count));
+        hasher.Append<int>(_town.AsSpan(0, _count));
         hasher.Append<int>(_deliveredThisMonth.AsSpan(0, _count));
 
         var used = _count * _cargoCount;
@@ -548,6 +563,7 @@ public sealed class IndustryFleet : IStateHashable
         _ratePerMille[slot] = 1000;
         _monthsNeglected[slot] = 0;
         _siteIndex[slot] = siteIndex;
+        _town[slot] = _siteTown[siteIndex];
         _deliveredThisMonth[slot] = 0;
         for (var z = minZ; z < maxZ; z++)
         {
@@ -592,6 +608,7 @@ public sealed class IndustryFleet : IStateHashable
             _ratePerMille[slot] = _ratePerMille[last];
             _monthsNeglected[slot] = _monthsNeglected[last];
             _siteIndex[slot] = _siteIndex[last];
+            _town[slot] = _town[last];
             _deliveredThisMonth[slot] = _deliveredThisMonth[last];
             CopyRow(slot, last);
             _slotById[_id[slot]] = slot;
@@ -719,6 +736,7 @@ public sealed class IndustryFleet : IStateHashable
         Array.Resize(ref _ratePerMille, size);
         Array.Resize(ref _monthsNeglected, size);
         Array.Resize(ref _siteIndex, size);
+        Array.Resize(ref _town, size);
         Array.Resize(ref _deliveredThisMonth, size);
         var cargoSize = size * _cargoCount;
         Array.Resize(ref _available, cargoSize);

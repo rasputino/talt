@@ -23,7 +23,7 @@ public sealed record MapSettings(
     int SeaLevel = 7)
 {
     /// <summary>Bumped whenever a change alters the map produced by the same settings.</summary>
-    public const int GeneratorVersion = 1;
+    public const int GeneratorVersion = 2;
 
     /// <summary>Smallest side the player interface offers; the generator itself accepts <see cref="MinSide"/>.</summary>
     public const int PlayerMinimumSize = 256;
@@ -46,7 +46,7 @@ public sealed record MapSettings(
         CheckRange(SeaLevel, MinSeaLevel, MaxHeight - 2, nameof(SeaLevel));
     }
 
-    /// <summary>Shareable text, e.g. <c>T1-1024x512-s2026-r50-h28-w25-l7</c>.</summary>
+    /// <summary>Shareable text, e.g. <c>T2-1024x512-s2026-r50-h28-w25-l7</c>.</summary>
     public string ToText() =>
         string.Create(CultureInfo.InvariantCulture, $"T{GeneratorVersion}-{Width}x{Depth}-s{Seed}-r{Roughness}-h{MaxHeight}-w{WaterAmount}-l{SeaLevel}");
 
@@ -62,7 +62,7 @@ public sealed record MapSettings(
         if (parts.Length != 7 || parts[0].Length < 2 || parts[0][0] != 'T'
             || !int.TryParse(parts[0].AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var version))
         {
-            error = "Map text must look like T1-1024x512-s2026-r50-h28-w25-l7.";
+            error = "Map text must look like T2-1024x512-s2026-r50-h28-w25-l7.";
             return false;
         }
 
@@ -82,7 +82,7 @@ public sealed record MapSettings(
             || !TryField(parts[5], 'w', false, out var water)
             || !TryField(parts[6], 'l', false, out var sea))
         {
-            error = "Map text must look like T1-1024x512-s2026-r50-h28-w25-l7.";
+            error = "Map text must look like T2-1024x512-s2026-r50-h28-w25-l7.";
             return false;
         }
 

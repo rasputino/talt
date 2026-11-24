@@ -1,5 +1,6 @@
 using Talt.Client.Picking;
 using Talt.Client.Screens;
+using Talt.Client.Tests.Ui;
 using Talt.Client.Ui.Widgets;
 using Talt.Core.Voxels;
 
@@ -23,6 +24,26 @@ public class IndustryWindowTests
         var panel = Assert.IsType<StackPanel>(window.Content);
         Assert.True(panel.ChildCount >= 3);
         Assert.NotEmpty(window.Title.Key ?? string.Empty);
+    }
+
+    [Fact]
+    public void IndustryTitle_IsTheTownNameAndTheLocalizedKind()
+    {
+        var game = GameSetup.Create(new NewGameOptions(ChunksPerSide: 8, VehicleCount: 0, Seed: 7));
+        var session = new GameSession(game, new SessionOptions(), fastForwardUnlocked: true);
+        var industries = session.Simulation.Industries;
+        var towns = session.Simulation.Towns!;
+        Assert.True(industries.Count > 0);
+        for (var slot = 0; slot < industries.Count; slot++)
+        {
+            var town = towns.NameOf(industries.TownIdAt(slot));
+            var kindKey = industries.Content.IndustryKind(industries.KindIndexAt(slot)).NameKey;
+            var pick = new PickResult(PickKind.Industry, industries.XAt(slot), industries.ZAt(slot), 0, VoxelMaterial.Air, -1, industries.IdAt(slot), default, default, 1);
+            var en = UiTestKit.CreateContext("en");
+            var es = UiTestKit.CreateContext("es");
+            Assert.Equal($"{town} {en.Strings.Get(kindKey)}", ObjectInfoWindow.Create(pick, session).Title.Resolve(en));
+            Assert.Equal($"{es.Strings.Get(kindKey)} de {town}", ObjectInfoWindow.Create(pick, session).Title.Resolve(es));
+        }
     }
 
     [Fact]

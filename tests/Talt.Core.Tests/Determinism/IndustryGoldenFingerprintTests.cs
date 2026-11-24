@@ -12,8 +12,8 @@ namespace Talt.Core.Tests.Determinism;
 /// </summary>
 public class IndustryGoldenFingerprintTests
 {
-    private const string ExpectedAtTick1000 = "09349CCB0EFF258D";
-    private const string ExpectedAtTick4000 = "A41DDDB0E33AEE0F";
+    private const string ExpectedAtTick1000 = "4913FE36FA084326";
+    private const string ExpectedAtTick4000 = "8E16908CD369E2C8";
 
     [Fact]
     public void GeneratedMapWithIndustries_MatchesTheGoldenFingerprints()

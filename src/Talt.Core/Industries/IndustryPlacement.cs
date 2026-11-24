@@ -81,6 +81,37 @@ internal static class IndustryPlacement
         return (minX, minZ, minX + width, minZ + depth);
     }
 
+    /// <summary>
+    /// Index of the nearest town site for every industry site (squared distance; ties go to the lower
+    /// index), or -1 when there are no towns. Map generation keeps every industry site between
+    /// <see cref="MapGenerationTuning.MinTownIndustryDistance"/> and
+    /// <see cref="MapGenerationTuning.MaxTownIndustryDistance"/> of its nearest town.
+    /// </summary>
+    public static int[] NearestTowns(IReadOnlyList<Site> industrySites, IReadOnlyList<Site> townSites)
+    {
+        var result = new int[industrySites.Count];
+        for (var i = 0; i < industrySites.Count; i++)
+        {
+            var best = -1;
+            var bestDistance = long.MaxValue;
+            for (var t = 0; t < townSites.Count; t++)
+            {
+                long dx = townSites[t].X - industrySites[i].X;
+                long dz = townSites[t].Z - industrySites[i].Z;
+                var distance = (dx * dx) + (dz * dz);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    best = t;
+                }
+            }
+
+            result[i] = best;
+        }
+
+        return result;
+    }
+
     /// <summary>Whether a footprint centred on a tile stays inside the map.</summary>
     public static bool Fits(int width, int depth, int x, int z, int mapWidth, int mapDepth)
     {

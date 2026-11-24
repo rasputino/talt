@@ -23,7 +23,7 @@ dotnet build
 dotnet test
 dotnet run --project src/Talt.Client -c Release -- [chunks-per-side] [vehicles] [seed] [options]
 dotnet run --project tools/Talt.Headless -c Release -- run --ticks 10000
-dotnet run --project tools/Talt.Headless -c Release -- run --ticks 4000 --map-text T1-512x512-s7-r50-h28-w25-l7
+dotnet run --project tools/Talt.Headless -c Release -- run --ticks 4000 --map-text T2-512x512-s7-r50-h28-w25-l7
 dotnet run --project benchmarks/Talt.Benchmarks -c Release -- --filter * --job short
 dotnet run tools/audio/generate-audio.cs   # regenerate the original audio assets (optional)
 ```
@@ -64,7 +64,7 @@ with countryside, water and town ambience plus nearby vehicle engines, and plays
 playlist; settings has separate master, music, effects and ambient volumes.
 
 `Talt.Headless` runs and replays simulations without a window (`run`, `replay`). `run --map-text
-<T1-...>` generates the map and its industries; a run without it stays map-less and keeps the
+<T2-...>` generates the map and its industries; a run without it stays map-less and keeps the
 pre-009 fingerprints. See the [headless contract](specs/001-simulation-foundation/contracts/headless-cli.md).
 
 ## Inspiration

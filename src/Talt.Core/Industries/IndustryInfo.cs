@@ -39,6 +39,7 @@ public readonly record struct IndustryDeliveryResult(
 /// <param name="Z">Centre tile row.</param>
 /// <param name="KindId">Industry kind id.</param>
 /// <param name="NameKey">Localization key of the kind name.</param>
+/// <param name="TownId">Town the industry belongs to and is named after, or -1 when the map has no town.</param>
 /// <param name="RatePerMille">Current production condition (1000 = nominal).</param>
 /// <param name="MonthsNeglected">Months since the last accepted delivery.</param>
 /// <param name="Production">Monthly production entries of the kind.</param>
@@ -52,6 +53,7 @@ public readonly record struct IndustryInfo(
     int Z,
     string KindId,
     string NameKey,
+    int TownId,
     int RatePerMille,
     int MonthsNeglected,
     IReadOnlyList<ProductionEntry> Production,

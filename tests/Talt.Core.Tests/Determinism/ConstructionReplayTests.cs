@@ -20,7 +20,7 @@ namespace Talt.Core.Tests.Determinism;
 /// </remarks>
 public class ConstructionReplayTests
 {
-    private const string ExpectedAtTick600 = "3C150C91128411CD";
+    private const string ExpectedAtTick600 = "10DB53868D52E6D7";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 9,
