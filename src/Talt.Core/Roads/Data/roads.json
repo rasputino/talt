@@ -1,0 +1,40 @@
+{
+  // Road types, costs and limits (feature 007, data-model.md RoadType and RoadRules).
+  // Internal money unit: 1 = one US dollar. Changing a value changes what recorded sessions replay to.
+  "types": [
+    // speedKmh 0 = no limit of its own (vehicles run at their maximum). buildCost is per tile (and per
+    // carriageway for motorways). Colours are sRGB hex. markings: none, centre or edges.
+    { "id": "dirt", "introYear": 1850, "speedKmh": 50, "buildCost": 150, "motorway": false,
+      "look": { "surface": "8a6f4e", "marking": "b59a74", "markings": "none" } },
+    { "id": "paved", "introYear": 1920, "speedKmh": 80, "buildCost": 400, "motorway": false,
+      "look": { "surface": "4f5258", "marking": "d8d4c4", "markings": "centre" } },
+    { "id": "fast", "introYear": 1960, "speedKmh": 100, "buildCost": 900, "motorway": false,
+      "look": { "surface": "3c3f45", "marking": "f0e9c8", "markings": "edges" } },
+    { "id": "motorway", "introYear": 1980, "speedKmh": 0, "buildCost": 2500, "motorway": true,
+      "look": { "surface": "33363c", "marking": "f4f4f0", "markings": "edges" } }
+  ],
+  // Extra per road piece that climbs or descends a step.
+  "slopeCost": 200,
+  // Removing a piece of the company's own, and a town's piece (when the town's streets stay connected).
+  "removeCost": 100,
+  "townRoadRemoveCost": 2000,
+  // Switching a piece between two-way and one-way.
+  "oneWayCost": 50,
+  // A motorway exit or entry ramp (on top of the ramp tile's road cost).
+  "connectorCost": 1500,
+  "bridge": {
+    "costPerTile": 2000,
+    // Longest span (tiles between the two ends, ends included) from each year on, sorted by year.
+    "eras": [ { "fromYear": 1850, "maxSpan": 8 }, { "fromYear": 1950, "maxSpan": 16 }, { "fromYear": 1985, "maxSpan": 32 } ],
+    // Elevated motorway sections: per carriageway tile of span, and their longest span.
+    "elevatedCostPerTile": 6000,
+    "elevatedMaxSpan": 64
+  },
+  "tunnel": { "costPerTile": 3000, "maxLength": 64 },
+  "planner": {
+    // Road tool path search: most states expanded, tiles of margin around the two ends, longest path.
+    "maxSearchNodes": 60000,
+    "searchMargin": 48,
+    "maxPathTiles": 1024
+  }
+}

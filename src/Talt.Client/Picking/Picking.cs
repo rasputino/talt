@@ -90,6 +90,9 @@ internal sealed class PickContext
 
     public int VehicleCount { get; set; }
 
+    /// <summary>Road pieces of the game (feature 007); null in tests that only paint road voxels.</summary>
+    public Talt.Core.Roads.RoadLayer? Roads { get; set; }
+
     /// <summary>Industries of the game (feature 009).</summary>
     public Talt.Core.Industries.IndustryFleet? Industries { get; set; }
 
@@ -226,7 +229,7 @@ internal sealed class TerrainPickLayer : IPickLayer
     }
 }
 
-/// <summary>Roads (and later other infrastructure painted on tiles): the hit tile's top voxel is road.</summary>
+/// <summary>Roads: the hit tile holds a road piece (feature 007), or, without road data, its top voxel is road.</summary>
 internal sealed class RoadPickLayer : IPickLayer
 {
     public int Priority => 50;
@@ -235,7 +238,10 @@ internal sealed class RoadPickLayer : IPickLayer
     {
         ArgumentNullException.ThrowIfNull(context);
         var terrain = context.Terrain;
-        if (terrain.Kind == PickKind.Tile && terrain.Material == VoxelMaterial.Road)
+        var hasRoad = context.Roads is { } roads
+            ? terrain.Kind == PickKind.Tile && roads.Contains(terrain.TileX, terrain.TileZ) && roads.HasRoad(roads.Index(terrain.TileX, terrain.TileZ))
+            : terrain.Kind == PickKind.Tile && terrain.Material == VoxelMaterial.Road;
+        if (hasRoad)
         {
             result = terrain with { Kind = PickKind.Road };
             return true;

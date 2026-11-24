@@ -5,6 +5,7 @@ using Talt.Core.Determinism;
 using Talt.Core.Industries;
 using Talt.Core.Maps;
 using Talt.Core.Network;
+using Talt.Core.Roads;
 using Talt.Core.Scenarios;
 
 namespace Talt.Core.Simulation;
@@ -48,6 +49,18 @@ public sealed class GameSimulation : IStateHashable
         Industries = map is null
             ? IndustryFleet.CreateEmpty(content, settings.MapSizeTiles, settings.MapSizeTiles)
             : IndustryFleet.Create(content, map, settings.StartYear, Random.Fork(0x1D_05));
+        if (construction is not null)
+        {
+            // Feature 007: town streets on the town sites (after industries, which they avoid), then the
+            // routing graph; later industry openings skip tiles with objects or bridges.
+            construction.Year = Date.Year;
+            construction.AttachIndustries(Industries);
+            RoadSeeder.SeedTowns(construction);
+            construction.RebuildNetwork();
+            Industries.TileBlocked = tile => construction.Objects.KindAt(tile) != TileObjectKind.None
+                || (construction.Roads.FlagsAt(tile) & RoadFeatures.Passing) != 0;
+        }
+
         Events.OnDayEnded(simulation => Industries.AdvanceDay(simulation.Date));
         Events.OnMonthEnded(simulation => Industries.AdvanceMonth(simulation.Date));
     }
@@ -117,7 +130,7 @@ public sealed class GameSimulation : IStateHashable
         if (settings.Map is not null)
         {
             map ??= MapGenerator.Generate(settings.Map);
-            construction = new ConstructionState(rules ?? ConstructionRules.Default, map, network);
+            construction = new ConstructionState(rules ?? ConstructionRules.Default, map);
         }
 
         return new GameSimulation(settings, network, fleet, content, map, construction);
@@ -149,6 +162,11 @@ public sealed class GameSimulation : IStateHashable
         if (GameClock.IsDayBoundary(CurrentTick))
         {
             var date = Date;
+            if (Construction is not null)
+            {
+                Construction.Year = date.Year;
+            }
+
             var monthEnded = date.Day == 1;
             var yearEnded = monthEnded && date.Month == 1;
             Events.Dispatch(this, dayEnded: true, monthEnded, yearEnded);
@@ -181,6 +199,11 @@ public sealed class GameSimulation : IStateHashable
 
     private void ProcessCommands()
     {
+        if (Construction is not null && _commands.Count > 0)
+        {
+            Construction.Year = Date.Year;
+        }
+
         while (_commands.TryDequeue(out var pending))
         {
             var result = pending.Command.Validate(this);

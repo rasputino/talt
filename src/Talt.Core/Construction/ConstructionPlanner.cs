@@ -48,6 +48,10 @@ public sealed class ConstructionPlanner
     private bool _tooLarge;
 
     private ConstructionState _state = null!;
+
+    /// <summary>The road planner of this consumer (feature 007), sharing its "one per consumer and thread" rule.</summary>
+    public Roads.RoadPlanner Roads { get; } = new();
+
     private MapData _map = null!;
     private ConstructionPlan _plan = null!;
     private int _companyId;
@@ -158,6 +162,7 @@ public sealed class ConstructionPlanner
         var objects = state.Objects;
         var rules = state.Rules;
         var skipped = false;
+        var roadSkipped = false;
         var heights = map.Heights;
         for (var z = rect.Z0; z <= rect.Z1; z++)
         {
@@ -169,6 +174,14 @@ public sealed class ConstructionPlanner
                 var scenery = map.SceneryData[i];
                 var hasTree = Scenery.Kind(scenery) != 0;
                 var height = heights[i];
+                if (kind == TileObjectKind.Road)
+                {
+                    // Roads keep their links consistent only through the road removal tool (feature 007).
+                    plan.AddProblem(i, ConstructionReasons.UseRoadRemoval, blocking: false);
+                    roadSkipped = true;
+                    continue;
+                }
+
                 if (kind != TileObjectKind.None)
                 {
                     if (!owner.IsCompany(companyId))
@@ -191,7 +204,9 @@ public sealed class ConstructionPlanner
 
         if (plan.ChangeCount == 0)
         {
-            plan.Reason = skipped ? ConstructionReasons.OwnedByOther : ConstructionReasons.NothingToDo;
+            plan.Reason = skipped ? ConstructionReasons.OwnedByOther
+                : roadSkipped ? ConstructionReasons.UseRoadRemoval
+                : ConstructionReasons.NothingToDo;
         }
         else if (plan.ChangeCount > rules.MaxTilesPerAction || plan.Cost > rules.MaxActionCost)
         {
@@ -317,6 +332,14 @@ public sealed class ConstructionPlanner
             return objects.OwnerAt(tile).IsCompany(_companyId) ? ConstructionReasons.ObjectInTheWay : ConstructionReasons.OwnedByOther;
         }
 
+        var roads = _state.Roads;
+        if ((roads.FlagsAt(tile) & global::Talt.Core.Roads.RoadFeatures.Passing) != 0
+            || (height > original && UnderDiagonalRoad(tile, height)))
+        {
+            // A bridge above, a tunnel below, or a diagonal road cutting across this tile's corner (feature 007).
+            return ConstructionReasons.ObjectInTheWay;
+        }
+
         if (height < 1 || height > _state.Rules.MaxHeight)
         {
             return ConstructionReasons.HeightLimit;
@@ -328,6 +351,40 @@ public sealed class ConstructionPlanner
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// True when a diagonal road between two orthogonal neighbours of <paramref name="tile"/> cuts across it
+    /// and would end lower than <paramref name="height"/> (research R3: side tiles may not rise above it).
+    /// </summary>
+    private bool UnderDiagonalRoad(int tile, int height)
+    {
+        var roads = _state.Roads;
+        var width = _map.Width;
+        var x = tile % width;
+        var z = tile / width;
+        for (var i = 0; i < 4; i++)
+        {
+            var first = i * 2;
+            var second = (first + 2) & 7;
+            var ax = x + global::Talt.Core.Roads.Dir8.OffsetX(first);
+            var az = z + global::Talt.Core.Roads.Dir8.OffsetZ(first);
+            var bx = x + global::Talt.Core.Roads.Dir8.OffsetX(second);
+            var bz = z + global::Talt.Core.Roads.Dir8.OffsetZ(second);
+            if (!_map.Contains(ax, az) || !_map.Contains(bx, bz))
+            {
+                continue;
+            }
+
+            var a = _map.Index(ax, az);
+            var direction = global::Talt.Core.Roads.Dir8.FromOffset(bx - ax, bz - az);
+            if ((roads.LinksAt(a) & (1 << direction)) != 0 && height > _map.Heights[a])
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private int NeighbourWaterLevel(int tile)

@@ -60,6 +60,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             Heightmap = session.Heightmap,
             World = session.World,
             Industries = session.Simulation.Industries,
+            Roads = session.Construction.Roads,
         };
         _session.Message += ShowMessage;
         _cursorLabel = BuildCursorLabel();
@@ -184,7 +185,18 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             case "toolLower":
             case "toolLevel":
             case "toolClear":
+            case "toolRoad":
+            case "toolBridge":
+            case "toolTunnel":
+            case "toolRemoveRoad":
+            case "toolOneWay":
+            case "toolMotorway":
+            case "toolMotorwayExit":
+            case "toolMotorwayEntry":
                 ToggleTool(actionId);
+                return true;
+            case "roadType":
+                RoadToolOptions.Cycle(_session.Construction);
                 return true;
             case "undoConstruction":
                 _session.Submit(new UndoConstructionCommand(_session.Construction.Player.Id));
@@ -602,18 +614,43 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         HudButtons.Add(tools.Add(ToolButton("settings", () => _host.OpenSettings(), "toolbar.settings.tooltip", "settings")));
         HudButtons.Add(tools.Add(ToolButton("closeAll", () => _host.Ui.Windows.CloseAll(), "toolbar.closeAll.tooltip", "closeAllWindows")));
         HudButtons.Add(tools.Add(ToolButton("statistics", () => _host.ShowStatistics = !_host.ShowStatistics, "toolbar.statistics.tooltip", "statistics")));
-        HudButtons.Add(tools.Add(ToolButton("addVehicle", _session.SubmitAddVehicle, "toolbar.addVehicle.tooltip", "addVehicle")));
-        HudButtons.Add(tools.Add(ToolButton("removeVehicle", _session.SubmitRemoveVehicle, "toolbar.removeVehicle.tooltip", "removeVehicle")));
+        if (_session.Simulation.Vehicles.LineCount > 0)
+        {
+            // Prototype traffic exists only in map-less scenarios; games with a map have none until feature 012.
+            HudButtons.Add(tools.Add(ToolButton("addVehicle", _session.SubmitAddVehicle, "toolbar.addVehicle.tooltip", "addVehicle")));
+            HudButtons.Add(tools.Add(ToolButton("removeVehicle", _session.SubmitRemoveVehicle, "toolbar.removeVehicle.tooltip", "removeVehicle")));
+        }
 
-        // Construction tools (feature 006).
+        // Construction tools: terrain (feature 006) in this column, roads (feature 007) in a second one.
+        var roadToolbar = root.Add(new Panel
+        {
+            Style = PanelStyle.Panel,
+            HorizontalAlignment = Alignment.Start,
+            VerticalAlignment = Alignment.Start,
+            Width = theme.ToolbarWidth,
+            Margin = new Thickness(12 + theme.ToolbarWidth, theme.TopBarHeight + 8, 0, 0),
+            Padding = new Thickness(4),
+        });
+        var roadTools = roadToolbar.Add(new StackPanel(Orientation.Vertical) { Spacing = 4 });
         foreach (var tool in ConstructionTool.All)
         {
             var button = ToolButton(tool.Id, () => ToggleTool(tool.ActionId), $"tool.{tool.Id}.tooltip", tool.ActionId);
             button.IsSelected = () => _tools.Active == tool;
-            HudButtons.Add(tools.Add(button));
+            var column = tool.Shape == DragShape.Area || tool == ConstructionTool.Clear ? tools : roadTools;
+            HudButtons.Add(column.Add(button));
         }
 
         HudButtons.Add(tools.Add(ToolButton("undo", () => HandleAction("undoConstruction", false), "tool.undo.tooltip", "undoConstruction")));
+        var typeButton = new Button(null, () => HandleAction("roadType", false), "roadType")
+        {
+            Style = ButtonStyle.Flat,
+            Tooltip = TextRef.Dynamic(
+                () => RoadToolOptions.Version + (_session.Construction.Year * 1000L),
+                s => s.Format("tool.roadType.tooltip", ("type", s.Get($"road.type.{_session.Construction.RoadRules.Types[RoadToolOptions.TypeFor(_session.Construction)].Id}")))),
+            ShortcutAction = "roadType",
+            Height = 36,
+        };
+        HudButtons.Add(roadTools.Add(typeButton));
 
         // Notifications at the bottom centre (FR-007).
         _messages.HorizontalAlignment = Alignment.Center;
@@ -681,7 +718,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         {
             if (_tools.HasPreview)
             {
-                _previewBoxes.Build(_tools.Preview, _tools.PreviewResult.Succeeded, state.Map, _host.Ui.Theme);
+                _previewBoxes.Build(_tools.Preview, _tools.PreviewResult.Succeeded, state.Map, _host.Ui.Theme, _tools.Active?.Removes == true);
             }
             else
             {

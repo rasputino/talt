@@ -133,7 +133,7 @@ internal sealed class ToolController
         }
 
         var (start, end) = IsDragging ? Shape(_start, _hover ?? _start) : (_hover!.Value, _hover.Value);
-        var key = new PreviewKey(Active, start, end, state.Version, state.Player.Balance);
+        var key = new PreviewKey(Active, start, end, state.Version, state.Player.Balance, RoadToolOptions.Version, state.Year);
         if (HasPreview && key == _planned)
         {
             return;
@@ -153,8 +153,15 @@ internal sealed class ToolController
         DragShape.Line => Math.Abs(current.X - start.X) >= Math.Abs(current.Z - start.Z)
             ? (start, (current.X, start.Z))
             : (start, (start.X, current.Z)),
+        DragShape.Line8 => (start, Line8End(start, current)),
         _ => (start, current),
     };
+
+    private static (int X, int Z) Line8End((int X, int Z) start, (int X, int Z) current)
+    {
+        var (direction, steps) = Talt.Core.Roads.RoadPlanner.LineOf(start, current, straightOnly: false);
+        return (start.X + (Talt.Core.Roads.Dir8.OffsetX(direction) * steps), start.Z + (Talt.Core.Roads.Dir8.OffsetZ(direction) * steps));
+    }
 
     private void Invalidate()
     {
@@ -163,5 +170,5 @@ internal sealed class ToolController
         PreviewVersion++;
     }
 
-    private readonly record struct PreviewKey(ConstructionTool? Tool, (int X, int Z) Start, (int X, int Z) End, int Version, long Balance);
+    private readonly record struct PreviewKey(ConstructionTool? Tool, (int X, int Z) Start, (int X, int Z) End, int Version, long Balance, int RoadOptions, int Year);
 }

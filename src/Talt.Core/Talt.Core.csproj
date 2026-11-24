@@ -6,6 +6,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Talt.Core.Tests" />
+    <!-- Hand-made maps (MapData constructor) for client tests and road benchmarks (feature 007). -->
+    <InternalsVisibleTo Include="Talt.Client.Tests" />
+    <InternalsVisibleTo Include="Talt.Benchmarks" />
   </ItemGroup>
 
   <ItemGroup>
@@ -18,6 +21,8 @@
     <EmbeddedResource Include="Content\Data\*.json" WithCulture="false" LogicalName="content/%(Filename)%(Extension)" />
     <!-- Balancing data shared by the client and the headless tool (feature 006, research R13). -->
     <EmbeddedResource Include="Construction\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Construction.Data.%(Filename)%(Extension)" />
+    <!-- Road types, costs and limits (feature 007, data-model.md RoadRules). -->
+    <EmbeddedResource Include="Roads\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Roads.Data.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

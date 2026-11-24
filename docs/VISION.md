@@ -115,6 +115,10 @@ The game is developed mostly through AI-assisted coding. To keep the project man
 | 2026-11-23 | Freight economy: 13 cargo types and 11 industry kinds, all in validated data files; raw materials and processed goods are destination-free, passengers/mail/town goods are destination-based. | specs/009 contracts/content-schema.md |
 | 2026-11-23 | About 75 % of the reserved industry sites start occupied; industries grow with deliveries, decline after ~24 months of neglect and may close after ~5 years, while new ones open on free sites. Waiting cargo is capped per cargo and production beyond the cap is discarded. | specs/009 clarifications |
 | 2026-11-23 | Audio lives only in the client (miniaudio through MiniAudioEx, MIT/Unlicense) and never touches the simulation; music starts in the main menu and continues through the game, with separate master/music/effects/ambient volumes, a mute control and a silent fallback when there is no device. All sounds and music are original. | specs/019 plan, research |
+| 2026-11-24 | Roads are tile data with eight directions (straight and 45° diagonal pieces, curves drawn smoothed). Four road types in data: dirt road (1850, 50 km/h), paved road (1920, 80 km/h), fast road (1960, 100 km/h) and motorway (1980, no limit of its own); upgrading pays the cost difference, downgrading is refused. | specs/007 clarifications |
+| 2026-11-24 | Motorways are two parallel one-way carriageways (right-hand traffic) joined to other roads only at their ends or through exit/entry ramps, and can be elevated over valleys, water and roads. | specs/007 clarifications |
+| 2026-11-24 | Bridges are straight with a maximum span that grows with the era (8, 16, 32 tiles from 1850, 1950, 1985); tunnels are straight, up to 64 tiles. Town streets can be removed only while the town's streets stay connected. | specs/007 clarifications |
+| 2026-11-24 | Games with a map start with small street grids on the town sites and no synthetic traffic (real road vehicles arrive with feature 012); map-less scenarios keep the prototype grid for benchmarks and the CI goldens. | specs/007 research R1 |
 
 ## Next steps
 
@@ -128,7 +132,6 @@ The game is developed mostly through AI-assisted coding. To keep the project man
 
 ## Open questions
 
-- Transport modes for the first version (road and rail only, or more?).
 - Map generation approach.
 - Multiplayer: in scope or not?
 - Modding support.

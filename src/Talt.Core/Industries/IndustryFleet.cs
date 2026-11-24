@@ -246,6 +246,12 @@ public sealed class IndustryFleet : IStateHashable
         return true;
     }
 
+    /// <summary>
+    /// Tiles where no industry may open (feature 007: roads and other objects, bridges above); set by the
+    /// simulation when the game has construction state. Not state: a pure query of construction state.
+    /// </summary>
+    public Func<int, bool>? TileBlocked { get; set; }
+
     /// <summary>Industry id that owns a tile, for picking and construction (feature 006).</summary>
     public bool TryGetIndustryAt(int x, int z, out int industryId)
     {
@@ -524,7 +530,7 @@ public sealed class IndustryFleet : IStateHashable
         {
             for (var x = minX; x < maxX; x++)
             {
-                if (_tileOwner.ContainsKey(x + (z * _mapWidth)))
+                if (_tileOwner.ContainsKey(x + (z * _mapWidth)) || (TileBlocked?.Invoke(x + (z * _mapWidth)) ?? false))
                 {
                     return -1;
                 }

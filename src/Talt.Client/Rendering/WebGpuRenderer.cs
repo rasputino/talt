@@ -73,6 +73,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
     private int _industryCapacity;
     private int _industryCount;
 
+    private RoadRenderer? _roadRenderer;
     private Texture* _depthTexture;
     private TextureView* _depthView;
     private Vector2D<int> _size;
@@ -119,6 +120,17 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _worldRenderer = new WorldRenderer(_wgpu, _device, _queue, world);
     }
 
+    /// <summary>Starts drawing the roads of the game (feature 007); call after <see cref="SetWorld"/>.</summary>
+    public void SetRoads(Talt.Core.Roads.RoadLayer roads, Talt.Core.Maps.MapData map, Talt.Core.Roads.RoadRules rules)
+    {
+        _roadRenderer?.Dispose();
+        _roadRenderer = new RoadRenderer(_wgpu, _device, _queue, _pipelineLayout, _surfaceFormat, DepthFormat, roads, map, rules);
+    }
+
+    /// <summary>Road draw calls, triangles and GPU bytes of the last frame.</summary>
+    public (int Draws, long Triangles, long Bytes) RoadStatistics =>
+        _roadRenderer is null ? default : (_roadRenderer.Draws, _roadRenderer.Triangles, _roadRenderer.GpuBytes);
+
     /// <summary>Stops drawing the world and releases its GPU memory (back to the main menu).</summary>
     public void ClearWorld()
     {
@@ -130,6 +142,8 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _ = NativeWgpu.DevicePoll(_device, 1, null); // Let the GPU finish frames that use the world.
         _worldRenderer.Dispose();
         _worldRenderer = null;
+        _roadRenderer?.Dispose();
+        _roadRenderer = null;
         _instanceCount = 0;
         _industryCount = 0;
         _highlightRenderer?.Update([], Vector3.Zero);
@@ -347,6 +361,10 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         var encoder = _wgpu.DeviceCreateCommandEncoder(_device, null);
         var world = _worldRenderer;
         world?.Prepare(encoder, viewProjection, camera.Position, fogDistance, _size.Y, camera.FieldOfView);
+        if (world is not null)
+        {
+            _roadRenderer?.Prepare(viewProjection, camera.Position, fogDistance);
+        }
         var clear = world is not null ? SkyColor : background;
         var prepared = System.Diagnostics.Stopwatch.GetTimestamp();
 
@@ -380,6 +398,10 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _wgpu.RenderPassEncoderSetBindGroup(pass, 0, _bindGroup, 0, null);
 
         world?.Encode(pass);
+        if (world is not null)
+        {
+            _roadRenderer?.Encode(pass); // Roads on top of the terrain (feature 007).
+        }
 
         if (world is not null && _instanceCount > 0)
         {

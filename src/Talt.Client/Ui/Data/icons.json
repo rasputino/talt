@@ -506,6 +506,195 @@
         "................",
         "................"
       ]
+    },
+    "road": {
+      "palette": {"k": "#4F5258", "w": "#E8E4D4", "g": "#6FBF4A"},
+      "rows": [
+        "................",
+        "gggg.kkkkkk.gggg",
+        "gggg.kkkkkk.gggg",
+        "gggg.kkkwkk.gggg",
+        "gggg.kkkwkk.gggg",
+        "gggg.kkkkkk.gggg",
+        "gggg.kkkkkk.gggg",
+        "gggg.kkkwkk.gggg",
+        "gggg.kkkwkk.gggg",
+        "gggg.kkkkkk.gggg",
+        "gggg.kkkkkk.gggg",
+        "gggg.kkkwkk.gggg",
+        "gggg.kkkwkk.gggg",
+        "gggg.kkkkkk.gggg",
+        "gggg.kkkkkk.gggg",
+        "................"
+      ]
+    },
+    "bridge": {
+      "palette": {"k": "#4F5258", "b": "#4A90D9", "s": "#A8A49A"},
+      "rows": [
+        "................",
+        "................",
+        "................",
+        ".s............s.",
+        ".ssssssssssssss.",
+        ".kkkkkkkkkkkkkk.",
+        ".ssssssssssssss.",
+        "..ss...ss...ss..",
+        "..ss...ss...ss..",
+        "..ss...ss...ss..",
+        "bbssbbbssbbbssbb",
+        "bbssbbbssbbbssbb",
+        "bbbbbbbbbbbbbbbb",
+        "bbbbbbbbbbbbbbbb",
+        "................",
+        "................"
+      ]
+    },
+    "tunnel": {
+      "palette": {"k": "#4F5258", "w": "#E8E4D4", "g": "#6FBF4A", "s": "#A8A49A", "d": "#8A5A32", "n": "#1E1E1E"},
+      "rows": [
+        "................",
+        "......gggg......",
+        "....gggggggg....",
+        "...gggggggggg...",
+        "..gggggggggggg..",
+        "..ggssssssssgg..",
+        ".ggssnnnnnnssgg.",
+        ".gssnnnnnnnnssg.",
+        ".gsnnnnnnnnnnsg.",
+        "gdsnnnnnnnnnnsdg",
+        "ddsnnnnnnnnnnsdd",
+        "ddsnnnnnnnnnnsdd",
+        "kkkkkkkkkkkkkkkk",
+        "kkkkkkwwkkkkkkkk",
+        "kkkkkkkkkkkkkkkk",
+        "................"
+      ]
+    },
+    "removeRoad": {
+      "palette": {"k": "#4F5258", "w": "#E8E4D4", "r": "#D9534F"},
+      "rows": [
+        "................",
+        ".....kkkkkk.....",
+        ".r...kkkkkk...r.",
+        ".rr..kkkwkk..rr.",
+        "..rr.kkkwkk.rr..",
+        "...rrkkkkkkrr...",
+        "....rrkkkkrr....",
+        ".....rrwkrr.....",
+        ".....rrwkrr.....",
+        "....rrkkkkrr....",
+        "...rrkkkkkkrr...",
+        "..rr.kkkwkk.rr..",
+        ".rr..kkkwkk..rr.",
+        ".r...kkkkkk...r.",
+        ".....kkkkkk.....",
+        "................"
+      ]
+    },
+    "oneWay": {
+      "palette": {"k": "#4F5258", "w": "#E8E4D4"},
+      "rows": [
+        "................",
+        "..kkkkkkkkkkkk..",
+        "..kkkkkwwkkkkk..",
+        "..kkkkwwwwkkkk..",
+        "..kkkwwwwwwkkk..",
+        "..kkwwwwwwwwkk..",
+        "..kkkkkwwkkkkk..",
+        "..kkkkkwwkkkkk..",
+        "..kkkkkwwkkkkk..",
+        "..kkkkkwwkkkkk..",
+        "..kkkkkwwkkkkk..",
+        "..kkkkkwwkkkkk..",
+        "..kkkkkkkkkkkk..",
+        "..kkkkkkkkkkkk..",
+        "..kkkkkkkkkkkk..",
+        "................"
+      ]
+    },
+    "motorway": {
+      "palette": {"k": "#4F5258", "w": "#E8E4D4", "g": "#6FBF4A"},
+      "rows": [
+        "................",
+        ".kkkkkkggkkkkkk.",
+        ".wkkkkkggkkkkkw.",
+        ".wkkwkkggkkwkkw.",
+        ".wkkwkkggkkwkkw.",
+        ".wkkkkkggkkkkkw.",
+        ".wkkkkkggkkkkkw.",
+        ".wkkwkkggkkwkkw.",
+        ".wkkwkkggkkwkkw.",
+        ".wkkkkkggkkkkkw.",
+        ".wkkkkkggkkkkkw.",
+        ".wkkwkkggkkwkkw.",
+        ".wkkwkkggkkwkkw.",
+        ".wkkkkkggkkkkkw.",
+        ".kkkkkkggkkkkkk.",
+        "................"
+      ]
+    },
+    "motorwayExit": {
+      "palette": {"k": "#4F5258", "w": "#E8E4D4", "y": "#F2B33D"},
+      "rows": [
+        "................",
+        ".kkkkkk.........",
+        ".kkkkkk.........",
+        ".kkwkkk.........",
+        ".kkwkkkk........",
+        ".kkkkkkkk.......",
+        ".kkkkkkkkk......",
+        ".kkwkkkkkkk.yy..",
+        ".kkwkkk.kkkkyy..",
+        ".kkkkkk..kkkkyy.",
+        ".kkkkkk...kkkky.",
+        ".kkwkkk....kkkk.",
+        ".kkwkkk.....kkk.",
+        ".kkkkkk......kk.",
+        ".kkkkkk.........",
+        "................"
+      ]
+    },
+    "motorwayEntry": {
+      "palette": {"k": "#4F5258", "w": "#E8E4D4", "y": "#F2B33D"},
+      "rows": [
+        "................",
+        ".kkkkkk.........",
+        ".kkkkkk......kk.",
+        ".kkwkkk.....kkk.",
+        ".kkwkkk....kkkk.",
+        ".kkkkkk...kkkky.",
+        ".kkkkkk..kkkkyy.",
+        ".kkwkkk.kkkkyy..",
+        ".kkwkkkkkkk.yy..",
+        ".kkkkkkkkk......",
+        ".kkkkkkkk.......",
+        ".kkwkkkk........",
+        ".kkwkkk.........",
+        ".kkkkkk.........",
+        ".kkkkkk.........",
+        "................"
+      ]
+    },
+    "roadType": {
+      "palette": {"k": "#4F5258", "w": "#E8E4D4", "d": "#8A5A32", "y": "#F2B33D"},
+      "rows": [
+        "................",
+        ".dddd.kkkk.kkkk.",
+        ".dddd.kkkk.kkkk.",
+        ".dddd.kwwk.wkkw.",
+        ".dddd.kkkk.wkkw.",
+        ".dddd.kkkk.kkkk.",
+        ".dddd.kwwk.wkkw.",
+        ".dddd.kkkk.wkkw.",
+        ".dddd.kkkk.kkkk.",
+        ".dddd.kwwk.wkkw.",
+        ".dddd.kkkk.wkkw.",
+        ".dddd.kkkk.kkkk.",
+        "................",
+        "....yyyyyyyy....",
+        ".....yyyyyy.....",
+        "......yyyy......"
+      ]
     }
   }
 }

@@ -44,6 +44,9 @@ internal sealed class Theme
     /// <summary>Construction preview: tiles the action leaves out (objects of others when clearing).</summary>
     public required UiColor PreviewSkipped { get; init; }
 
+    /// <summary>Construction preview: pieces a removal tool would take away (feature 007 hand test).</summary>
+    public required UiColor PreviewRemove { get; init; }
+
     /// <summary>Construction preview: tiles of the dragged area that do not change.</summary>
     public required UiColor PreviewArea { get; init; }
     public required UiColor Background { get; init; }
@@ -109,6 +112,7 @@ internal sealed class Theme
             PreviewValid = C("previewValid"),
             PreviewInvalid = C("previewInvalid"),
             PreviewSkipped = C("previewSkipped"),
+            PreviewRemove = C("previewRemove"),
             PreviewArea = C("previewArea"),
             Background = C("background"),
             CornerRadius = data.CornerRadius,

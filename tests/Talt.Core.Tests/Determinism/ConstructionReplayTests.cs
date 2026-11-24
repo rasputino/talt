@@ -13,11 +13,13 @@ namespace Talt.Core.Tests.Determinism;
 /// </summary>
 /// <remarks>
 /// Regenerate the golden only when construction rules, industries or map generation change on purpose.
-/// It changed when features 006 and 009 were merged: games with a map now also have industries.
+/// It changed when features 006 and 009 were merged: games with a map now also have industries; and with
+/// feature 007: games with a map have no prototype grid nor synthetic vehicles, start with town streets and
+/// hash their road layer.
 /// </remarks>
 public class ConstructionReplayTests
 {
-    private const string ExpectedAtTick600 = "349DFBE5EE272168";
+    private const string ExpectedAtTick600 = "835572714DD2F80D";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 9,
@@ -59,7 +61,7 @@ public class ConstructionReplayTests
         Assert.Equal(ExpectedAtTick600, StateHasher.Format(parallel.ComputeFingerprint()));
     }
 
-    /// <summary>The first block between the prototype roads where the command is valid (deterministic search).</summary>
+    /// <summary>The first 16-tile block where the command is valid (deterministic search).</summary>
     private static ConstructionCommand FirstValid(GameSimulation simulation, Func<int, int, ConstructionCommand> create)
     {
         var state = simulation.Construction!;

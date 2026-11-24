@@ -313,6 +313,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         _camera.Target = new Vector3(center.X, map.Get(center.X, center.Y), center.Y);
 
         _renderer?.SetWorld(game.World);
+        _renderer?.SetRoads(_session.Construction.Roads, game.Map, _session.Construction.RoadRules);
         var screen = new InGameScreen(this, _session, _camera, _isKeyDown);
         SetScreen(screen);
         screen.ApplySettings(Settings);
@@ -546,6 +547,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
             s.Format("stats.audio", ("ms", Math.Round(audio.AverageUpdateMilliseconds, 3)), ("voices", audio.ActiveVoices)),
             s.Format("stats.draws", ("count", r.DrawCalls)),
             s.Format("stats.triangles", ("count", r.Triangles)),
+            s.Format("stats.roads", ("draws", _renderer.RoadStatistics.Draws), ("triangles", _renderer.RoadStatistics.Triangles), ("mb", _renderer.RoadStatistics.Bytes / (1024 * 1024))),
             s.Format("stats.regions", ("lod0", r.RegionsLod0), ("lod1", r.RegionsLod1), ("lod2", r.RegionsLod2), ("lod3", r.RegionsLod3)),
             s.Format("stats.memory", ("mb", r.WorldGpuBytes / (1024 * 1024)), ("released", r.Lod0Released)),
             s.Format("stats.jobs", ("count", r.PendingJobs + r.JobsInFlight)),

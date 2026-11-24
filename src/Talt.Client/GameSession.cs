@@ -156,6 +156,11 @@ internal sealed class GameSession
     public void SubmitAddVehicle()
     {
         var fleet = Simulation.Vehicles;
+        if (fleet.LineCount == 0)
+        {
+            return; // Games with a map have no prototype lines (feature 007, FR-061).
+        }
+
         var line = _uiRandom.Next(fleet.LineCount);
         var speed = _uiRandom.Next(SyntheticTraffic.MinCruiseSpeed, SyntheticTraffic.MaxCruiseSpeed + 1);
         Simulation.Submit(new AddVehicleCommand(line, speed));

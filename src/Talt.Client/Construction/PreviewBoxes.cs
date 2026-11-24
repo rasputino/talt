@@ -29,13 +29,17 @@ internal sealed class PreviewBoxes
 
     public void Clear() => _count = 0;
 
-    public void Build(ConstructionPlan plan, bool allowed, MapData map, Theme theme)
+    /// <param name="removes">
+    /// A removal tool (feature 007 hand test, 2026-11-24): removed pieces are drawn in the removal colour and the
+    /// neighbours that only lose a link are not marked, so the preview shows exactly what disappears.
+    /// </param>
+    public void Build(ConstructionPlan plan, bool allowed, MapData map, Theme theme, bool removes = false)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(map);
         ArgumentNullException.ThrowIfNull(theme);
         _count = 0;
-        var valid = Linear(theme.PreviewValid);
+        var valid = Linear(removes ? theme.PreviewRemove : theme.PreviewValid);
         var invalid = Linear(theme.PreviewInvalid);
         var skipped = Linear(theme.PreviewSkipped);
         var neutral = Linear(theme.PreviewArea);
@@ -44,6 +48,11 @@ internal sealed class PreviewBoxes
         foreach (var change in plan.Changes)
         {
             var i = change.Index;
+            if (removes && allowed && (change.NewRoad.HasRoad || !change.OldRoad.HasRoad))
+            {
+                continue; // Keeps its piece (only a link or a passing bridge goes away).
+            }
+
             _marked.Add(i, out _);
             Add(i % width, i / width, Math.Max(change.NewHeight, map.WaterLevels[i]), allowed ? valid : invalid);
         }

@@ -149,7 +149,7 @@ public class TerraformPlannerTests
     public void TilesUnderObjects_AreRefusedWithTheOwnerReason()
     {
         var state = new TestMap().State();
-        state.Objects.Set(Index(state, 5, 5), TileObjectKind.PublicRoad, TileOwner.Town(0));
+        state.Objects.Set(Index(state, 5, 5), TileObjectKind.Road, TileOwner.Town(0));
         state.Objects.Set(Index(state, 9, 9), TileObjectKind.Test, TileOwner.Company(Company.PlayerId));
 
         Plan(state, TerraformMode.Raise, new TileRect(5, 5, 5, 5));
@@ -163,7 +163,7 @@ public class TerraformPlannerTests
     public void CascadeIntoAnObject_IsRefused()
     {
         var state = new TestMap().Height(5, 5, 11).State();
-        state.Objects.Set(Index(state, 6, 5), TileObjectKind.PublicRoad, TileOwner.Town(0));
+        state.Objects.Set(Index(state, 6, 5), TileObjectKind.Road, TileOwner.Town(0));
 
         Plan(state, TerraformMode.Raise, new TileRect(5, 5, 5, 5));
 

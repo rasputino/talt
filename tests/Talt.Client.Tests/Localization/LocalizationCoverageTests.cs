@@ -37,11 +37,22 @@ public partial class LocalizationCoverageTests
             SampleWindows.Create(1),
             ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Tile, 3, 4, 10, Core.Voxels.VoxelMaterial.Grass, -1, -1, default, default, 1), session),
             ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Road, 3, 4, 10, Core.Voxels.VoxelMaterial.Road, -1, -1, default, default, 1), session),
-            ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Vehicle, 3, 4, 0, Core.Voxels.VoxelMaterial.Air, session.InstanceIds[0], -1, default, default, 1), session),
+            ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Vehicle, 3, 4, 0, Core.Voxels.VoxelMaterial.Air, 1, -1, default, default, 1), session),
         };
         if (industryWindow is not null)
         {
             screens.Add(industryWindow);
+        }
+
+        // A road window on a seeded town street (feature 007).
+        var roads = session.Construction.Roads;
+        for (var tile = 0; tile < roads.Width * roads.Depth; tile++)
+        {
+            if (roads.HasRoad(tile))
+            {
+                screens.Add(ObjectInfoWindow.Create(new Talt.Client.Picking.PickResult(Talt.Client.Picking.PickKind.Road, tile % roads.Width, tile / roads.Width, 10, Core.Voxels.VoxelMaterial.Grass, -1, -1, default, default, 1), session));
+                break;
+            }
         }
 
         return screens;
