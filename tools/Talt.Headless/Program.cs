@@ -111,6 +111,23 @@ static void PrintSummary(GameSimulation simulation, TimeSpan setup, TimeSpan sim
     Console.WriteLine($"vehicles: {simulation.Vehicles.VehicleCount}");
     Console.WriteLine($"industries: {simulation.Industries.Count}");
     Console.WriteLine($"road-tiles: {simulation.Construction?.Roads.RoadTileCount ?? 0}");
+    if (simulation.Towns is { } towns)
+    {
+        // Feature 008: town summary (contracts/cli.md).
+        var population = 0L;
+        for (var town = 0; town < towns.Count; town++)
+        {
+            population += towns.PopulationOf(town);
+        }
+
+        Console.WriteLine($"towns: {towns.Count}");
+        Console.WriteLine($"town-population: {population}");
+        Console.WriteLine($"town-buildings: {towns.Buildings.Count}");
+        foreach (var town in Enumerable.Range(0, towns.Count).OrderByDescending(towns.PopulationOf).ThenBy(t => t).Take(5))
+        {
+            Console.WriteLine($"  {towns.NameOf(town)}: {towns.PopulationOf(town)}");
+        }
+    }
     Console.WriteLine($"fingerprint: {StateHasher.Format(simulation.ComputeFingerprint())}");
     Console.WriteLine($"setup-ms: {setup.TotalMilliseconds.ToString("F0", c)}");
     Console.WriteLine($"simulate-ms: {simulate.TotalMilliseconds.ToString("F0", c)}");

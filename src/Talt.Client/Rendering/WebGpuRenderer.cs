@@ -74,6 +74,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
     private int _industryCount;
 
     private RoadRenderer? _roadRenderer;
+    private TownRenderer? _townRenderer;
     private Texture* _depthTexture;
     private TextureView* _depthView;
     private Vector2D<int> _size;
@@ -127,6 +128,17 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _roadRenderer = new RoadRenderer(_wgpu, _device, _queue, _pipelineLayout, _surfaceFormat, DepthFormat, roads, map, rules);
     }
 
+    /// <summary>Starts drawing the town buildings of the game (feature 008); call after <see cref="SetWorld"/>.</summary>
+    public void SetTowns(Talt.Core.Towns.TownRegistry towns, Talt.Core.Maps.MapData map)
+    {
+        _townRenderer?.Dispose();
+        _townRenderer = new TownRenderer(_wgpu, _device, _queue, _pipelineLayout, _surfaceFormat, DepthFormat, towns, map);
+    }
+
+    /// <summary>Building draw calls, boxes and GPU bytes of the last frame.</summary>
+    public (int Draws, long Instances, long Bytes) TownStatistics =>
+        _townRenderer is null ? default : (_townRenderer.Draws, _townRenderer.Instances, _townRenderer.GpuBytes);
+
     /// <summary>Road draw calls, triangles and GPU bytes of the last frame.</summary>
     public (int Draws, long Triangles, long Bytes) RoadStatistics =>
         _roadRenderer is null ? default : (_roadRenderer.Draws, _roadRenderer.Triangles, _roadRenderer.GpuBytes);
@@ -144,6 +156,8 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _worldRenderer = null;
         _roadRenderer?.Dispose();
         _roadRenderer = null;
+        _townRenderer?.Dispose();
+        _townRenderer = null;
         _instanceCount = 0;
         _industryCount = 0;
         _highlightRenderer?.Update([], Vector3.Zero);
@@ -364,6 +378,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         if (world is not null)
         {
             _roadRenderer?.Prepare(viewProjection, camera.Position, fogDistance);
+            _townRenderer?.Prepare(viewProjection, camera.Position, fogDistance);
         }
         var clear = world is not null ? SkyColor : background;
         var prepared = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -401,6 +416,8 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         if (world is not null)
         {
             _roadRenderer?.Encode(pass); // Roads on top of the terrain (feature 007).
+            _townRenderer?.Encode(pass); // Town buildings (feature 008).
+            _wgpu.RenderPassEncoderSetBindGroup(pass, 0, _bindGroup, 0, null);
         }
 
         if (world is not null && _instanceCount > 0)

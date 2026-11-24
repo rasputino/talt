@@ -17,6 +17,7 @@ namespace Talt.Core.Scenarios;
 /// Generated map of the game (feature 004); null for map-less scenarios (benchmarks, the CI goldens).
 /// With a map the simulation owns its tile data and can be built on (feature 006, research R1).
 /// </param>
+/// <param name="Towns">Town options of a game with a map (feature 008); null means the defaults.</param>
 public sealed record ScenarioSettings(
     int Seed = 2026,
     int StartYear = 1950,
@@ -25,8 +26,12 @@ public sealed record ScenarioSettings(
     int RoadRemovalChancePerMille = 150,
     int VehicleCount = 20_000,
     int? LineCount = null,
-    MapSettings? Map = null)
+    MapSettings? Map = null,
+    Talt.Core.Towns.TownSettings? Towns = null)
 {
+    /// <summary>The town options in effect (<see cref="Towns"/> or the defaults).</summary>
+    public Talt.Core.Towns.TownSettings EffectiveTowns => Towns ?? Talt.Core.Towns.TownSettings.Default;
+
     public const int MinStartYear = 1;
     public const int MaxStartYear = 9000;
 
@@ -66,6 +71,7 @@ public sealed record ScenarioSettings(
             throw new ArgumentException($"Line count must be at least 1 when given (was {LineCount}).");
         }
 
+        Towns?.Validate();
         if (Map is not null)
         {
             Map.Validate();

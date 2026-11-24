@@ -61,6 +61,12 @@ public sealed class RecordedSession
             if (Settings.Map is not null)
             {
                 writer.WriteString("map", Settings.Map.ToText());
+                var towns = Settings.Towns ?? Towns.TownSettings.Default;
+                writer.WriteStartObject("towns");
+                writer.WriteString("names", Towns.TownSettings.ToText(towns.NameStyle));
+                writer.WriteString("size", Towns.TownSettings.ToText(towns.Size));
+                writer.WriteNumber("servicePercent", towns.DebugServicePercent);
+                writer.WriteEndObject();
             }
 
             writer.WriteEndObject();
@@ -122,6 +128,22 @@ public sealed class RecordedSession
             }
         }
 
+        Towns.TownSettings? townSettings = null;
+        if (s.TryGetProperty("towns", out var townsElement))
+        {
+            if (!Towns.TownSettings.TryParseNameStyle(townsElement.GetProperty("names").GetString(), out var style)
+                || !Towns.TownSettings.TryParseSize(townsElement.GetProperty("size").GetString(), out var size))
+            {
+                throw new JsonException("Invalid town settings in the session.");
+            }
+
+            townSettings = new Towns.TownSettings(style, size, townsElement.GetProperty("servicePercent").GetInt32());
+            if (townSettings == Towns.TownSettings.Default)
+            {
+                townSettings = null; // Defaults read back as "not set", like settings written before feature 008.
+            }
+        }
+
         var settings = new ScenarioSettings(
             Seed: s.GetProperty("seed").GetInt32(),
             StartYear: s.GetProperty("startYear").GetInt32(),
@@ -130,7 +152,8 @@ public sealed class RecordedSession
             RoadRemovalChancePerMille: s.GetProperty("roadRemovalChancePerMille").GetInt32(),
             VehicleCount: s.GetProperty("vehicleCount").GetInt32(),
             LineCount: s.GetProperty("lineCount").GetInt32(),
-            Map: map);
+            Map: map,
+            Towns: townSettings);
 
         var gameVersion = root.TryGetProperty("gameVersion", out var gv) ? gv.GetString() ?? "unknown" : "unknown";
         var session = new RecordedSession(settings, gameVersion);

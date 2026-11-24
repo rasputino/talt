@@ -89,6 +89,12 @@ public sealed class ConstructionPlan
     /// <summary>The first problem's reason, or a whole-action reason (<c>too-large</c>, <c>nothing-to-do</c>...).</summary>
     public string? Reason { get; internal set; }
 
+    /// <summary>
+    /// The change of the company's town ratings the action would cause, summed over towns (feature 008; display
+    /// only, set by <see cref="ConstructionCommand.Preview"/> or a tool preview; not part of a command's recorded form).
+    /// </summary>
+    public int RatingChange { get; set; }
+
     /// <summary>The clipped rectangle the player aimed at (empty plans keep the last one).</summary>
     public TileRect Area { get; internal set; }
 
@@ -103,6 +109,7 @@ public sealed class ConstructionPlan
         ChangeCount = 0;
         ProblemCount = 0;
         Cost = 0;
+        RatingChange = 0;
         Reason = null;
         HasArea = false;
     }
@@ -152,6 +159,7 @@ public sealed class ConstructionPlan
         }
 
         Cost = other.Cost;
+        RatingChange = other.RatingChange;
         Reason = other.Reason;
         Area = other.Area;
         HasArea = other.HasArea;

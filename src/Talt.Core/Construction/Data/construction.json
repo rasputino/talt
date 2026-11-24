@@ -7,8 +7,9 @@
   // Per tree removed (clearing, or terraforming a wooded tile).
   "clearTreeCost": 40,
   // Per object demolished, by object kind. Roads are removed with the road removal tool, whose costs
-  // are in Roads/Data/roads.json; the entry exists so the table names every kind.
-  "demolishCosts": { "road": 0, "test": 100 },
+  // are in Roads/Data/roads.json; the entry exists so the table names every kind. Town buildings
+  // (feature 008) cost this much per footprint tile.
+  "demolishCosts": { "road": 0, "townBuilding": 1500, "test": 100 },
   // How long the last action can be undone: 200 ticks = 10 seconds at normal speed.
   "undoWindowTicks": 200,
   // Highest ground a terraform action may create (voxels; the world holds up to 127).

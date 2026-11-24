@@ -44,9 +44,12 @@ Client options: `--start-year <year>`, `--language en|es` and `--ui-scale <0.75â
 (initial camera distance), `--ui-test-windows <n>` (opens sample windows to measure the interface),
 `--no-audio` (starts silently, for CI and machines without a sound device), `--road-grid <spacing>`
 (debug: lays a full road grid every `<spacing>` tiles, to check the frame rate with a dense network).
+Towns (feature 008): `--town-names mixed|english|spanish` and `--town-size small|normal|large` (also on the
+new-game screen), and `--town-service <0â€“100>` (debug: counts that percentage of every town's passengers and
+mail as transported each month, so towns grow before stations exist).
 
 In game: the top bar shows money, date and speed buttons, the toolbar on the left opens settings and
-the other tools, and clicking the map selects the tile, road, vehicle or industry under the cursor
+the other tools, and clicking the map selects the tile, road, vehicle, industry or town under the cursor
 (industries have their own information window with production, acceptance, recipes and last month's
 figures). Construction tools (toolbar or keys): `PageUp` raise land, `PageDown` lower land, `L` level,
 `X` clear trees and demolish your own objects, `Backspace` undo the last construction for a few

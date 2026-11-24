@@ -264,6 +264,7 @@ public sealed partial class RoadPlanner
         var start = _map.Index(a.X, a.Z);
         var removed = 0;
         var skippedTown = false;
+        var skippedRefused = false;
         var skippedOther = false;
         for (var i = 0; i <= steps; i++)
         {
@@ -288,7 +289,13 @@ public sealed partial class RoadPlanner
             }
             else if (owner.Kind == TileOwnerKind.Town)
             {
-                if (TownStaysConnected(tile, owner))
+                if (state.Towns is { } towns && !towns.MayDemolish(owner.Index, companyId))
+                {
+                    // Feature 008: the town's rating of the company is too low (FR-019).
+                    plan.AddProblem(tile, ConstructionReasons.TownRefuses, blocking: false);
+                    skippedRefused = true;
+                }
+                else if (TownStaysConnected(tile, owner))
                 {
                     plan.Cost += _rules.TownRoadRemoveCost;
                     RemovePiece(tile);
@@ -309,7 +316,8 @@ public sealed partial class RoadPlanner
 
         if (removed == 0)
         {
-            plan.Reason = skippedTown ? ConstructionReasons.TownNeedsRoad
+            plan.Reason = skippedRefused ? ConstructionReasons.TownRefuses
+                : skippedTown ? ConstructionReasons.TownNeedsRoad
                 : skippedOther ? ConstructionReasons.OwnedByOther
                 : ConstructionReasons.NotARoad;
             return;

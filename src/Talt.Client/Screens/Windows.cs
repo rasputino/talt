@@ -28,6 +28,7 @@ internal static class ObjectInfoWindow
             PickKind.Vehicle => TextRef.Of("info.vehicle.title", ("id", pick.VehicleId.ToString(CultureInfo.InvariantCulture))),
             PickKind.Road => TextRef.Of("info.road.title"),
             PickKind.Industry => IndustryTitle(pick.IndustryId, session),
+            PickKind.Town when session.Simulation.Towns is { } towns => TownWindow.Title(towns, pick.TownId),
             _ => TextRef.Of("info.tile.title"),
         };
         var window = new UiWindow(Kind, title) { Key = pick.Key };
@@ -45,6 +46,10 @@ internal static class ObjectInfoWindow
         else if (pick.Kind == PickKind.Industry)
         {
             AddIndustry(content, pick.IndustryId, session);
+        }
+        else if (pick.Kind == PickKind.Town && session.Simulation.Towns is { } towns)
+        {
+            TownWindow.Add(content, towns, pick.TownId, () => (session.Simulation.CurrentTick / Talt.Core.Simulation.GameClock.TicksPerDay) ^ ((long)session.Construction.Version << 32));
         }
         else if (pick.Kind == PickKind.Road && session.Construction.Roads.Contains(pick.TileX, pick.TileZ))
         {
@@ -84,7 +89,7 @@ internal static class ObjectInfoWindow
             return owner.Kind switch
             {
                 Talt.Core.Construction.TileOwnerKind.Company => s.Get("info.road.ownerCompany"),
-                Talt.Core.Construction.TileOwnerKind.Town => s.Format("info.road.ownerTown", ("town", owner.Index + 1)),
+                Talt.Core.Construction.TileOwnerKind.Town => s.Format("info.road.ownerTown", ("town", session.Simulation.Towns is { } t && owner.Index < t.Count ? t.NameOf(owner.Index) : (owner.Index + 1).ToString(CultureInfo.InvariantCulture))),
                 _ => s.Get("info.road.ownerNone"),
             };
         })));

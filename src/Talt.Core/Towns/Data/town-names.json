@@ -1,0 +1,36 @@
+{
+  // Parts of generated town names (feature 008, research R4). Every part was made up for TALT; names are
+  // built by joining a start, an optional middle and an end, sometimes with a prefix or suffix word.
+  // Pattern weights: startEnd, startMiddleEnd, prefixName (prefix word + name), nameSuffix (name + suffix word).
+  "english": {
+    "starts": [
+      "Alder", "Bram", "Brack", "Cind", "Corr", "Dell", "Dray", "Ember", "Fallow", "Frost", "Glen", "Gorse",
+      "Hart", "Holm", "Ivel", "Jun", "Kell", "Kestrel", "Lark", "Lynd", "Marl", "Moss", "Nettle", "Norr",
+      "Orrin", "Pell", "Pike", "Quill", "Rook", "Rush", "Sedge", "Slate", "Tarn", "Thorn", "Umber", "Vell",
+      "Wick", "Wold", "Yarrow", "Bexel", "Carrow", "Dunmer", "Elsk", "Farrow", "Grisk", "Hobb", "Tallow"
+    ],
+    "middles": [ "en", "er", "ing", "ow", "an", "el", "ith" ],
+    "ends": [
+      "ford", "ham", "ley", "ton", "wick", "by", "mere", "stead", "bury", "field", "gate", "holme", "croft",
+      "dale", "well", "moor", "combe", "worth", "shaw", "brook", "thorpe", "hurst", "bridge", "minster"
+    ],
+    "prefixWords": [ "Upper", "Lower", "East", "West", "North", "South", "Little", "Great", "Old", "New" ],
+    "suffixWords": [ "Cross", "Green", "Heath", "Hill", "Marsh", "Vale", "Wells", "End", "Common" ],
+    "patterns": { "startEnd": 62, "startMiddleEnd": 18, "prefixName": 10, "nameSuffix": 10 }
+  },
+  "spanish": {
+    "starts": [
+      "Alca", "Alme", "Bar", "Bena", "Cala", "Castil", "Cerra", "Encin", "Escal", "Fuen", "Guada", "Huer",
+      "Lagu", "Llan", "Mira", "Monte", "Mora", "Nava", "Ola", "Peña", "Pino", "Quin", "Ribe", "Roble",
+      "Sola", "Tolo", "Torre", "Urre", "Valde", "Zarza", "Arbo", "Brena", "Cuen", "Gali", "Lina", "Tame"
+    ],
+    "middles": [ "ri", "lo", "ne", "ba", "go", "te", "ma" ],
+    "ends": [
+      "jar", "dilla", "nares", "rejo", "zuela", "monte", "losa", "nera", "rrubia", "llano", "verde", "dal",
+      "gosa", "tillo", "real", "seca", "rrada", "jo", "nilla", "quero", "brega", "lena", "deras", "cina"
+    ],
+    "prefixWords": [ "Villa", "Puerto", "Nueva", "Vega de", "Castro", "Puente", "Fuente" ],
+    "suffixWords": [ "del Río", "de Arriba", "de Abajo", "del Monte", "la Vieja", "de la Sierra", "del Valle" ],
+    "patterns": { "startEnd": 62, "startMiddleEnd": 18, "prefixName": 10, "nameSuffix": 10 }
+  }
+}

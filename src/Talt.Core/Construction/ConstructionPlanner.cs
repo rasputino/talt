@@ -147,6 +147,29 @@ public sealed class ConstructionPlanner
         EmitTerraform();
     }
 
+    private readonly HashSet<int> _demolishedBuildings = [];
+
+    /// <summary>Adds every footprint tile of a town building to a clear plan, at the demolition cost per tile.</summary>
+    private static void AddTownBuildingDemolition(ConstructionState state, Towns.TownRegistry towns, int buildingId, ConstructionPlan plan)
+    {
+        var buildings = towns.Buildings;
+        var slot = buildings.SlotOf(buildingId);
+        var definition = buildings.TypeDefinitionAt(slot);
+        var map = state.Map;
+        for (var dz = 0; dz < definition.Depth; dz++)
+        {
+            for (var dx = 0; dx < definition.Width; dx++)
+            {
+                var tile = map.Index(buildings.XAt(slot) + dx, buildings.ZAt(slot) + dz);
+                var height = map.Heights[tile];
+                var scenery = map.SceneryData[tile];
+                plan.Cost += state.Rules.DemolishCost(TileObjectKind.TownBuilding);
+                plan.AddChange(new TileChange(tile, height, height, scenery, Scenery.None, TileObjectKind.TownBuilding, TileObjectKind.None,
+                    state.Objects.OwnerAt(tile), TileOwner.None));
+            }
+        }
+    }
+
     /// <summary>
     /// Plans clearing an area (contracts/commands.md <c>clearArea</c>): trees are removed, objects of the
     /// company are demolished, objects of others are skipped and shown as non-blocking problems.
@@ -163,7 +186,9 @@ public sealed class ConstructionPlanner
         var rules = state.Rules;
         var skipped = false;
         var roadSkipped = false;
+        var townRefused = false;
         var heights = map.Heights;
+        _demolishedBuildings.Clear();
         for (var z = rect.Z0; z <= rect.Z1; z++)
         {
             for (var x = rect.X0; x <= rect.X1; x++)
@@ -179,6 +204,23 @@ public sealed class ConstructionPlanner
                     // Roads keep their links consistent only through the road removal tool (feature 007).
                     plan.AddProblem(i, ConstructionReasons.UseRoadRemoval, blocking: false);
                     roadSkipped = true;
+                    continue;
+                }
+
+                if (kind == TileObjectKind.TownBuilding && owner.Kind == TileOwnerKind.Town && state.Towns is { } towns
+                    && towns.Buildings.TryGetAt(i, out var buildingId))
+                {
+                    // Feature 008: a town building goes as a whole, if the town lets the company (FR-019).
+                    if (!towns.MayDemolish(owner.Index, companyId))
+                    {
+                        plan.AddProblem(i, ConstructionReasons.TownRefuses, blocking: false);
+                        townRefused = true;
+                    }
+                    else if (_demolishedBuildings.Add(buildingId))
+                    {
+                        AddTownBuildingDemolition(state, towns, buildingId, plan);
+                    }
+
                     continue;
                 }
 
@@ -204,7 +246,8 @@ public sealed class ConstructionPlanner
 
         if (plan.ChangeCount == 0)
         {
-            plan.Reason = skipped ? ConstructionReasons.OwnedByOther
+            plan.Reason = townRefused ? ConstructionReasons.TownRefuses
+                : skipped ? ConstructionReasons.OwnedByOther
                 : roadSkipped ? ConstructionReasons.UseRoadRemoval
                 : ConstructionReasons.NothingToDo;
         }

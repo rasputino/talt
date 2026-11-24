@@ -119,6 +119,8 @@ The game is developed mostly through AI-assisted coding. To keep the project man
 | 2026-11-24 | Motorways are two parallel one-way carriageways (right-hand traffic) joined to other roads only at their ends or through exit/entry ramps, and can be elevated over valleys, water and roads. | specs/007 clarifications |
 | 2026-11-24 | Bridges are straight with a maximum span that grows with the era (8, 16, 32 tiles from 1850, 1950, 1985); tunnels are straight, up to 64 tiles. Town streets can be removed only while the town's streets stay connected. | specs/007 clarifications |
 | 2026-11-24 | Games with a map start with small street grids on the town sites and no synthetic traffic (real road vehicles arrive with feature 012); map-less scenarios keep the prototype grid for benchmarks and the CI goldens. | specs/007 research R1 |
+| 2026-11-24 | Towns grow only when served (share of passengers and mail transported); unserved towns stay as founded. Starting sizes are varied (many villages, some towns, a few cities) with a Small/Normal/Large option; names are generated from original English- and Spanish-style parts (new-game option, default mixed). | specs/008 clarifications |
+| 2026-11-24 | Town ratings per company (0–1 000, bands hostile/poor/neutral/good/excellent): demolishing town buildings or roads and cutting trees near towns lower them, service raises them; below "poor" a town refuses demolition of its property, below "hostile" stations in it (feature 010). Demolishing town buildings cannot be undone. | specs/008 clarifications, research R9–R10 |
 
 ## Next steps
 

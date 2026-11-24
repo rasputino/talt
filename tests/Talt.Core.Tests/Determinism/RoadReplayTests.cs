@@ -12,10 +12,13 @@ namespace Talt.Core.Tests.Determinism;
 /// SC-006: a game with a map, town streets and every kind of road action records and replays to the same
 /// state; parallel and sequential runs agree and the fingerprint is pinned so every CI platform must agree.
 /// </summary>
-/// <remarks>Regenerate the golden only when road rules, seeding, construction or map generation change on purpose.</remarks>
+/// <remarks>
+/// Regenerate the golden only when road rules, seeding, construction or map generation change on purpose. It
+/// changed with feature 008: towns are founded on the seeded streets (buildings, extra streets, town state).
+/// </remarks>
 public class RoadReplayTests
 {
-    private const string ExpectedAtTick400 = "0D9D48E54543E72C";
+    private const string ExpectedAtTick400 = "23CC3799C290F8C5";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 21,

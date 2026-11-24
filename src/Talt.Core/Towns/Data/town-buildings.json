@@ -1,0 +1,93 @@
+{
+  // Town building types (feature 008, contracts/data-files.md). Every type is original to TALT.
+  // Footprints are 1–2 tiles per side; height is the number of storeys; production is per month;
+  // acceptance is in eighths (8 = the building alone accepts the cargo). Zones are measured from the
+  // town centre as a share of the town radius (towns.json growth.centreZonePercent / innerZonePercent).
+  // A replacement must have a higher level than the building it replaces.
+  "buildings": [
+    {
+      "id": "cottage", "category": "house", "width": 1, "depth": 1, "height": 2,
+      "residents": 5, "passengersPerMonth": 3, "mailPerMonth": 1, "goodsAcceptance": 0, "foodAcceptance": 1,
+      "era": [1700, 9000], "minTownPopulation": 0, "zones": ["centre", "inner", "outer"], "weight": 220, "level": 1,
+      "model": { "wall": "#E2D4B4", "roof": "#9C4A32", "roofStyle": "pitched", "windows": "rows" }
+    },
+    {
+      "id": "brick-terrace", "category": "house", "width": 1, "depth": 1, "height": 3,
+      "residents": 12, "passengersPerMonth": 7, "mailPerMonth": 2, "goodsAcceptance": 0, "foodAcceptance": 1,
+      "era": [1750, 9000], "minTownPopulation": 120, "zones": ["centre", "inner", "outer"], "weight": 150, "level": 2,
+      "model": { "wall": "#A65A3E", "roof": "#4F4A48", "roofStyle": "pitched", "windows": "rows" }
+    },
+    {
+      "id": "garden-villa", "category": "house", "width": 2, "depth": 1, "height": 2,
+      "residents": 9, "passengersPerMonth": 5, "mailPerMonth": 2, "goodsAcceptance": 0, "foodAcceptance": 1,
+      "era": [1800, 9000], "minTownPopulation": 0, "zones": ["outer"], "weight": 90, "level": 2,
+      "model": { "wall": "#F1EDE2", "roof": "#3E5A6E", "roofStyle": "pitched", "windows": "rows" }
+    },
+    {
+      "id": "walk-up-flats", "category": "apartment", "width": 1, "depth": 1, "height": 5,
+      "residents": 36, "passengersPerMonth": 20, "mailPerMonth": 5, "goodsAcceptance": 1, "foodAcceptance": 2,
+      "era": [1850, 9000], "minTownPopulation": 450, "zones": ["centre", "inner"], "weight": 120, "level": 3,
+      "model": { "wall": "#C9B79C", "roof": "#5C5652", "roofStyle": "flat", "windows": "grid" }
+    },
+    {
+      "id": "courtyard-block", "category": "apartment", "width": 2, "depth": 2, "height": 8,
+      "residents": 150, "passengersPerMonth": 80, "mailPerMonth": 20, "goodsAcceptance": 2, "foodAcceptance": 4,
+      "era": [1880, 9000], "minTownPopulation": 1400, "zones": ["centre", "inner"], "weight": 70, "level": 5,
+      "model": { "wall": "#D9CBB0", "roof": "#6A625C", "roofStyle": "flat", "windows": "grid" }
+    },
+    {
+      "id": "slab-tower", "category": "apartment", "width": 2, "depth": 2, "height": 16,
+      "residents": 340, "passengersPerMonth": 170, "mailPerMonth": 40, "goodsAcceptance": 2, "foodAcceptance": 6,
+      "era": [1945, 9000], "minTownPopulation": 3500, "zones": ["centre", "inner"], "weight": 45, "level": 7,
+      "model": { "wall": "#BFC3C2", "roof": "#7A7F80", "roofStyle": "flat", "windows": "grid" }
+    },
+    {
+      "id": "glass-residence", "category": "apartment", "width": 1, "depth": 1, "height": 22,
+      "residents": 240, "passengersPerMonth": 125, "mailPerMonth": 35, "goodsAcceptance": 2, "foodAcceptance": 4,
+      "era": [1975, 9000], "minTownPopulation": 6000, "zones": ["centre"], "weight": 30, "level": 9,
+      "model": { "wall": "#8FB4C8", "roof": "#4D6570", "roofStyle": "flat", "windows": "grid" }
+    },
+    {
+      "id": "corner-store", "category": "shop", "width": 1, "depth": 1, "height": 2,
+      "residents": 3, "passengersPerMonth": 6, "mailPerMonth": 2, "goodsAcceptance": 3, "foodAcceptance": 4,
+      "era": [1700, 9000], "minTownPopulation": 60, "zones": ["centre", "inner"], "weight": 70, "level": 2,
+      "model": { "wall": "#E8C26A", "roof": "#7B3F2A", "roofStyle": "flat", "windows": "rows" }
+    },
+    {
+      "id": "covered-market", "category": "shop", "width": 2, "depth": 1, "height": 3,
+      "residents": 0, "passengersPerMonth": 18, "mailPerMonth": 4, "goodsAcceptance": 5, "foodAcceptance": 8,
+      "era": [1780, 9000], "minTownPopulation": 700, "zones": ["centre", "inner"], "weight": 35, "level": 3,
+      "model": { "wall": "#C98F5A", "roof": "#5E7350", "roofStyle": "pitched", "windows": "rows" }
+    },
+    {
+      "id": "arcade-store", "category": "shop", "width": 2, "depth": 2, "height": 6,
+      "residents": 10, "passengersPerMonth": 60, "mailPerMonth": 12, "goodsAcceptance": 8, "foodAcceptance": 6,
+      "era": [1900, 9000], "minTownPopulation": 2500, "zones": ["centre"], "weight": 30, "level": 5,
+      "model": { "wall": "#E5DCC8", "roof": "#8C2F39", "roofStyle": "flat", "windows": "grid" }
+    },
+    {
+      "id": "counting-house", "category": "office", "width": 1, "depth": 1, "height": 4,
+      "residents": 0, "passengersPerMonth": 16, "mailPerMonth": 10, "goodsAcceptance": 1, "foodAcceptance": 0,
+      "era": [1800, 9000], "minTownPopulation": 500, "zones": ["centre", "inner"], "weight": 55, "level": 3,
+      "model": { "wall": "#B5A68C", "roof": "#3F4447", "roofStyle": "flat", "windows": "grid" }
+    },
+    {
+      "id": "office-spire", "category": "office", "width": 2, "depth": 2, "height": 20,
+      "residents": 0, "passengersPerMonth": 190, "mailPerMonth": 90, "goodsAcceptance": 2, "foodAcceptance": 1,
+      "era": [1955, 9000], "minTownPopulation": 5000, "zones": ["centre"], "weight": 35, "level": 8,
+      "model": { "wall": "#9DA8B0", "roof": "#525C63", "roofStyle": "flat", "windows": "grid" }
+    },
+    {
+      "id": "schoolhouse", "category": "civic", "width": 2, "depth": 1, "height": 3,
+      "residents": 0, "passengersPerMonth": 14, "mailPerMonth": 3, "goodsAcceptance": 1, "foodAcceptance": 2,
+      "era": [1820, 9000], "minTownPopulation": 900, "zones": ["inner", "outer"], "weight": 12, "level": 3,
+      "model": { "wall": "#D7A27A", "roof": "#57423A", "roofStyle": "pitched", "windows": "rows" }
+    },
+    {
+      "id": "bell-chapel", "category": "civic", "width": 1, "depth": 1, "height": 4,
+      "residents": 0, "passengersPerMonth": 4, "mailPerMonth": 1, "goodsAcceptance": 0, "foodAcceptance": 0,
+      "era": [1700, 9000], "minTownPopulation": 200, "zones": ["centre", "inner"], "weight": 8, "level": 2,
+      "model": { "wall": "#EDE6D6", "roof": "#56606A", "roofStyle": "pitched", "windows": "none" }
+    }
+  ]
+}

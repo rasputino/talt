@@ -33,6 +33,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     private readonly Func<Key, bool> _isKeyDown;
     private readonly MapPicker _picker = new();
     private readonly PickContext _pickContext;
+    private readonly TownLabels? _labels;
     private readonly HighlightBox[] _highlights = new HighlightBox[2];
     private readonly StackPanel _messages = new(Orientation.Vertical) { Spacing = 4 };
     private readonly List<double> _messageExpiry = [];
@@ -61,8 +62,14 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             World = session.World,
             Industries = session.Simulation.Industries,
             Roads = session.Construction.Roads,
+            Towns = session.Simulation.Towns,
         };
         _session.Message += ShowMessage;
+        if (session.Simulation.Towns is { Count: > 0 } towns)
+        {
+            _labels = new TownLabels(towns, session.Heightmap);
+        }
+
         _cursorLabel = BuildCursorLabel();
         Root = BuildHud();
         _pauseMenu = BuildPauseMenu();
@@ -149,13 +156,25 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         Hovered = PickResult.None;
         if (cursorOverWorld && viewport.X >= 1 && viewport.Y >= 1 && !IsPauseMenuOpen)
         {
-            var ray = Ray.FromScreen(_camera.ViewProjection(viewport.X / viewport.Y), cursor, viewport);
+            var viewProjection = _camera.ViewProjection(viewport.X / viewport.Y);
+            var ray = Ray.FromScreen(viewProjection, cursor, viewport);
             Hovered = _picker.Pick(ray, _pickContext);
+            var labelTown = _labels?.TownUnder(cursor) ?? -1;
+            if (labelTown >= 0)
+            {
+                Hovered = TownPick(labelTown); // A town's plate is in front of the world.
+            }
+        }
+
+        if (_labels is not null && viewport.X >= 1 && viewport.Y >= 1)
+        {
+            _labels.Update(_camera.ViewProjection(viewport.X / viewport.Y), viewport, _camera.Position, _camera.Distance * 2.5f);
         }
 
         UpdateTool(cursor, cursorOverWorld && !IsPauseMenuOpen);
         FollowSelectedVehicle();
         FollowSelectedIndustry();
+        FollowSelectedTown();
         _highlightCount = 0;
         var theme = _host.Ui.Theme;
         if (_selected.Kind != PickKind.None)
@@ -491,6 +510,33 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         _selected = PickResult.None; // The vehicle was removed.
     }
 
+    /// <summary>A pick of a whole town (its plate): the highlight covers the town's centre area.</summary>
+    private PickResult TownPick(int town)
+    {
+        var towns = _session.Simulation.Towns!;
+        var (cx, cz) = towns.CentreOf(town);
+        var radius = Math.Max(2, towns.RadiusOf(town) / 3);
+        var ground = _session.Heightmap.Get(cx, cz);
+        return new PickResult(PickKind.Town, cx, cz, ground, Talt.Core.Voxels.VoxelMaterial.Air, -1, -1,
+            new Vector3(cx - radius, ground, cz - radius), new Vector3(cx + radius + 1, ground + 0.5f, cz + radius + 1), 0f, town);
+    }
+
+    /// <summary>Drops the highlight of a demolished town building (the town window stays open).</summary>
+    private void FollowSelectedTown()
+    {
+        if (_selected.Kind != PickKind.Town || _session.Simulation.Towns is not { } towns)
+        {
+            return;
+        }
+
+        var (cx, cz) = towns.CentreOf(_selected.TownId);
+        var isPlate = _selected.TileX == cx && _selected.TileZ == cz && towns.TownAt(cx, cz) != _selected.TownId;
+        if (!isPlate && towns.TownAt(_selected.TileX, _selected.TileZ) != _selected.TownId)
+        {
+            _selected = PickResult.None;
+        }
+    }
+
     private void FollowSelectedIndustry()
     {
         if (_selected.Kind != PickKind.Industry)
@@ -558,6 +604,10 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         var runner = _session.Runner;
         var simulation = _session.Simulation;
         var root = new Panel { Style = PanelStyle.None };
+        if (_labels is not null)
+        {
+            root.Add(_labels); // Town plates under every other HUD element (feature 008).
+        }
 
         // Top bar: menu, money, date, speed controls (FR-004).
         var topBar = root.Add(new Panel { Style = PanelStyle.Panel, VerticalAlignment = Alignment.Start, Height = theme.TopBarHeight, Padding = new Thickness(6, 3) });
@@ -752,6 +802,12 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     {
         var plan = _tools.Preview;
         var cost = s.Format("construction.cost", ("cost", _host.Money.Format(plan.Cost, _host.Currency, s.Culture)));
+        if (plan.RatingChange != 0)
+        {
+            // Feature 008: demolishing town property or trees lowers the towns' rating of the company.
+            cost = s.Format("construction.costAndRating", ("cost", cost), ("change", plan.RatingChange.ToString(s.Culture)));
+        }
+
         var reason = _tools.PreviewResult.ReasonCode;
         return _tools.PreviewResult.Succeeded || reason is null
             ? cost
