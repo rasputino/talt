@@ -7,6 +7,7 @@ using Talt.Core.Maps;
 using Talt.Core.Network;
 using Talt.Core.Roads;
 using Talt.Core.Scenarios;
+using Talt.Core.Towns;
 
 namespace Talt.Core.Simulation;
 
@@ -30,6 +31,7 @@ public sealed class GameSimulation : IStateHashable
 {
     private readonly CommandInbox _commands = new();
     private SessionRecorder? _recorder;
+    private bool _parallelTick = true;
 
     private GameSimulation(
         ScenarioSettings settings,
@@ -56,6 +58,9 @@ public sealed class GameSimulation : IStateHashable
             construction.Year = Date.Year;
             construction.AttachIndustries(Industries);
             RoadSeeder.SeedTowns(construction);
+            // Feature 008: a town on every town site, grown to its starting size on those streets.
+            Towns = TownRegistry.Found(construction, settings.EffectiveTowns, Random.Fork(0x70_57_4E), Date.Year);
+            construction.AttachTowns(Towns);
             construction.RebuildNetwork();
             Industries.TileBlocked = tile => construction.Objects.KindAt(tile) != TileObjectKind.None
                 || (construction.Roads.FlagsAt(tile) & RoadFeatures.Passing) != 0;
@@ -63,6 +68,10 @@ public sealed class GameSimulation : IStateHashable
 
         Events.OnDayEnded(simulation => Industries.AdvanceDay(simulation.Date));
         Events.OnMonthEnded(simulation => Industries.AdvanceMonth(simulation.Date));
+        if (Towns is not null)
+        {
+            Events.OnMonthEnded(simulation => simulation.Towns!.AdvanceMonth(simulation.Date, simulation._parallelTick));
+        }
     }
 
     /// <summary>Number of completed ticks since the game started (data-model.md GameSimulation.CurrentTick).</summary>
@@ -76,6 +85,9 @@ public sealed class GameSimulation : IStateHashable
 
     /// <summary>Validated cargo and industry catalogue used by this game.</summary>
     public GameContent Content { get; }
+
+    /// <summary>The towns of a game with a map (feature 008); null for map-less scenarios.</summary>
+    public TownRegistry? Towns { get; }
 
     /// <summary>All industries of the world; empty when the game was created without a map.</summary>
     public IndustryFleet Industries { get; }
@@ -155,6 +167,7 @@ public sealed class GameSimulation : IStateHashable
     /// <param name="parallel">Use all CPU cores where possible. Results are identical either way.</param>
     public void Tick(bool parallel = true)
     {
+        _parallelTick = parallel;
         ProcessCommands();
         Vehicles.Tick(parallel);
         CurrentTick++;
@@ -194,6 +207,11 @@ public sealed class GameSimulation : IStateHashable
         {
             // Only games with a map have construction state, so map-less goldens are unchanged (research R2).
             hasher.Append(Construction);
+        }
+
+        if (Towns is not null)
+        {
+            hasher.Append(Towns);
         }
     }
 

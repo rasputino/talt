@@ -15,11 +15,12 @@ namespace Talt.Core.Tests.Determinism;
 /// Regenerate the golden only when construction rules, industries or map generation change on purpose.
 /// It changed when features 006 and 009 were merged: games with a map now also have industries; and with
 /// feature 007: games with a map have no prototype grid nor synthetic vehicles, start with town streets and
-/// hash their road layer.
+/// hash their road layer; and with feature 008: games with a map found towns (buildings, extra streets) and
+/// hash the town state.
 /// </remarks>
 public class ConstructionReplayTests
 {
-    private const string ExpectedAtTick600 = "835572714DD2F80D";
+    private const string ExpectedAtTick600 = "3C150C91128411CD";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 9,

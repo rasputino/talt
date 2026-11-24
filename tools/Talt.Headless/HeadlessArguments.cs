@@ -27,7 +27,8 @@ internal static class HeadlessArguments
         Usage:
           Talt.Headless run [--seed <int>] [--map <tiles>] [--vehicles <int>] [--lines <int>]
                             [--start-year <int>] [--map-text <T1-...>] --ticks <int> [--sequential]
-                            [--record <session.json>]
+                            [--record <session.json>] [--town-names mixed|english|spanish]
+                            [--town-size small|normal|large] [--town-service <0-100>]
           Talt.Headless replay <session.json> [--ticks <int>] [--checkpoint-every <int>] [--sequential]
         """;
 
@@ -65,6 +66,7 @@ internal static class HeadlessArguments
         string? record = null;
         string? session = null;
         string? mapText = null;
+        var towns = Talt.Core.Towns.TownSettings.Default;
 
         try
         {
@@ -82,6 +84,23 @@ internal static class HeadlessArguments
                     case "--sequential": sequential = true; break;
                     case "--record": record = Next(args, ref i); break;
                     case "--map-text": mapText = Next(args, ref i); break;
+                    case "--town-names":
+                        towns = towns with
+                        {
+                            NameStyle = Talt.Core.Towns.TownSettings.TryParseNameStyle(Next(args, ref i), out var style)
+                                ? style
+                                : throw new FormatException("--town-names must be mixed, english or spanish."),
+                        };
+                        break;
+                    case "--town-size":
+                        towns = towns with
+                        {
+                            Size = Talt.Core.Towns.TownSettings.TryParseSize(Next(args, ref i), out var size)
+                                ? size
+                                : throw new FormatException("--town-size must be small, normal or large."),
+                        };
+                        break;
+                    case "--town-service": towns = towns with { DebugServicePercent = ParseInt(args, ref i) }; break;
                     default:
                         if (command == HeadlessCommand.Replay && session is null && !args[i].StartsWith("--", StringComparison.Ordinal))
                         {
@@ -106,7 +125,8 @@ internal static class HeadlessArguments
             return false;
         }
 
-        var settings = new ScenarioSettings(Seed: seed, StartYear: startYear, MapSizeTiles: map ?? defaults.MapSizeTiles, VehicleCount: vehicles, LineCount: lines);
+        var settings = new ScenarioSettings(Seed: seed, StartYear: startYear, MapSizeTiles: map ?? defaults.MapSizeTiles, VehicleCount: vehicles, LineCount: lines,
+            Towns: towns == Talt.Core.Towns.TownSettings.Default ? null : towns);
         if (mapText is not null)
         {
             if (!MapSettings.TryParse(mapText, out var parsedMap, out var mapError))

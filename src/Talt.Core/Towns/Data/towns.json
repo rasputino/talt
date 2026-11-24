@@ -1,0 +1,60 @@
+{
+  // Town growth, sizes and ratings (feature 008, contracts/data-files.md). Changing a value changes what
+  // recorded sessions with maps replay to.
+  "growth": {
+    // Town radius in tiles: radiusBase + sqrt(population) * radiusPerSqrtPopulation / 100.
+    "radiusBase": 5,
+    "radiusPerSqrtPopulation": 30,
+    // Zones by distance from the centre as a percentage of the radius.
+    "centreZonePercent": 30,
+    "innerZonePercent": 65,
+    // Candidate plots tried for one growth action before it counts as failed.
+    "attemptsPerAction": 12,
+    // Failed actions in a month after which the town extends a street.
+    "failuresBeforeStreet": 1,
+    // Growth actions per month at full service: 1 + buildings * this / 1000.
+    "growthPerMilleOfBuildings": 30,
+    // Chance that a growth action in a town above replaceMinPopulation tries a replacement first.
+    "replaceChancePercent": 40,
+    "replaceMinPopulation": 800,
+    // Grid towns: cross streets on lines at multiples of this distance from the centre.
+    "gridSpacing": 4,
+    // Share of towns founded with a grid pattern (the rest are organic).
+    "gridPatternPercent": 60,
+    "streetSegmentMin": 3,
+    "streetSegmentMax": 7,
+    // Most growth actions a town may use to reach its starting population.
+    "foundingAttemptBudget": 6000
+  },
+  // Starting population distribution (before the size option's scale).
+  "sizes": [
+    { "weight": 70, "minPopulation": 100, "maxPopulation": 500 },
+    { "weight": 25, "minPopulation": 1000, "maxPopulation": 3000 },
+    { "weight": 5, "minPopulation": 5000, "maxPopulation": 12000 }
+  ],
+  "sizeScalePercent": { "small": 50, "normal": 100, "large": 200 },
+  "ratings": {
+    // Ratings run from 0 to 1000 and start at "initial".
+    "initial": 500,
+    // Band thresholds: below hostile = hostile, below poor = poor, below neutral = neutral,
+    // below good = good, otherwise excellent.
+    "hostile": 200,
+    "poor": 400,
+    "neutral": 600,
+    "good": 800,
+    // Lowest rating at which the town lets a company demolish its buildings or remove its roads.
+    "demolishMinimum": 400,
+    // Lowest rating at which the town lets a company build a station in it (feature 010).
+    "stationMinimum": 200,
+    "buildingPenalty": 60,
+    "roadPenalty": 25,
+    "treePenalty": 8,
+    "maxPenaltyPerAction": 250,
+    // Trees count for a town when within its radius plus this margin.
+    "zoneMargin": 6,
+    // Most a rating moves toward its target in a month.
+    "recoveryPerMonth": 20,
+    // Target = initial + service per mille * serviceTargetSpan / 1000.
+    "serviceTargetSpan": 400
+  }
+}

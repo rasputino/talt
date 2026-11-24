@@ -12,8 +12,10 @@ namespace Talt.Client;
 /// full map generation settings (feature 004); when null they derive from the map size and seed.
 /// The new-game screen builds this from <see cref="Screens.INewGameOptionsSource"/>.
 /// <paramref name="RoadGridSpacing"/> (debug, <c>--road-grid</c>) lays a full road grid at that spacing after creation.
+/// <paramref name="Towns"/> holds the town options (feature 008); null for the defaults.
 /// </summary>
-internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount = 20_000, int Seed = 2026, int StartYear = 1950, MapSettings? Map = null, int? RoadGridSpacing = null)
+internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount = 20_000, int Seed = 2026, int StartYear = 1950, MapSettings? Map = null, int? RoadGridSpacing = null,
+    Talt.Core.Towns.TownSettings? Towns = null)
 {
     public int MapSizeTiles => Map is null ? ChunksPerSide * Chunk.Size : Math.Min(Map.Width, Map.Depth);
 
@@ -26,7 +28,8 @@ internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount =
         StartYear: StartYear,
         MapSizeTiles: MapSizeTiles,
         VehicleCount: VehicleCount,
-        Map: MapSettings);
+        Map: MapSettings,
+        Towns: Towns);
 }
 
 /// <summary>A freshly generated game: simulation, map data, voxel world and heightmap.</summary>
@@ -63,7 +66,7 @@ internal static class GameSetup
             construction.SeedDebugGrid(spacing);
         }
 
-        report?.Invoke($"Created simulation ({construction.Roads.RoadTileCount:N0} road tiles, {construction.Network.NodeCount:N0} road junctions, {simulation.Industries.Count:N0} industries) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
+        report?.Invoke($"Created simulation ({construction.Roads.RoadTileCount:N0} road tiles, {construction.Network.NodeCount:N0} road junctions, {simulation.Industries.Count:N0} industries, {simulation.Towns?.Count ?? 0:N0} towns with {simulation.Towns?.Buildings.Count ?? 0:N0} buildings) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
         stopwatch.Restart();
 
         var world = WorldBuilder.Build(map, Scaled(progress, MapShare, 1f - MapShare));

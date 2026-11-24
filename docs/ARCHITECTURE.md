@@ -17,6 +17,8 @@ Talt.slnx
 │   │   ├── Maps/           MapSettings, MapGenerator (+ Stages/), MapData, WorldBuilder (feature 004)
 │   │   ├── Content/        Cargo and industry definitions + embedded JSON data (feature 009)
 │   │   ├── Industries/     IndustryFleet (SoA state), placement, economy, delivery, read model (009)
+│   │   ├── Towns/          TownRegistry (founding, month update, growth, streets, ratings), TownBuildings,
+│   │   │                   TownRules, TownNames (+ Data/town-buildings.json, towns.json, town-names.json) (008)
 │   │   ├── Meshing/        GreedyMesher, LodVolume, PackedVertex, PackedMesh, FaceDirections,
 │   │   │                   MaterialPalette; ChunkMesher/ChunkMesh/VoxelVertex (naive reference)
 │   │   ├── Network/        RoadNetwork (incremental road graph), RoadRouter (A* + route cache);
@@ -36,14 +38,15 @@ Talt.slnx
 │       ├── DataFiles.cs    Embedded JSON data files with validation errors
 │       ├── Ui/             Retained-mode interface: UiContext, widgets, windows, SDF font, icons, theme
 │       ├── Screens/        Main menu, new game, in-game HUD and pause menu, settings, key bindings,
-│       │                   object information (incl. industries) and sample windows; INewGameOptionsSource
+│       │                   object information (incl. industries, TownWindow), TownLabels and sample
+│       │                   windows; INewGameOptionsSource
 │       ├── Input/          KeyBindings (data-driven actions), InputRouter
-│       ├── Picking/        Ray, MapPicker and pick layers (terrain, road, vehicle, industry)
+│       ├── Picking/        Ray, MapPicker and pick layers (terrain, road, vehicle, industry, town)
 │       ├── Construction/   ConstructionTool (terrain and road tools), ToolController (preview, drag,
 │       │                   confirm), RoadToolOptions, PreviewBoxes, TerrainSync (tile changes → voxels)
 │       ├── Localization/   Strings (en/es, plurals), MoneyFormatter and currencies
 │       └── Rendering/      WebGpuRenderer, WorldRenderer, UiRenderer, HighlightRenderer, BoxRenderer,
-│                           TreeInstances, RoadMesher, RoadRenderer,
+│                           TreeInstances, RoadMesher, RoadRenderer, TownRenderer, TownInstances,
 │                           ChunkMeshScheduler, Frustum, LodSelector, RenderStatistics, OrbitCamera,
 │                           UnitCube, IndustryInstance, Shaders/*.wgsl
 ├── tools/
@@ -56,7 +59,7 @@ Talt.slnx
 │   └── Talt.Headless.Tests/ Command-line parsing tests
 └── benchmarks/
     └── Talt.Benchmarks/    BenchmarkDotNet: full tick, vehicle tick, pathfinding, SoA vs Arch ECS,
-                            chunk meshing (naive vs greedy, LOD), UI frame cost, picking, industries
+                            chunk meshing (naive vs greedy, LOD), UI frame cost, picking, industries, towns
 ```
 
 **Rule:** `Talt.Core` must never reference graphics or windowing libraries. Everything in it must be
@@ -394,6 +397,82 @@ Measured on the development machine (AMD Ryzen 7 160, 8 cores / 16 threads, 4096
 | Initial placement on the 4096 map | 424 µs | informational (1.4 MB allocated once) |
 
 Both updates report no managed allocation per operation.
+
+## Towns (feature 008)
+
+Towns are the source and destination of passengers and mail and accept goods and food. Spec and design:
+`specs/008-towns/` (research R1–R15).
+
+- **State**: `TownRegistry` (namespace `Talt.Core.Towns`) is created by `GameSimulation` only for games with a
+  map, after industries and `RoadSeeder.SeedTowns`, and attached to `ConstructionState.Towns`. Towns are
+  structure-of-arrays with town id = slot = `TileOwner.Town(id).Index` (site order; towns are never removed):
+  centre, street pattern (grid/organic), name, population, building count, per-month production and acceptance
+  totals, growth points, last month's generated/transported passengers and mail, service per mille, and a
+  flat rating table `town × company` (0–1 000, start 500). Buildings live in `TownBuildings` (SoA, stable ids,
+  swap-with-last removal, tile → id dictionary for rare queries). Every footprint tile is a tile object
+  `TileObjectKind.TownBuilding` owned by the town, so the feature 006/007/009 rules (terraform and road
+  blocking, industry openings) treat buildings without new checks.
+- **Data** (constitution VII): `Towns/Data/town-buildings.json` (14 original types in 5 categories: footprint
+  1–2 tiles, storeys, residents, passengers/mail per month, goods/food acceptance in eighths, era, minimum
+  town population, zones, weight, level, procedural model), `towns.json` (growth, starting size distribution
+  and Small/Normal/Large scale, ratings) and `town-names.json` (original English- and Spanish-style name
+  parts). `TownRules` and `TownNames` validate everything at load and name the file and field.
+- **Founding**: each town gets a unique generated name (style from `TownSettings.NameStyle`: mixed, English
+  or Spanish), a pattern and a target population (70 % villages 100–500, 25 % towns 1 000–3 000, 5 % cities
+  5 000–12 000, scaled 50/100/200 % by the size option), and is grown to it with the same growth code used
+  later; network updates are deferred to one `RebuildNetwork`.
+- **Growth** (month event, `AdvanceMonth(date, parallel)`): phase 1 runs per town, in parallel when allowed (it
+  touches only that town's slots): rotate statistics, apply the debug service share, compute service =
+  transported ÷ generated, move ratings toward `500 + service × 400 / 1000` by at most 20, add growth points
+  (`(1 + buildings × 30‰) × service`). Without service a town does not grow (clarification). Phase 2 runs
+  sequentially in town-id order: each 1 000 points is one action, either a replacement by a higher-level
+  building of the same footprint in larger towns, or a new building on a sampled plot (centre-biased; zones
+  centre/inner/outer by distance ÷ radius, with taller types weighted up in the centre; plots must be free
+  buildable land within one height step, next to a road of the town; grid lines and dead-end continuations
+  stay free for streets). When plots run out the town lays a street segment (grid: along its grid lines;
+  organic: 3–7 tiles, maybe one turn, no parallel neighbours) with the feature 007 ramp rules, owned by the
+  town, possibly connecting to another road. Street changes only mark the road network
+  (`RoadNetwork.MarkChanged`); the touched regions are rebuilt once per month (`RebuildChanged`). Each town
+  draws from its own stream forked by town id, so parallel and sequential runs are identical.
+- **Ratings and construction**: the clear tool demolishes a whole town building (cost
+  `demolishCosts.townBuilding` per footprint tile) and road removal takes town pieces, only while the
+  company's rating is at least 400 (above "poor"); otherwise `town-refuses`. `ConstructionState.Commit` hands
+  the plan to `TownRegistry.ApplyConstruction` first: demolished buildings leave the store and penalties
+  apply (building −60, town road −25, tree in a town zone −8, at most −250 per action and town). Actions that
+  remove town buildings clear the undo record; undo never restores ratings. Previews show the rating change
+  (`ConstructionPlan.RatingChange`). `MayBuildStation` (rating ≥ 200), `RecordTransported` and `Accepts` are
+  feature 010's entry points.
+- **Settings and replays**: `ScenarioSettings.Towns` (`TownSettings`); recorded sessions write a `towns` object
+  only for map games. Client options `--town-names`, `--town-size`, `--town-service` and new-game choosers
+  "Town names" and "Town size"; the headless runner takes the same options and prints a town summary.
+- **Fingerprint**: `GameSimulation` hashes the registry (settings, rules fingerprint, all arrays, names,
+  streams, buildings) after construction state, only when it exists: map-less goldens are unchanged; the map
+  goldens of `ConstructionReplayTests` and `RoadReplayTests` changed on purpose.
+- **Client**: `TownRenderer` keeps one instance buffer per 128 × 128-tile area (walls first, roofs after),
+  rebuilt within 2 ms per frame only when visible and changed (`TownBuildings.TrackChanges` →
+  `TryTakeChangedTiles`); fog and frustum culling; areas farther than 320 tiles draw walls only.
+  `towns.wgsl` draws window rows per storey from the world position. `TownLabels` projects town centres and
+  draws up to 64 non-overlapping name/population plates, largest towns first (texts cached per population).
+  `TownPickLayer` walks the ray's ground track over building boxes; a plate or a building opens the town
+  window (`TownWindow`: population, buildings, passengers/mail generated and transported, acceptance, rating,
+  growth).
+
+### Town numbers
+
+`TownBenchmarks` (2026-11-24, AMD Ryzen 7 160, 8 cores / 16 threads; one invocation per iteration and 10
+iterations, so each measured month follows the previous one) on a 4096 × 4096 map with 534 towns and
+49 121 buildings at founding:
+
+| Benchmark | Mean | Allocated | Budget |
+|---|---|---|---|
+| `MonthlyUpdateServed` (every town at 100 % service: growth, streets, network) | 15.5 ms | 74 KB | < 50 ms (SC-002) |
+| `MonthlyUpdateUnserved` (statistics and ratings only) | 95 µs | 2.8 KB | informational |
+| `CreateGameWithTowns` (industries, streets, founding 534 towns, road network) | 153 ms | 162 MB once | informational |
+
+The served month allocates only when building storage, the tile → building dictionary or network regions
+grow; the unserved month's 2.8 KB is `Parallel.For` bookkeeping. Towns run only on month boundaries, so the
+tick budget is unchanged. Headless, 1024 × 1024 map, 44 towns, ten years at 60 % service: population
+58 296 → 172 969 with a 0.003 ms average tick.
 
 ## Determinism
 

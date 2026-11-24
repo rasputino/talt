@@ -76,6 +76,18 @@ public class NoFloatingPointStateTests
         typeof(ConstructionPlanner),
         typeof(ConstructionPlan),
         typeof(TileChange),
+        typeof(Talt.Core.Towns.TownRegistry),
+        typeof(Talt.Core.Towns.TownBuildings),
+        typeof(Talt.Core.Towns.TownRules),
+        typeof(Talt.Core.Towns.TownGrowthRules),
+        typeof(Talt.Core.Towns.TownRatingRules),
+        typeof(Talt.Core.Towns.TownSizeBand),
+        typeof(Talt.Core.Towns.BuildingType),
+        typeof(Talt.Core.Towns.BuildingModel),
+        typeof(Talt.Core.Towns.TownSettings),
+        typeof(Talt.Core.Towns.TownInfo),
+        typeof(Talt.Core.Towns.TownNames),
+        typeof(Talt.Core.Towns.TownNameStyleParts),
     ];
 
     private static readonly Type[] Forbidden =

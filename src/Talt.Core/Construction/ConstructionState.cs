@@ -76,6 +76,12 @@ public sealed class ConstructionState : IStateHashable
 
     internal ConstructionPlan Plan { get; } = new();
 
+    /// <summary>The towns of the game (feature 008), for rating rules; null in tests that build a bare state.</summary>
+    public Towns.TownRegistry? Towns { get; private set; }
+
+    /// <summary>Lets construction ask towns about ratings and report demolitions (feature 008).</summary>
+    public void AttachTowns(Towns.TownRegistry towns) => Towns = towns ?? throw new ArgumentNullException(nameof(towns));
+
     /// <summary>Lets road planning avoid industry footprints (feature 009).</summary>
     public void AttachIndustries(IndustryFleet industries) => Industries = industries ?? throw new ArgumentNullException(nameof(industries));
 
@@ -179,6 +185,10 @@ public sealed class ConstructionState : IStateHashable
             }
         }
 
+        // Towns (feature 008) learn about demolished buildings, removed town roads and trees before the tiles
+        // change: the rating penalties apply with the action (FR-017).
+        var removedTownBuildings = Towns?.ApplyConstruction(plan, company.Id) ?? false;
+
         Undo.Begin(company.Id, tick, plan.Cost);
         for (var slot = 0; slot < _touched.Count; slot++)
         {
@@ -230,6 +240,12 @@ public sealed class ConstructionState : IStateHashable
         }
 
         company.Spend(plan.Cost);
+        if (removedTownBuildings)
+        {
+            // Undo restores tiles but not a town's buildings, so demolishing them cannot be undone (plan.md).
+            Undo.Clear();
+        }
+
         Version++;
     }
 
@@ -312,6 +328,48 @@ public sealed class ConstructionState : IStateHashable
         var count = RoadSeeder.SeedGrid(this, spacing, Math.Max(0, RoadRules.BestOrdinaryType(Year)));
         RebuildNetwork();
         return count;
+    }
+
+    /// <summary>
+    /// Writes a town building tile outside of commands (feature 008 growth and founding): the object and owner,
+    /// and trees removed. With <paramref name="notify"/> the tile is reported to the client and previews replan.
+    /// </summary>
+    internal void PlaceTownObject(int tile, TileObjectKind kind, TileOwner owner, bool notify)
+    {
+        Objects.Set(tile, kind, owner);
+        var hadTree = Scenery.Kind(Map.SceneryData[tile]) != 0;
+        if (kind != TileObjectKind.None && hadTree)
+        {
+            Map.SetScenery(tile, Scenery.None);
+        }
+
+        if (notify)
+        {
+            if (hadTree)
+            {
+                _changedTiles.Add(tile);
+            }
+
+            Version++;
+        }
+    }
+
+    /// <summary>
+    /// Writes a road piece laid by a town (feature 008): new pieces get the town as owner and lose their trees;
+    /// existing pieces (the town's own, or another road it connects to) only get the new links. The caller
+    /// updates the network.
+    /// </summary>
+    internal void PlaceTownRoad(int tile, in RoadPiece piece, TileOwner owner, bool newPiece, bool notify)
+    {
+        Roads.Set(tile, piece);
+        if (newPiece)
+        {
+            PlaceTownObject(tile, TileObjectKind.Road, owner, notify);
+        }
+        else if (notify)
+        {
+            Version++;
+        }
     }
 
     /// <summary>

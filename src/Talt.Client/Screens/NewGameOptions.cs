@@ -1,4 +1,5 @@
 using Talt.Core.Maps;
+using Talt.Core.Towns;
 using Talt.Core.Voxels;
 
 namespace Talt.Client.Screens;
@@ -75,6 +76,8 @@ internal sealed class DefaultNewGameOptionsSource : INewGameOptionsSource
     public const string SeaLevel = "seaLevel";
     public const string Vehicles = "vehicles";
     public const string StartYear = "startYear";
+    public const string TownNames = "townNames";
+    public const string TownSize = "townSize";
 
     private static readonly MapSettings Defaults = new(Width: 512, Depth: 512, Seed: 2026);
 
@@ -102,6 +105,15 @@ internal sealed class DefaultNewGameOptionsSource : INewGameOptionsSource
         new(StartYear, "newGame.startYear", NewGameOptionKind.Choice,
             [new(1920, "newGame.year.value"), new(1950, "newGame.year.value"), new(1980, "newGame.year.value"), new(2010, "newGame.year.value")],
             1950),
+        // Feature 008: town name style and starting size (values are the TownNameStyle / TownSize enums).
+        new(TownNames, "newGame.townNames", NewGameOptionKind.Choice,
+            [new((int)TownNameStyle.Mixed, "newGame.townNames.mixed"), new((int)TownNameStyle.English, "newGame.townNames.english"),
+             new((int)TownNameStyle.Spanish, "newGame.townNames.spanish")],
+            (int)TownNameStyle.Mixed, "newGame.townNames.tooltip"),
+        new(TownSize, "newGame.townSize", NewGameOptionKind.Choice,
+            [new((int)Talt.Core.Towns.TownSize.Small, "newGame.townSize.small"), new((int)Talt.Core.Towns.TownSize.Normal, "newGame.townSize.normal"),
+             new((int)Talt.Core.Towns.TownSize.Large, "newGame.townSize.large")],
+            (int)Talt.Core.Towns.TownSize.Normal, "newGame.townSize.tooltip"),
     ];
 
     /// <summary>The sea must stay at least 2 voxels below the highest terrain (<see cref="MapSettings.Validate"/>).</summary>
@@ -140,6 +152,7 @@ internal sealed class DefaultNewGameOptionsSource : INewGameOptionsSource
             VehicleCount: Value(Vehicles),
             Seed: Value(Seed),
             StartYear: Value(StartYear),
-            Map: map);
+            Map: map,
+            Towns: new TownSettings((TownNameStyle)Value(TownNames), (Talt.Core.Towns.TownSize)Value(TownSize)));
     }
 }

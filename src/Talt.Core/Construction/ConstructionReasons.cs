@@ -40,6 +40,9 @@ public static class ConstructionReasons
     public const string UseRoadRemoval = "use-road-removal";
     public const string NotACarriageway = "not-a-carriageway";
 
+    // Towns (feature 008).
+    public const string TownRefuses = "town-refuses";
+
     /// <summary>An English description for logs and recorded sessions (players see localized texts).</summary>
     public static string Describe(string code) => code switch
     {
@@ -74,6 +77,7 @@ public static class ConstructionReasons
         TownNeedsRoad => "The town needs this road to keep its streets connected.",
         UseRoadRemoval => "Roads are removed with the road removal tool.",
         NotACarriageway => "Connectors go on a straight, flat motorway carriageway.",
+        TownRefuses => "The town's rating of the company is too low for this.",
         _ => "Refused.",
     };
 
@@ -84,6 +88,6 @@ public static class ConstructionReasons
         OwnedByOther, TooLarge, NotEnoughMoney, NothingToUndo, UndoExpired, ChangedSince,
         NoPath, RoadTypeUnavailable, UnknownRoadType, Downgrade, Industry, BridgeTooLong, BridgeEnds, BridgeBlocked,
         TunnelNoExit, TunnelTooLong, TunnelBlocked, NotStraight, MotorwayJunction, NotARoad, TownNeedsRoad,
-        UseRoadRemoval, NotACarriageway,
+        UseRoadRemoval, NotACarriageway, TownRefuses,
     ];
 }

@@ -141,7 +141,7 @@ public static class RoadSeeder
     /// The ramp rule of research R3 on the layer: a piece with a straight link to a tile one step higher is
     /// straight; a lower linked neighbour must be straight itself (checked when that link is added from its side).
     /// </summary>
-    private static bool ShapeAllows(MapData map, int tile, byte links)
+    internal static bool ShapeAllows(MapData map, int tile, byte links)
     {
         var h = map.Heights[tile];
         var width = map.Width;

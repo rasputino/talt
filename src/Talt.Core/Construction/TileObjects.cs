@@ -16,6 +16,9 @@ public enum TileObjectKind : byte
     /// </summary>
     Road = 1,
 
+    /// <summary>A town building tile (feature 008): owned by the town; the building is in <see cref="Towns.TownBuildings"/>.</summary>
+    TownBuilding = 2,
+
     /// <summary>Reserved for tests of the demolish rules (nothing in the game creates it).</summary>
     Test = 255,
 }

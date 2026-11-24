@@ -136,6 +136,16 @@ public sealed class RoadNetwork
         RebuildDirty();
     }
 
+    /// <summary>
+    /// Like <see cref="AfterChange"/> but without rebuilding: for many small changes in a row (town growth,
+    /// feature 008) call <see cref="BeforeChange"/> and this around each change, then <see cref="RebuildChanged"/>
+    /// once. The graph must not be read in between.
+    /// </summary>
+    public void MarkChanged(ReadOnlySpan<int> tiles) => MarkAround(tiles);
+
+    /// <summary>Rebuilds the regions marked by <see cref="MarkChanged"/>.</summary>
+    public void RebuildChanged() => RebuildDirty();
+
     /// <summary>Every edge in tile terms, sorted: equal for equal road layers however they were built.</summary>
     public List<RoadEdgeInfo> Canonical()
     {

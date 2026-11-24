@@ -141,6 +141,7 @@ internal sealed class ToolController
 
         _planned = key;
         Active.Plan(_planner, state, state.Player.Id, start, end, Preview);
+        Preview.RatingChange = state.Towns?.PlanRatingChange(Preview, state.Player.Id) ?? 0; // Feature 008.
         PreviewResult = ConstructionCommand.Check(state.Player, Preview);
         HasPreview = true;
         PreviewVersion++;

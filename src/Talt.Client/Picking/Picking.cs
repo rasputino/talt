@@ -40,6 +40,9 @@ internal enum PickKind
     Road,
     Vehicle,
     Industry,
+
+    /// <summary>A town building or a town label (feature 008); <see cref="PickResult.TownId"/> is the town.</summary>
+    Town,
 }
 
 /// <summary>What is under the cursor (data-model.md Pick result).</summary>
@@ -53,7 +56,8 @@ internal readonly record struct PickResult(
     int IndustryId,
     Vector3 BoundsMin,
     Vector3 BoundsMax,
-    float Distance)
+    float Distance,
+    int TownId = -1)
 {
     public static readonly PickResult None = new(PickKind.None, 0, 0, 0, VoxelMaterial.Air, -1, -1, default, default, float.PositiveInfinity);
 
@@ -62,6 +66,7 @@ internal readonly record struct PickResult(
     {
         PickKind.Vehicle => $"vehicle:{VehicleId}",
         PickKind.Industry => $"industry:{IndustryId}",
+        PickKind.Town => $"town:{TownId}",
         PickKind.Road => $"road:{TileX},{TileZ}",
         PickKind.Tile => $"tile:{TileX},{TileZ}",
         _ => "none",
@@ -71,6 +76,7 @@ internal readonly record struct PickResult(
     {
         PickKind.Vehicle => other.Kind == Kind && VehicleId == other.VehicleId,
         PickKind.Industry => other.Kind == Kind && IndustryId == other.IndustryId,
+        PickKind.Town => other.Kind == Kind && TownId == other.TownId && BoundsMin == other.BoundsMin,
         PickKind.None => other.Kind == Kind,
         _ => other.Kind == Kind && TileX == other.TileX && TileZ == other.TileZ,
     };
@@ -92,6 +98,9 @@ internal sealed class PickContext
 
     /// <summary>Road pieces of the game (feature 007); null in tests that only paint road voxels.</summary>
     public Talt.Core.Roads.RoadLayer? Roads { get; set; }
+
+    /// <summary>Towns of the game (feature 008); null for map-less games and tests.</summary>
+    public Talt.Core.Towns.TownRegistry? Towns { get; set; }
 
     /// <summary>Industries of the game (feature 009).</summary>
     public Talt.Core.Industries.IndustryFleet? Industries { get; set; }
@@ -399,6 +408,86 @@ internal sealed class IndustryPickLayer : IPickLayer
 }
 
 /// <summary>
+/// Town buildings (feature 008, research R13): walks the tiles under the ray's ground track (2D DDA) where it is
+/// low enough to meet a building, and tests the box of each building found; the first hit is the nearest. Same
+/// priority as industries.
+/// </summary>
+internal sealed class TownPickLayer : IPickLayer
+{
+    /// <summary>Most tiles walked per pick (keeps a pick cheap when looking along the ground).</summary>
+    private const int MaxSteps = 4096;
+
+    private const float MaxBuildingHeight = (32 * TownInstances.StoreyHeight) + 1f;
+
+    public int Priority => 75;
+
+    public bool TryPick(in Ray ray, PickContext context, out PickResult result)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        result = PickResult.None;
+        var towns = context.Towns;
+        if (towns is null || towns.Buildings.Count == 0)
+        {
+            return false;
+        }
+
+        // The part of the ray below the highest possible roof and above the ground (or up to the terrain hit).
+        var top = context.World.TopChunkY * Chunk.Size + Chunk.Size + MaxBuildingHeight;
+        if (!TerrainPickLayer.ClipToBox(ray, Vector3.Zero, new Vector3(context.Heightmap.Width, top, context.Heightmap.Depth), out var t0, out var t1))
+        {
+            return false;
+        }
+
+        if (context.Terrain.Kind != PickKind.None)
+        {
+            t1 = Math.Min(t1, context.Terrain.Distance + 1f);
+        }
+
+        var start = ray.At(t0);
+        var x = (int)MathF.Floor(start.X);
+        var z = (int)MathF.Floor(start.Z);
+        var stepX = ray.Direction.X >= 0 ? 1 : -1;
+        var stepZ = ray.Direction.Z >= 0 ? 1 : -1;
+        var deltaX = ray.Direction.X == 0 ? float.PositiveInfinity : MathF.Abs(1f / ray.Direction.X);
+        var deltaZ = ray.Direction.Z == 0 ? float.PositiveInfinity : MathF.Abs(1f / ray.Direction.Z);
+        var nextX = ray.Direction.X == 0 ? float.PositiveInfinity : t0 + ((stepX > 0 ? (x + 1 - start.X) : (start.X - x)) * deltaX);
+        var nextZ = ray.Direction.Z == 0 ? float.PositiveInfinity : t0 + ((stepZ > 0 ? (z + 1 - start.Z) : (start.Z - z)) * deltaZ);
+        var t = t0;
+        var buildings = towns.Buildings;
+        for (var step = 0; step < MaxSteps && t <= t1; step++)
+        {
+            if (towns.TryGetBuildingAt(x, z, out var id))
+            {
+                var slot = buildings.SlotOf(id);
+                var type = buildings.TypeDefinitionAt(slot);
+                var min = new Vector3(buildings.XAt(slot), buildings.BaseHeightAt(slot), buildings.ZAt(slot));
+                var max = new Vector3(min.X + type.Width, min.Y + (type.Height * TownInstances.StoreyHeight) + 0.6f, min.Z + type.Depth);
+                if (TerrainPickLayer.ClipToBox(ray, min, max, out var hit, out _))
+                {
+                    result = new PickResult(PickKind.Town, buildings.XAt(slot), buildings.ZAt(slot), (int)min.Y, VoxelMaterial.Air, -1, -1, min, max, hit, buildings.TownAt(slot));
+                    return true;
+                }
+            }
+
+            if (nextX < nextZ)
+            {
+                t = nextX;
+                nextX += deltaX;
+                x += stepX;
+            }
+            else
+            {
+                t = nextZ;
+                nextZ += deltaZ;
+                z += stepZ;
+            }
+        }
+
+        return false;
+    }
+}
+
+/// <summary>
 /// Finds the object under the cursor every frame (FR-008, research R5): the terrain is cast first,
 /// then every registered layer is asked; hits behind the terrain are hidden and ignored.
 /// </summary>
@@ -407,7 +496,7 @@ internal sealed class MapPicker
     /// <summary>A hit may be this far behind the terrain hit and still count (it stands on it).</summary>
     private const float OcclusionTolerance = 0.75f;
 
-    private readonly List<IPickLayer> _layers = [new TerrainPickLayer(), new RoadPickLayer(), new VehiclePickLayer(), new IndustryPickLayer()];
+    private readonly List<IPickLayer> _layers = [new TerrainPickLayer(), new RoadPickLayer(), new VehiclePickLayer(), new IndustryPickLayer(), new TownPickLayer()];
 
     /// <summary>Adds a kind of pickable object (stations, buildings... in later features).</summary>
     public void Register(IPickLayer layer) => _layers.Add(layer ?? throw new ArgumentNullException(nameof(layer)));

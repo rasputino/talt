@@ -20,6 +20,9 @@ using Talt.Core.Maps;
 //   --zoom <distance>            initial camera distance ("max" for the farthest zoom)
 //   --no-audio                   start with the silent backend (CI and no-device machines)
 //   --road-grid <spacing>        debug: lay a full road grid every <spacing> tiles (dense-network FPS check)
+//   --town-names <style>         town name style: mixed (default), english or spanish
+//   --town-size <size>           starting town sizes: small, normal (default) or large
+//   --town-service <0-100>       debug: percent of every town's passengers and mail counted as transported (towns grow)
 // Map options (feature 004); any of them starts a game straight away:
 //   --map <N|WxD>                map size in tiles, multiples of 32, 256 to 16384 (default from chunks-per-side)
 //   --seed <number>              map seed (default 2026; the map settings text is printed to share the map)
@@ -42,6 +45,8 @@ float? uiScale = null;
 var uiTestWindows = 0;
 var noAudio = false;
 int? roadGrid = null;
+var townSettings = Talt.Core.Towns.TownSettings.Default;
+var townOptionGiven = false;
 var mapOptions = new List<(string Name, string Value)>();
 
 for (var i = 0; i < args.Length; i++)
@@ -50,6 +55,29 @@ for (var i = 0; i < args.Length; i++)
     {
         case "--road-grid":
             roadGrid = int.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
+        case "--town-names":
+            townSettings = townSettings with
+            {
+                NameStyle = Talt.Core.Towns.TownSettings.TryParseNameStyle(args[++i], out var style)
+                    ? style
+                    : throw new ArgumentException("--town-names must be mixed, english or spanish."),
+            };
+            townOptionGiven = true;
+            break;
+        case "--town-size":
+            townSettings = townSettings with
+            {
+                Size = Talt.Core.Towns.TownSettings.TryParseSize(args[++i], out var size)
+                    ? size
+                    : throw new ArgumentException("--town-size must be small, normal or large."),
+            };
+            townOptionGiven = true;
+            break;
+        case "--town-service":
+            townSettings = townSettings with { DebugServicePercent = int.Parse(args[++i], CultureInfo.InvariantCulture) };
+            townSettings.Validate();
+            townOptionGiven = true;
             break;
         case "--start-year":
             startYear = int.Parse(args[++i], CultureInfo.InvariantCulture);
@@ -162,12 +190,13 @@ if (uiScale is { } scale && !PlayerSettings.IsValidScale(scale))
 }
 
 // Any game argument skips the menu (contracts/command-line.md).
-var startGame = play || positional.Count > 0 || mapOptions.Count > 0 || recordPath is not null || printFingerprintAt is not null;
+var startGame = play || positional.Count > 0 || mapOptions.Count > 0 || townOptionGiven || recordPath is not null || printFingerprintAt is not null;
 using var window = new GameWindow(new ClientOptions(
     playerSettings,
     LanguageOverride: language,
     UiScaleOverride: uiScale,
-    StartGame: startGame ? new NewGameOptions(chunksPerSide, vehicleCount, seed, startYear, mapOptions.Count > 0 ? mapSettings : null, roadGrid) : null,
+    StartGame: startGame ? new NewGameOptions(chunksPerSide, vehicleCount, seed, startYear, mapOptions.Count > 0 ? mapSettings : null, roadGrid,
+        townSettings == Talt.Core.Towns.TownSettings.Default ? null : townSettings) : null,
     Session: new SessionOptions(recordPath, printFingerprintAt, exitAfterFingerprint),
     ShowStatistics: showStatistics,
     InitialZoom: zoom,

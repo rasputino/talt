@@ -50,6 +50,7 @@ public abstract record ConstructionCommand(int CompanyId) : ISimulationCommand
         }
 
         Plan(state, planner, plan);
+        plan.RatingChange = state.Towns?.PlanRatingChange(plan, CompanyId) ?? 0;
         return Check(company, plan);
     }
 
