@@ -46,6 +46,11 @@ internal static class ObjectInfoWindow
         {
             AddIndustry(content, pick.IndustryId, session);
         }
+        else if (pick.Kind == PickKind.Road && session.Construction.Roads.Contains(pick.TileX, pick.TileZ))
+        {
+            content.Add(new Label(TextRef.Of("info.position", ("x", x), ("z", z))));
+            AddRoad(content, session.Construction.Roads.Index(pick.TileX, pick.TileZ), session);
+        }
         else
         {
             content.Add(new Label(TextRef.Of("info.position", ("x", x), ("z", z))));
@@ -55,6 +60,45 @@ internal static class ObjectInfoWindow
 
         window.Content = content;
         return window;
+    }
+
+    /// <summary>Road window (FR-052): type, speed limit, owner, one-way and bridge or tunnel.</summary>
+    private static void AddRoad(StackPanel content, int tile, GameSession session)
+    {
+        var state = session.Construction;
+        content.Add(new Label(TextRef.Dynamic(() => state.Version, s =>
+        {
+            var piece = state.Roads.PieceAt(tile);
+            if (!piece.HasRoad)
+            {
+                return s.Get("info.road.gone");
+            }
+
+            var type = state.RoadRules.Types[piece.TypeIndex];
+            var speed = type.SpeedKmh == 0 ? s.Get("info.road.noLimit") : s.Format("info.road.speed", ("speed", type.SpeedKmh));
+            return s.Format("info.road.type", ("type", s.Get($"road.type.{type.Id}")), ("speed", speed));
+        })));
+        content.Add(new Label(TextRef.Dynamic(() => state.Version, s =>
+        {
+            var owner = state.Objects.OwnerAt(tile);
+            return owner.Kind switch
+            {
+                Talt.Core.Construction.TileOwnerKind.Company => s.Get("info.road.ownerCompany"),
+                Talt.Core.Construction.TileOwnerKind.Town => s.Format("info.road.ownerTown", ("town", owner.Index + 1)),
+                _ => s.Get("info.road.ownerNone"),
+            };
+        })));
+        content.Add(new Label(TextRef.Dynamic(() => state.Version, s =>
+        {
+            var piece = state.Roads.PieceAt(tile);
+            var key = piece.IsBridgeEnd ? "info.road.bridge"
+                : piece.IsTunnelPortal ? "info.road.tunnel"
+                : piece.IsConnector ? "info.road.connector"
+                : piece.LinkCount == 2 && Talt.Core.Roads.Dir8.Count(piece.Exits) == 1 ? "info.road.oneWay"
+                : "info.road.twoWay";
+            return s.Get(key);
+        }))
+        { Color = TextColor.Muted });
     }
 
     private static TextRef IndustryTitle(int industryId, GameSession session)

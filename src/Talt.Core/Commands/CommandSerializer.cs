@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Talt.Core.Construction;
+using Talt.Core.Roads;
 
 namespace Talt.Core.Commands;
 
@@ -16,6 +17,13 @@ public static class CommandSerializer
         [TerraformCommand.Type] = TerraformCommand.Read,
         [ClearAreaCommand.Type] = ClearAreaCommand.Read,
         [UndoConstructionCommand.Type] = UndoConstructionCommand.Read,
+        [BuildRoadCommand.Type] = BuildRoadCommand.Read,
+        [BuildBridgeCommand.Type] = BuildBridgeCommand.Read,
+        [BuildTunnelCommand.Type] = BuildTunnelCommand.Read,
+        [RemoveRoadCommand.Type] = RemoveRoadCommand.Read,
+        [SetOneWayCommand.Type] = SetOneWayCommand.Read,
+        [BuildMotorwayCommand.Type] = BuildMotorwayCommand.Read,
+        [BuildMotorwayConnectorCommand.Type] = BuildMotorwayConnectorCommand.Read,
     };
 
     private static readonly Lock Gate = new();

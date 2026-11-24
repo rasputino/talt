@@ -42,7 +42,8 @@ Client options: `--start-year <year>`, `--language en|es` and `--ui-scale <0.75â
 `--unlock-fast-forward` / `--lock-fast-forward` (saved in your settings), `--record [file]`,
 `--print-fingerprint-at <tick>`, `--stats` (render statistics from the start), `--zoom <distance|max>`
 (initial camera distance), `--ui-test-windows <n>` (opens sample windows to measure the interface),
-`--no-audio` (starts silently, for CI and machines without a sound device).
+`--no-audio` (starts silently, for CI and machines without a sound device), `--road-grid <spacing>`
+(debug: lays a full road grid every `<spacing>` tiles, to check the frame rate with a dense network).
 
 In game: the top bar shows money, date and speed buttons, the toolbar on the left opens settings and
 the other tools, and clicking the map selects the tile, road, vehicle or industry under the cursor

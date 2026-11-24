@@ -19,6 +19,7 @@ using Talt.Core.Maps;
 //   --stats                      show render statistics from the start (same as pressing F3)
 //   --zoom <distance>            initial camera distance ("max" for the farthest zoom)
 //   --no-audio                   start with the silent backend (CI and no-device machines)
+//   --road-grid <spacing>        debug: lay a full road grid every <spacing> tiles (dense-network FPS check)
 // Map options (feature 004); any of them starts a game straight away:
 //   --map <N|WxD>                map size in tiles, multiples of 32, 256 to 16384 (default from chunks-per-side)
 //   --seed <number>              map seed (default 2026; the map settings text is printed to share the map)
@@ -40,12 +41,16 @@ var play = false;
 float? uiScale = null;
 var uiTestWindows = 0;
 var noAudio = false;
+int? roadGrid = null;
 var mapOptions = new List<(string Name, string Value)>();
 
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
     {
+        case "--road-grid":
+            roadGrid = int.Parse(args[++i], CultureInfo.InvariantCulture);
+            break;
         case "--start-year":
             startYear = int.Parse(args[++i], CultureInfo.InvariantCulture);
             break;
@@ -162,7 +167,7 @@ using var window = new GameWindow(new ClientOptions(
     playerSettings,
     LanguageOverride: language,
     UiScaleOverride: uiScale,
-    StartGame: startGame ? new NewGameOptions(chunksPerSide, vehicleCount, seed, startYear, mapOptions.Count > 0 ? mapSettings : null) : null,
+    StartGame: startGame ? new NewGameOptions(chunksPerSide, vehicleCount, seed, startYear, mapOptions.Count > 0 ? mapSettings : null, roadGrid) : null,
     Session: new SessionOptions(recordPath, printFingerprintAt, exitAfterFingerprint),
     ShowStatistics: showStatistics,
     InitialZoom: zoom,

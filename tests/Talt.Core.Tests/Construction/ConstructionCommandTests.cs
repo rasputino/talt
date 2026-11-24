@@ -75,14 +75,16 @@ public class ConstructionCommandTests
     }
 
     [Fact]
-    public void PrototypeRoads_AreTownObjects()
+    public void MapGames_HaveNoPrototypeGridNorSyntheticVehicles()
     {
-        var state = Simulation().Construction!;
-        var road = state.Map.Index(8, 20);
+        // Feature 007 (research R1): roads are tile data; the test map has no town sites, so no roads.
+        var simulation = Simulation();
+        var state = simulation.Construction!;
 
-        Assert.Equal(TileObjectKind.PublicRoad, state.Objects.KindAt(road));
-        Assert.Equal(TileOwnerKind.Town, state.Objects.OwnerAt(road).Kind);
-        Assert.Equal(TileObjectKind.None, state.Objects.KindAt(state.Map.Index(12, 12)));
+        Assert.Equal(0, state.Roads.RoadTileCount);
+        Assert.Equal(0, simulation.Network.NodeCount);
+        Assert.Equal(0, simulation.Vehicles.VehicleCount);
+        Assert.Equal(TileObjectKind.None, state.Objects.KindAt(state.Map.Index(8, 20)));
     }
 
     [Fact]
@@ -180,5 +182,12 @@ public class ConstructionCommandTests
         new TerraformCommand(0, TerraformMode.Level, 5, 6, 7, 8, 5, 6),
         new ClearAreaCommand(0, 1, 2, 3, 4),
         new UndoConstructionCommand(0),
+        new Talt.Core.Roads.BuildRoadCommand(0, "paved", 1, 2, 30, 4),
+        new Talt.Core.Roads.BuildBridgeCommand(0, "dirt", 1, 2, 9, 2),
+        new Talt.Core.Roads.BuildTunnelCommand(0, "paved", 5, 6, 2),
+        new Talt.Core.Roads.RemoveRoadCommand(0, 1, 2, 3, 4),
+        new Talt.Core.Roads.SetOneWayCommand(0, 7, 8),
+        new Talt.Core.Roads.BuildMotorwayCommand(0, 1, 2, 20, 21),
+        new Talt.Core.Roads.BuildMotorwayConnectorCommand(0, 4, 5, true),
     };
 }

@@ -1,42 +1,65 @@
 using Talt.Core.Determinism;
+using Talt.Core.Industries;
 using Talt.Core.Maps;
 using Talt.Core.Network;
+using Talt.Core.Roads;
 
 namespace Talt.Core.Construction;
 
 /// <summary>
 /// Everything construction reads and changes (data-model.md ConstructionState, research R1): the
-/// map's tile data, the object/owner layer, the companies and the undo record. Owned by
-/// <see cref="Simulation.GameSimulation"/> when the scenario has a map; changed only by construction
-/// commands, so it is deterministic and part of the fingerprint.
+/// map's tile data, the object/owner layer, the road layer (feature 007), the companies and the undo
+/// record. Owned by <see cref="Simulation.GameSimulation"/> when the scenario has a map; changed only by
+/// construction commands, so it is deterministic and part of the fingerprint.
 /// </summary>
 public sealed class ConstructionState : IStateHashable
 {
     private readonly List<Company> _companies = [];
     private readonly List<int> _changedTiles = [];
+    private readonly List<int> _roadTiles = [];
     private readonly TileSet _touched = new(1024);
 
-    public ConstructionState(ConstructionRules rules, MapData map, TransportNetwork? publicRoads = null)
+    public ConstructionState(ConstructionRules rules, MapData map, RoadRules? roadRules = null)
     {
         Rules = rules ?? throw new ArgumentNullException(nameof(rules));
         Map = map ?? throw new ArgumentNullException(nameof(map));
+        RoadRules = roadRules ?? RoadRules.Default;
         Objects = new TileObjects(map.Width, map.Depth);
-        Player = new Company(Company.PlayerId, rules.StartingBalance);
-        _companies.Add(Player);
-        if (publicRoads is not null)
+        Roads = new RoadLayer(map.Width, map.Depth);
+        Network = new RoadNetwork(Roads);
+        Span<int> speeds = stackalloc int[RoadRules.Types.Count];
+        for (var i = 0; i < speeds.Length; i++)
         {
-            MarkPublicRoads(publicRoads);
+            speeds[i] = RoadRules.Types[i].SpeedKmh;
         }
 
+        Network.SetTypeSpeeds(speeds);
+        Player = new Company(Company.PlayerId, rules.StartingBalance);
+        _companies.Add(Player);
         Plan.EnsureCapacity(Math.Min(rules.MaxTilesPerAction, 4096));
     }
 
     public ConstructionRules Rules { get; }
 
+    /// <summary>Road types, costs and limits (feature 007).</summary>
+    public RoadRules RoadRules { get; }
+
     /// <summary>The map's tile data, changed in place by construction.</summary>
     public MapData Map { get; }
 
     public TileObjects Objects { get; }
+
+    /// <summary>Per-tile road pieces (feature 007).</summary>
+    public RoadLayer Roads { get; }
+
+    /// <summary>The routing graph derived from <see cref="Roads"/>, updated after every change (not hashed: derived).</summary>
+    public RoadNetwork Network { get; }
+
+    /// <summary>The industries of the game, for footprint checks; null in tests that build a bare state.</summary>
+    public IndustryFleet? Industries { get; private set; }
+
+    /// <summary>The game year (research R12): set by the simulation from its date; not hashed (derived from the tick).</summary>
+    public int Year { get; set; } = 1950;
 
     /// <summary>The player's company.</summary>
     public Company Player { get; }
@@ -52,6 +75,12 @@ public sealed class ConstructionState : IStateHashable
     internal ConstructionPlanner Planner { get; } = new();
 
     internal ConstructionPlan Plan { get; } = new();
+
+    /// <summary>Lets road planning avoid industry footprints (feature 009).</summary>
+    public void AttachIndustries(IndustryFleet industries) => Industries = industries ?? throw new ArgumentNullException(nameof(industries));
+
+    /// <summary>True when an industry stands on the tile.</summary>
+    public bool IsIndustry(int x, int z) => Industries is not null && Industries.IsOccupied(x, z);
 
     public Company? FindCompany(int id)
     {
@@ -96,11 +125,19 @@ public sealed class ConstructionState : IStateHashable
         Map.AppendStateTo(hasher);
         hasher.Append(Objects);
         hasher.Append(Undo);
+        hasher.Append(Roads);
+    }
+
+    /// <summary>Builds the routing graph from the road layer from scratch (game creation).</summary>
+    internal void RebuildNetwork()
+    {
+        Network.BuildAll();
+        Roads.DiscardChangedTiles();
     }
 
     /// <summary>
-    /// Applies a validated plan as one unit: tiles, trees, objects, flags around the changes, money and
-    /// the undo record (which replaces the previous one).
+    /// Applies a validated plan as one unit: tiles, trees, objects, road pieces, flags around the changes,
+    /// money and the undo record (which replaces the previous one); then updates the road network.
     /// </summary>
     internal void Commit(ConstructionPlan plan, Company company, long tick)
     {
@@ -109,10 +146,16 @@ public sealed class ConstructionState : IStateHashable
         var depth = map.Depth;
 
         _touched.Clear();
+        _roadTiles.Clear();
         foreach (var change in plan.Changes)
         {
             var tile = change.Index;
             _touched.Add(tile, out _);
+            if (change.RoadChanged)
+            {
+                _roadTiles.Add(tile);
+            }
+
             var x = tile % width;
             var z = tile / width;
             if (x > 0)
@@ -139,7 +182,13 @@ public sealed class ConstructionState : IStateHashable
         Undo.Begin(company.Id, tick, plan.Cost);
         for (var slot = 0; slot < _touched.Count; slot++)
         {
-            Undo.AddBefore(_touched[slot], UndoRecord.Capture(map, Objects, _touched[slot]));
+            Undo.AddBefore(_touched[slot], UndoRecord.Capture(map, Objects, Roads, _touched[slot]));
+        }
+
+        var roadsChange = _roadTiles.Count > 0;
+        if (roadsChange)
+        {
+            Network.BeforeChange(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_roadTiles));
         }
 
         foreach (var change in plan.Changes)
@@ -156,7 +205,17 @@ public sealed class ConstructionState : IStateHashable
 
             map.SetScenery(tile, change.NewScenery);
             Objects.Set(tile, change.NewObject, change.NewOwner);
+            if (change.RoadChanged)
+            {
+                Roads.Set(tile, change.NewRoad);
+            }
+
             _changedTiles.Add(tile);
+        }
+
+        if (roadsChange)
+        {
+            Network.AfterChange(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_roadTiles));
         }
 
         for (var slot = 0; slot < _touched.Count; slot++)
@@ -167,7 +226,7 @@ public sealed class ConstructionState : IStateHashable
 
         for (var slot = 0; slot < _touched.Count; slot++)
         {
-            Undo.SetAfter(slot, UndoRecord.Capture(map, Objects, _touched[slot]));
+            Undo.SetAfter(slot, UndoRecord.Capture(map, Objects, Roads, _touched[slot]));
         }
 
         company.Spend(plan.Cost);
@@ -192,7 +251,7 @@ public sealed class ConstructionState : IStateHashable
         var after = undo.After;
         for (var i = 0; i < tiles.Length; i++)
         {
-            if (UndoRecord.Capture(Map, Objects, tiles[i]) != after[i])
+            if (UndoRecord.Capture(Map, Objects, Roads, tiles[i]) != after[i])
             {
                 return ConstructionReasons.ChangedSince;
             }
@@ -201,7 +260,7 @@ public sealed class ConstructionState : IStateHashable
         return null;
     }
 
-    /// <summary>Restores the tiles of the last action, refunds its cost and forgets it.</summary>
+    /// <summary>Restores the tiles of the last action, refunds its cost, updates the network and forgets it.</summary>
     internal void ApplyUndo()
     {
         var undo = Undo;
@@ -209,13 +268,34 @@ public sealed class ConstructionState : IStateHashable
         var tiles = undo.Tiles;
         var before = undo.Before;
         var after = undo.After;
+        _roadTiles.Clear();
         for (var i = 0; i < tiles.Length; i++)
         {
-            UndoRecord.Restore(Map, Objects, tiles[i], before[i]);
-            if (before[i].Height != after[i].Height || before[i].Scenery != after[i].Scenery || before[i].Kind != after[i].Kind)
+            if (before[i].Road != after[i].Road)
+            {
+                _roadTiles.Add(tiles[i]);
+            }
+        }
+
+        var roadsChange = _roadTiles.Count > 0;
+        if (roadsChange)
+        {
+            Network.BeforeChange(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_roadTiles));
+        }
+
+        for (var i = 0; i < tiles.Length; i++)
+        {
+            UndoRecord.Restore(Map, Objects, Roads, tiles[i], before[i]);
+            if (before[i].Height != after[i].Height || before[i].Scenery != after[i].Scenery || before[i].Kind != after[i].Kind
+                || before[i].Road != after[i].Road)
             {
                 _changedTiles.Add(tiles[i]);
             }
+        }
+
+        if (roadsChange)
+        {
+            Network.AfterChange(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_roadTiles));
         }
 
         company.Refund(undo.Cost);
@@ -224,36 +304,24 @@ public sealed class ConstructionState : IStateHashable
     }
 
     /// <summary>
-    /// Marks every tile crossed by the prototype network as a public road owned by town 0 (data-model.md
-    /// TileObjects). Integer walk in half-tile steps, the same tiles <see cref="NetworkTerrainPainter"/>
-    /// paints for the network's straight grid roads.
+    /// Debug only (client <c>--road-grid</c>, benchmarks): lays a full road grid every <paramref name="spacing"/>
+    /// tiles and rebuilds the network. Changes state outside commands, so recorded sessions do not replay it.
     /// </summary>
-    private void MarkPublicRoads(TransportNetwork network)
+    public int SeedDebugGrid(int spacing)
     {
-        var owner = TileOwner.Town(0);
-        for (var edge = 0; edge < network.EdgeCount; edge++)
-        {
-            var from = network.EdgeFrom(edge);
-            var to = network.EdgeTo(edge);
-            if (from > to)
-            {
-                continue;
-            }
+        var count = RoadSeeder.SeedGrid(this, spacing, Math.Max(0, RoadRules.BestOrdinaryType(Year)));
+        RebuildNetwork();
+        return count;
+    }
 
-            var a = network.NodePosition(from);
-            var b = network.NodePosition(to);
-            long dx = b.X - a.X;
-            long dz = b.Z - a.Z;
-            var steps = (Math.Max(Math.Abs(dx), Math.Abs(dz)) / (FixedMath.UnitsPerTile / 2)) + 1;
-            for (long i = 0; i <= steps; i++)
-            {
-                var x = (int)((a.X + (dx * i / steps)) >> FixedMath.UnitsPerTileBits);
-                var z = (int)((a.Z + (dz * i / steps)) >> FixedMath.UnitsPerTileBits);
-                if (Map.Contains(x, z))
-                {
-                    Objects.Set(Map.Index(x, z), TileObjectKind.PublicRoad, owner);
-                }
-            }
-        }
+    /// <summary>
+    /// Writes a road piece outside of commands, at game creation only (town streets, debug grids): no undo,
+    /// no money, no network update (call <see cref="RebuildNetwork"/> afterwards).
+    /// </summary>
+    internal void PlaceInitialRoad(int tile, in RoadPiece piece, TileOwner owner)
+    {
+        Roads.Set(tile, piece);
+        Objects.Set(tile, piece.HasRoad ? TileObjectKind.Road : TileObjectKind.None, owner);
+        Map.SetScenery(tile, Scenery.None);
     }
 }

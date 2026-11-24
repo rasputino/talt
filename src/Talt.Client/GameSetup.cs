@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using Talt.Core.Maps;
-using Talt.Core.Network;
 using Talt.Core.Scenarios;
 using Talt.Core.Simulation;
 using Talt.Core.Terrain;
@@ -12,8 +11,9 @@ namespace Talt.Client;
 /// Options of a new game (the new-game screen or the command line). <paramref name="Map"/> holds the
 /// full map generation settings (feature 004); when null they derive from the map size and seed.
 /// The new-game screen builds this from <see cref="Screens.INewGameOptionsSource"/>.
+/// <paramref name="RoadGridSpacing"/> (debug, <c>--road-grid</c>) lays a full road grid at that spacing after creation.
 /// </summary>
-internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount = 20_000, int Seed = 2026, int StartYear = 1950, MapSettings? Map = null)
+internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount = 20_000, int Seed = 2026, int StartYear = 1950, MapSettings? Map = null, int? RoadGridSpacing = null)
 {
     public int MapSizeTiles => Map is null ? ChunksPerSide * Chunk.Size : Math.Min(Map.Width, Map.Depth);
 
@@ -56,11 +56,18 @@ internal static class GameSetup
         // The simulation takes the map: industries use its reserved sites (feature 009) and construction
         // commands change its tile data (feature 006).
         var simulation = GameSimulation.Create(settings, map);
-        report?.Invoke($"Created simulation ({simulation.Network.NodeCount:N0} junctions, {simulation.Vehicles.LineCount:N0} lines, {simulation.Vehicles.VehicleCount:N0} vehicles, {simulation.Industries.Count:N0} industries) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
+        var construction = simulation.Construction!;
+        if (options.RoadGridSpacing is int spacing)
+        {
+            // Debug (--road-grid): a full road grid for the dense-network frame-rate check (SC-005).
+            construction.SeedDebugGrid(spacing);
+        }
+
+        report?.Invoke($"Created simulation ({construction.Roads.RoadTileCount:N0} road tiles, {construction.Network.NodeCount:N0} road junctions, {simulation.Industries.Count:N0} industries) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
         stopwatch.Restart();
 
         var world = WorldBuilder.Build(map, Scaled(progress, MapShare, 1f - MapShare));
-        NetworkTerrainPainter.PaintRoads(world, simulation.Network);
+        // Roads are drawn as meshes on top of the terrain (feature 007), not painted into the voxels.
         var heightmap = Heightmap.FromMapData(map);
         report?.Invoke(
             $"Built the world ({world.ChunkCount} chunks, {map.Statistics.RiverTiles:N0} river tiles, {map.TownSites.Count()} town and {map.IndustrySites.Count()} industry sites) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");

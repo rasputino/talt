@@ -41,7 +41,8 @@ public readonly record struct TileRect
 
 /// <summary>
 /// One tile the planned action changes (data-model.md ConstructionPlan.Changes): height, scenery and
-/// object before and after.
+/// object before and after, and for road actions (feature 007) the road piece before and after. Only
+/// changes with <paramref name="RoadChanged"/> write the road piece, so terraform and clear never touch roads.
 /// </summary>
 public readonly record struct TileChange(
     int Index,
@@ -52,7 +53,10 @@ public readonly record struct TileChange(
     TileObjectKind OldObject,
     TileObjectKind NewObject,
     TileOwner OldOwner,
-    TileOwner NewOwner);
+    TileOwner NewOwner,
+    Roads.RoadPiece OldRoad = default,
+    Roads.RoadPiece NewRoad = default,
+    bool RoadChanged = false);
 
 /// <summary>
 /// A tile where the action is not allowed, with the reason code (data-model.md ConstructionPlan.Problems).

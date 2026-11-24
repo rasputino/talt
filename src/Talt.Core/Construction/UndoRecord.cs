@@ -1,10 +1,11 @@
 using Talt.Core.Determinism;
 using Talt.Core.Maps;
+using Talt.Core.Roads;
 
 namespace Talt.Core.Construction;
 
 /// <summary>Everything construction can change on one tile.</summary>
-public readonly record struct TileSnapshot(byte Height, byte Terrain, byte Flags, byte Scenery, TileObjectKind Kind, TileOwner Owner);
+public readonly record struct TileSnapshot(byte Height, byte Terrain, byte Flags, byte Scenery, TileObjectKind Kind, TileOwner Owner, RoadPiece Road = default);
 
 /// <summary>
 /// The last applied construction action, kept so it can be undone (data-model.md UndoRecord,
@@ -33,21 +34,30 @@ public sealed class UndoRecord : IStateHashable
 
     public ReadOnlySpan<TileSnapshot> After => _after.AsSpan(0, TileCount);
 
-    public static TileSnapshot Capture(MapData map, TileObjects objects, int tile) => new(
+    public static TileSnapshot Capture(MapData map, TileObjects objects, RoadLayer roads, int tile) => new(
         map.Heights[tile],
         map.Terrain[tile],
         map.Flags[tile],
         map.SceneryData[tile],
         objects.KindAt(tile),
-        objects.OwnerAt(tile));
+        objects.OwnerAt(tile),
+        roads.PieceAt(tile));
 
-    public static void Restore(MapData map, TileObjects objects, int tile, in TileSnapshot snapshot)
+    /// <summary>Restores a tile; returns true when its road piece changed (the network must be updated).</summary>
+    public static bool Restore(MapData map, TileObjects objects, RoadLayer roads, int tile, in TileSnapshot snapshot)
     {
         map.SetHeight(tile, snapshot.Height);
         map.SetTerrain(tile, (TerrainType)snapshot.Terrain);
         map.SetFlags(tile, (TileTraits)snapshot.Flags);
         map.SetScenery(tile, snapshot.Scenery);
         objects.Set(tile, snapshot.Kind, snapshot.Owner);
+        if (roads.PieceAt(tile) == snapshot.Road)
+        {
+            return false;
+        }
+
+        roads.Set(tile, snapshot.Road);
+        return true;
     }
 
     internal void Begin(int companyId, long tick, long cost)
@@ -110,6 +120,9 @@ public sealed class UndoRecord : IStateHashable
         }
     }
 
-    private static void Append(StateHasher hasher, in TileSnapshot s) =>
+    private static void Append(StateHasher hasher, in TileSnapshot s)
+    {
         hasher.Append((long)s.Height | ((long)s.Terrain << 8) | ((long)s.Flags << 16) | ((long)s.Scenery << 24) | ((long)s.Kind << 32) | ((long)s.Owner.Raw << 40));
+        hasher.Append(s.Road.Pack());
+    }
 }

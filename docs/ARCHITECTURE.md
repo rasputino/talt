@@ -12,13 +12,16 @@ Talt.slnx
 │   │   ├── Terrain/        ValueNoise, Heightmap
 │   │   ├── Construction/   ConstructionState, rules (Data/construction.json), planner, plan, commands
 │   │   │                   (terraform, clearArea, undoConstruction), Company, TileObjects, UndoRecord
+│   │   ├── Roads/          RoadLayer (tile road pieces), Dir8, RoadRules (+ Data/roads.json), RoadPlanner
+│   │   │                   (path, bridge, tunnel, removal, one-way, motorway, connector), RoadSeeder, commands
 │   │   ├── Maps/           MapSettings, MapGenerator (+ Stages/), MapData, WorldBuilder (feature 004)
 │   │   ├── Content/        Cargo and industry definitions + embedded JSON data (feature 009)
 │   │   ├── Industries/     IndustryFleet (SoA state), placement, economy, delivery, read model (009)
 │   │   ├── Meshing/        GreedyMesher, LodVolume, PackedVertex, PackedMesh, FaceDirections,
 │   │   │                   MaterialPalette; ChunkMesher/ChunkMesh/VoxelVertex (naive reference)
-│   │   ├── Network/        TransportNetwork (+ builder), GridPoint, PathFinder (A*),
-│   │   │                   GridNetworkGenerator, NetworkTerrainPainter
+│   │   ├── Network/        RoadNetwork (incremental road graph), RoadRouter (A* + route cache);
+│   │   │                   prototype: TransportNetwork (+ builder), GridPoint, PathFinder (A*),
+│   │   │                   GridNetworkGenerator, NetworkTerrainPainter (map-less scenarios only)
 │   │   ├── Simulation/     GameSimulation, GameClock/GameDate, SimulationEvents, SimulationRunner,
 │   │   │                   VehicleFleet, SyntheticTraffic, PoseInterpolator (render-only)
 │   │   ├── Commands/       ISimulationCommand, CommandInbox, Add/RemoveVehicleCommand,
@@ -36,11 +39,11 @@ Talt.slnx
 │       │                   object information (incl. industries) and sample windows; INewGameOptionsSource
 │       ├── Input/          KeyBindings (data-driven actions), InputRouter
 │       ├── Picking/        Ray, MapPicker and pick layers (terrain, road, vehicle, industry)
-│       ├── Construction/   ConstructionTool, ToolController (preview, drag, confirm), PreviewBoxes,
-│       │                   TerrainSync (tile changes → voxels, heightmap, renderer)
+│       ├── Construction/   ConstructionTool (terrain and road tools), ToolController (preview, drag,
+│       │                   confirm), RoadToolOptions, PreviewBoxes, TerrainSync (tile changes → voxels)
 │       ├── Localization/   Strings (en/es, plurals), MoneyFormatter and currencies
 │       └── Rendering/      WebGpuRenderer, WorldRenderer, UiRenderer, HighlightRenderer, BoxRenderer,
-│                           TreeInstances,
+│                           TreeInstances, RoadMesher, RoadRenderer,
 │                           ChunkMeshScheduler, Frustum, LodSelector, RenderStatistics, OrbitCamera,
 │                           UnitCube, IndustryInstance, Shaders/*.wgsl
 ├── tools/
@@ -154,8 +157,8 @@ as instances is deferred to the rendering features.
 
 ### Known limits
 
-- The prototype road grid (`GridNetworkGenerator`) still covers a square of `min(width, depth)` tiles and
-  ignores water and slopes; towns and roads placed on the reserved sites replace it in features 007–008.
+- The prototype road grid (`GridNetworkGenerator`) is only used by map-less scenarios since feature 007;
+  games with a map start with town streets on the reserved town sites (feature 008 grows them).
 - Maps with a very large maximum height on a small map are clipped by the slope rule (a 127-voxel peak
   needs at least 127 tiles of run, 64 on cliffs).
 
@@ -238,6 +241,88 @@ Vertices are in world space (`VoxelVertex`: position, normal, color = 36 bytes),
 - `GridNetworkGenerator` builds a synthetic road grid with some roads removed, for tests,
   benchmarks and the prototype. `NetworkTerrainPainter` turns the top voxel under each road into
   road material so the terrain mesher draws it.
+- Since feature 007 this immutable network serves only **map-less** scenarios (benchmarks, the CI
+  goldens and the windows-reference session, whose fingerprints are unchanged). Games with a map have an
+  empty `TransportNetwork` and fleet; their roads are the tile data and incremental graph below.
+
+## Roads (feature 007)
+
+Design: `specs/007-roads/` (clarifications, research R1–R12, data model, contracts).
+
+- **Tile data.** `RoadLayer` (owned by `ConstructionState`, hashed with it) keeps six bytes per tile: link
+  mask and exit mask over eight directions (`Dir8`: N, NE, E, SE, S, SW, W, NW — straight and 45° diagonal
+  pieces), road type, flags (bridge end, tunnel portal, motorway connector, bridge above / tunnel below
+  along X or Z), and for bridge and tunnel ends the long link's direction and span. A one-way link has the
+  link bit on both tiles and the exit bit on one. Owners are 006's `TileObjects` (`TileObjectKind.Road`,
+  company or town), so terraform and clear rules apply unchanged; the clear tool leaves roads to the removal
+  tool. `TileChange` and `TileSnapshot` carry the road piece, so commit and undo restore roads exactly.
+- **Rules** (`RoadPlanner`, research R3): straight links climb at most one step; the lower tile is the
+  ramp and must be straight; diagonals only between flat tiles at one height whose two cut corners are not
+  higher and are not crossed by the other diagonal; bridge and tunnel ends straight. Terraform refuses tiles
+  under bridges, above tunnels and corners under diagonal roads.
+- **Road tool** (research R4): weighted A* over (tile, arrival direction) states inside the bounding box of
+  the two ends plus 48 tiles; costs prefer straight lines, reuse of roads, few turns and ramps; short bridges
+  over water are found automatically; when no path exists the first obstacle on the straight line is named
+  (too steep, water, industry, motorway...). Buffers are reused: a preview allocates nothing.
+- **Structures.** Bridges: straight, ends on land at the same height, deck one step above, anything not
+  higher than the ends below (roads keep working underneath), span limited by era (8 / 16 / 32 tiles).
+  Tunnels: straight from a hillside to the first tile at the same height, up to 64 tiles. Motorways: two
+  one-way carriageways (the line, and its left neighbour for the way back), elevated where the ground cannot
+  carry them, continued from existing carriageway ends, joined to other roads only at ends or through exit
+  and entry connectors on the outer side. Removal: own pieces; whole bridges and tunnels; town pieces only
+  while the town's other pieces stay connected; others skipped. One-way: a straight piece cycles two-way →
+  one way → the other way. All costs and limits come from `Roads/Data/roads.json` (validated with field
+  names); types: dirt (1850), paved (1920), fast (1960), motorway (1980).
+- **Routing graph** (`RoadNetwork`, research R5): junction-contracted. Nodes are road tiles with other than
+  two links, a neighbour of another type, or a connector; edges are the chains between them (one per allowed
+  direction) with length, speed limit and first direction. Node ids are stable (free list); the out-edges of
+  each 64 × 64-tile region are flat CSR arrays owned by the region. After a commit or undo the chains through
+  every changed tile and its linked neighbours are walked before and after the change and only the regions
+  of their end nodes are rebuilt. `Canonical()` lets tests check that the result equals a full rebuild.
+- **Routes** (`RoadRouter`, research R6): A* with an octile heuristic over the contracted graph; ties
+  go to the deeper entry, then the node tile, so routes depend only on tile data. A route cache (4 096 entries) is emptied when
+  the network's version changes. An exact coarse region graph was rejected (no fewer nodes than the
+  junction graph on the reference network and O(portals²) work per region update).
+- **Starting roads.** `RoadSeeder` lays a 9 × 9 street grid (three streets each way) on every town site,
+  owned by that town, after industries are placed; industry openings skip tiles with objects or bridges.
+- **Drawing** (research R10). `RoadMesher` (GPU-free) builds triangles: an octagonal hub plus one arm per
+  link, ramps with side wedges, centre or edge markings by type, one-way arrows, bridge decks with railings
+  and pillars, tunnel portals, connector acceleration lanes. `RoadRenderer` draws 128 × 128-tile areas: near
+  the camera (220 tiles) from detailed 32 × 32-tile block meshes, farther from one simplified mesh (straight
+  runs merged); meshes are built within 2 ms per frame, rebuilt only for changed blocks, released after 5 s
+  unused, culled by fog and frustum (`roads.wgsl`, lit like the boxes). Voxels are no longer recoloured.
+- **Client tools.** Road (R, drag a path), bridge (B, straight line), tunnel (T, click or drag towards the
+  hill), road removal (Shift+R, straight or 45° line), one-way (O), motorway (M, straight or 45° line),
+  motorway exit (,) and entry (.), road type (Y); a second toolbar column holds them. The road information
+  window shows type, speed limit, owner and one-way / bridge / tunnel. Picking uses the road layer. The
+  removal tool previews the pieces it takes away in amber (`previewRemove` in theme.json), not in the build
+  green, and does not mark neighbours that only lose a link (hand test 2026-11-24).
+
+### Road numbers
+
+BenchmarkDotNet short job, AMD Ryzen 7 160, 2026-11-24 (`RoadNetworkBenchmarks`, `RoadMeshBenchmarks`). The
+reference network is a flat 4096 × 4096 map with a two-way road every 16 tiles in both directions (65 536
+junctions, about 2 M road tiles); route pairs are at least 1 024 tiles apart.
+
+| Benchmark | Mean | Allocated | Budget |
+|---|---|---|---|
+| Long route query (A*, no cache) | 1.07 ms | 0 B | < 2 ms (SC-002) |
+| Cached route query | 0.001 ms | 0 B | — |
+| Incremental update after a 100-tile road (commit + undo record + network), per action | 0.18 ms | 0 B | < 1 ms (SC-003) |
+| Full network build, 4096 grid (game creation) | 136 ms | 14 MB once | informational |
+| Road tool preview of a 200-tile drag, hilly 1024² map | 0.33 ms | 0 B | < 2 ms (SC-004) |
+| Detail mesh of a 32 × 32 block with a road every 8 tiles | 0.17 ms | 0 B | built within 2 ms per frame |
+| Simplified mesh of a 128 × 128 area | 0.27 ms | 0 B | built within 2 ms per frame |
+
+The first version used a straight-line heuristic with ties by tile (2.0 ms per long query, right at the
+budget) and an unweighted path search (19 ms for the 200-tile preview); the octile heuristic with ties to
+the deeper entry, and a ×3/2 weighted path search, gave the numbers above (research R4, R6). The simulation
+tick is unchanged: roads only change while commands are processed.
+
+**Hand test (developer, Windows, 2026-11-24,** `--map 1024 --seed 7 --water 35 --start-year 1990 --stats`):
+approved ("está superbien"). 60 FPS with 0 B allocated per frame throughout; road meshes 4–13 draws and up to
+4 300 triangles near the camera. Requested change: the removal preview was green like building; it is now
+amber and marks only the pieces that disappear.
 
 ## Simulation loop
 
@@ -322,7 +407,9 @@ The same settings and the same commands produce the same state at every tick, on
   streams; the UI never uses the simulation's generator.
 - **Commands:** player actions are `ISimulationCommand` records applied at the start of the next
   tick (or at once while paused, feature 006). Commands: `AddVehicleCommand`, `RemoveVehicleCommand`,
-  `TerraformCommand`, `ClearAreaCommand`, `UndoConstructionCommand`.
+  `TerraformCommand`, `ClearAreaCommand`, `UndoConstructionCommand`, and the road commands of feature 007
+  (`buildRoad`, `buildBridge`, `buildTunnel`, `removeRoad`, `setOneWay`, `buildMotorway`,
+  `buildMotorwayConnector`).
 - **Fingerprint:** `GameSimulation.ComputeFingerprint()` hashes the whole state with XxHash3. An
   industry fleet with no industries contributes nothing, so a map-less game keeps the fingerprints it
   had before feature 009; a populated fleet hashes its arrays, random stream and content fingerprint.
@@ -341,8 +428,8 @@ Design: `specs/006-construction-framework/` (research R1–R14, data model, cont
 - **The simulation owns the map.** `ScenarioSettings.Map` (optional `MapSettings`) gives a game a map;
   `GameSimulation.Create(settings, map)` takes the map the client generated (with progress) or generates
   it (headless replay). `GameSimulation.Construction` (`ConstructionState`) holds the map's tile data,
-  a dense object/owner layer (`TileObjects`: kind byte + `TileOwner` ushort per tile; the prototype
-  roads are `PublicRoad` owned by town 0), the companies (only the player's for now, balance in whole
+  a dense object/owner layer (`TileObjects`: kind byte + `TileOwner` ushort per tile; road
+  pieces are `Road` objects owned by a company or a town, feature 007), the road layer, the companies (only the player's for now, balance in whole
   US dollars) and the one-level `UndoRecord`. It is hashed into the fingerprint only when a map exists,
   so map-less scenarios (CI goldens, benchmarks) kept their fingerprints. Recorded sessions carry the map
   as its shareable text (`settings.map`, format version unchanged).
@@ -616,6 +703,8 @@ live in `src/Talt.Client/Input/Data/actions.json`):
 | F3 | Render statistics in the title bar and console (on / off) |
 | PageUp / PageDown / L / X | Construction tools: raise, lower, level, clear (feature 006) |
 | Backspace | Undo the last construction (within 10 s of game time) |
+| R / B / T / Shift+R / O | Road tools: road, bridge, tunnel, remove road, one-way (feature 007) |
+| M / , / . / Y | Motorway, motorway exit, motorway entry, next road type (feature 007) |
 | Left drag with a tool | Preview and build over the rectangle; release builds, Esc or right button cancels |
 | Esc | Close the front window; then clear the selection; then open / close the pause menu |
 

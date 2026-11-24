@@ -9,7 +9,7 @@ public class ConstructionRulesTests
         {
           // comment
           "startingBalance": 500000, "terraformStepCost": 250, "clearTreeCost": 40,
-          "demolishCosts": { "publicRoad": 0, "test": 100 },
+          "demolishCosts": { "road": 0, "test": 100 },
           "undoWindowTicks": 200, "maxHeight": 120, "maxTilesPerAction": 16384, "maxActionCost": 1000000000000
         }
         """;
@@ -31,7 +31,7 @@ public class ConstructionRulesTests
         var rules = ConstructionRules.Parse(Valid);
 
         Assert.Equal(200, rules.UndoWindowTicks);
-        Assert.Equal(0, rules.DemolishCost(TileObjectKind.PublicRoad));
+        Assert.Equal(0, rules.DemolishCost(TileObjectKind.Road));
     }
 
     [Theory]

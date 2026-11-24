@@ -21,6 +21,7 @@
     "previewValid": "#3CD25A80",
     "previewInvalid": "#E6463C99",
     "previewSkipped": "#E6A03C80",
+    "previewRemove": "#F5D7308C",
     "previewArea": "#FFFFFF38",
     "background": "#1E3346FF"
   },

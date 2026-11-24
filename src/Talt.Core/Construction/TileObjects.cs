@@ -10,8 +10,11 @@ public enum TileObjectKind : byte
 {
     None = 0,
 
-    /// <summary>The prototype road network of the sample scenario, owned by a town.</summary>
-    PublicRoad = 1,
+    /// <summary>
+    /// A road piece (feature 007): its links, type and flags are in <see cref="Roads.RoadLayer"/>; the owner
+    /// is a company or a town. Was the prototype's <c>PublicRoad</c> (same value).
+    /// </summary>
+    Road = 1,
 
     /// <summary>Reserved for tests of the demolish rules (nothing in the game creates it).</summary>
     Test = 255,

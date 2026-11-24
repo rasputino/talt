@@ -26,6 +26,15 @@
     { "id": "toolLevel", "label": "action.toolLevel", "category": "tools", "kind": "press", "keys": ["L"] },
     { "id": "toolClear", "label": "action.toolClear", "category": "tools", "kind": "press", "keys": ["X"] },
     { "id": "undoConstruction", "label": "action.undoConstruction", "category": "tools", "kind": "press", "keys": ["Backspace"] },
+    { "id": "toolRoad", "label": "action.toolRoad", "category": "tools", "kind": "press", "keys": ["R"] },
+    { "id": "toolBridge", "label": "action.toolBridge", "category": "tools", "kind": "press", "keys": ["B"] },
+    { "id": "toolTunnel", "label": "action.toolTunnel", "category": "tools", "kind": "press", "keys": ["T"] },
+    { "id": "toolRemoveRoad", "label": "action.toolRemoveRoad", "category": "tools", "kind": "press", "keys": ["Shift+R"] },
+    { "id": "toolOneWay", "label": "action.toolOneWay", "category": "tools", "kind": "press", "keys": ["O"] },
+    { "id": "toolMotorway", "label": "action.toolMotorway", "category": "tools", "kind": "press", "keys": ["M"] },
+    { "id": "toolMotorwayExit", "label": "action.toolMotorwayExit", "category": "tools", "kind": "press", "keys": ["Comma"] },
+    { "id": "toolMotorwayEntry", "label": "action.toolMotorwayEntry", "category": "tools", "kind": "press", "keys": ["Period"] },
+    { "id": "roadType", "label": "action.roadType", "category": "tools", "kind": "press", "keys": ["Y"] },
     { "id": "statistics", "label": "action.statistics", "category": "debug", "kind": "press", "keys": ["F3"] }
   ]
 }

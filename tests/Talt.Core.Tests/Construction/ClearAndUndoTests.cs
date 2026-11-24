@@ -30,6 +30,7 @@ public class ClearAndUndoTests
         var own = state.Map.Index(10, 10);
         state.Objects.Set(own, TileObjectKind.Test, TileOwner.Company(Company.PlayerId));
         var road = state.Map.Index(8, 10);
+        state.Objects.Set(road, TileObjectKind.Test, TileOwner.Town(0));
         var balance = state.Player.Balance;
         var plan = new ConstructionPlan();
         var command = new ClearAreaCommand(Company.PlayerId, 7, 10, 10, 10);
@@ -41,7 +42,7 @@ public class ClearAndUndoTests
         Assert.True(result.Succeeded);
         Assert.Contains(plan.Problems.ToArray(), p => p.Index == road && p.Reason == ConstructionReasons.OwnedByOther && !p.Blocking);
         Assert.Equal(TileObjectKind.None, state.Objects.KindAt(own));
-        Assert.Equal(TileObjectKind.PublicRoad, state.Objects.KindAt(road));
+        Assert.Equal(TileObjectKind.Test, state.Objects.KindAt(road));
         Assert.Equal(balance - 500 - TestMap.Rules.ClearTreeCost, state.Player.Balance);
     }
 
@@ -49,6 +50,11 @@ public class ClearAndUndoTests
     public void Clear_OnlyOthersObjects_IsRefused()
     {
         var state = ConstructionCommandTests.Simulation().Construction!;
+        for (var z = 10; z <= 12; z++)
+        {
+            state.Objects.Set(state.Map.Index(8, z), TileObjectKind.Test, TileOwner.Town(0));
+        }
+
         var plan = new ConstructionPlan();
 
         var result = new ClearAreaCommand(Company.PlayerId, 8, 10, 8, 12).Preview(state, new ConstructionPlanner(), plan);
