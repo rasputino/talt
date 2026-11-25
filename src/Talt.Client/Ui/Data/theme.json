@@ -23,7 +23,10 @@
     "previewSkipped": "#E6A03C80",
     "previewRemove": "#F5D7308C",
     "previewArea": "#FFFFFF38",
-    "background": "#1E3346FF"
+    "background": "#1E3346FF",
+    // Money (feature 011): income and positive figures, expenses and negative cash.
+    "positive": "#6BD38AFF",
+    "negative": "#F0685CFF"
   },
   "cornerRadius": 6,
   "borderWidth": 1,

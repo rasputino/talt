@@ -1,0 +1,48 @@
+{
+  // Finance balancing (feature 011, specs/011-economy-finance/contracts/data-files.md). Every value is
+  // original to TALT. Money in the internal unit (1 = one US dollar). The starting cash is
+  // construction.json's startingBalance. Changing a value changes what recorded sessions replay to.
+  "loan": {
+    "start": 0,
+    "max": 500000,
+    "step": 10000,
+    // Yearly interest in per mille, charged monthly on the loan held.
+    "interestPerMille": 50
+  },
+  // Delivery payment: rate = money per 1 000 units per tile of distance between the stations. Full value
+  // for freeDays in transit, then cargo.json's valueDecayPerDayPerMille down to its minimumValuePercent.
+  "payments": {
+    "passengers": { "rate": 3400, "freeDays": 4 },
+    "mail": { "rate": 4600, "freeDays": 3 },
+    "coal": { "rate": 2400, "freeDays": 20 },
+    "wood": { "rate": 2600, "freeDays": 18 },
+    "iron-ore": { "rate": 2300, "freeDays": 22 },
+    "grain": { "rate": 2800, "freeDays": 12 },
+    "livestock": { "rate": 3600, "freeDays": 8 },
+    "oil": { "rate": 2700, "freeDays": 20 },
+    "steel": { "rate": 3800, "freeDays": 14 },
+    "lumber": { "rate": 3200, "freeDays": 14 },
+    "fuel": { "rate": 3500, "freeDays": 12 },
+    "food": { "rate": 4200, "freeDays": 6 },
+    "goods": { "rate": 4800, "freeDays": 8 }
+  },
+  // Shortest distance a delivery is paid for, in tiles.
+  "minDistance": 1,
+  // Yearly maintenance of the company's property, charged as one twelfth at each month end.
+  "maintenance": {
+    // Per road tile owned, by road type of roads.json.
+    "roads": { "dirt": 30, "paved": 60, "fast": 110, "motorway": 260 },
+    // Per station piece, by piece id of stations.json.
+    "stationPieces": { "bus-bay": 300, "bus-stop": 250, "truck-bay": 400, "truck-stop": 320 },
+    // Per warehouse, by size id of stations.json.
+    "warehouses": { "small": 1800, "medium": 4200, "large": 10000 }
+  },
+  // Company value counts property at this share of its build cost.
+  "propertyValuePercent": 50,
+  // Consecutive month ends with negative cash and the maximum loan.
+  "bankruptcy": { "warningMonths": 3, "gameOverMonths": 6 },
+  // Optional (new-game option): yearly rises in basis points (200 = 2 %), compounded monthly, for this many years.
+  "inflation": { "costBasisPoints": 200, "paymentBasisPoints": 150, "years": 100 },
+  // --station-service-pays: collected cargo is paid as if delivered this many tiles away.
+  "debug": { "serviceDistance": 40 }
+}

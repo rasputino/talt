@@ -74,6 +74,17 @@ public sealed class RecordedSession
                     writer.WriteNumber("servicePercent", stations.DebugServicePercent);
                     writer.WriteEndObject();
                 }
+
+                if (Settings.Finance is { } finance && finance != Finance.FinanceSettings.Default)
+                {
+                    // Feature 011: written only when set, so earlier sessions keep their exact form.
+                    writer.WriteStartObject("finance");
+                    writer.WriteBoolean("sandbox", finance.Sandbox);
+                    writer.WriteBoolean("inflation", finance.Inflation);
+                    writer.WriteBoolean("servicePays", finance.DebugServicePays);
+                    writer.WriteBoolean("infiniteMoney", finance.InfiniteMoney);
+                    writer.WriteEndObject();
+                }
             }
 
             writer.WriteEndObject();
@@ -161,6 +172,20 @@ public sealed class RecordedSession
             }
         }
 
+        Finance.FinanceSettings? financeSettings = null;
+        if (s.TryGetProperty("finance", out var financeElement))
+        {
+            financeSettings = new Finance.FinanceSettings(
+                financeElement.GetProperty("sandbox").GetBoolean(),
+                financeElement.GetProperty("inflation").GetBoolean(),
+                financeElement.GetProperty("servicePays").GetBoolean(),
+                financeElement.TryGetProperty("infiniteMoney", out var infinite) && infinite.GetBoolean());
+            if (financeSettings == Finance.FinanceSettings.Default)
+            {
+                financeSettings = null;
+            }
+        }
+
         var settings = new ScenarioSettings(
             Seed: s.GetProperty("seed").GetInt32(),
             StartYear: s.GetProperty("startYear").GetInt32(),
@@ -171,7 +196,8 @@ public sealed class RecordedSession
             LineCount: s.GetProperty("lineCount").GetInt32(),
             Map: map,
             Towns: townSettings,
-            Stations: stationSettings);
+            Stations: stationSettings,
+            Finance: financeSettings);
 
         var gameVersion = root.TryGetProperty("gameVersion", out var gv) ? gv.GetString() ?? "unknown" : "unknown";
         var session = new RecordedSession(settings, gameVersion);

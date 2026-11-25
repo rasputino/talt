@@ -19,6 +19,10 @@ public sealed class ConstructionState : IStateHashable
     private readonly List<int> _roadTiles = [];
     private readonly TileSet _touched = new(1024);
 
+    // Feature 011 (research R5): road tiles owned by each company, by road type, kept up to date by every tile
+    // mutation path so monthly maintenance never scans the map. Derived from tiles, so not hashed.
+    private int[] _ownedRoads;
+
     public ConstructionState(ConstructionRules rules, MapData map, RoadRules? roadRules = null)
     {
         Rules = rules ?? throw new ArgumentNullException(nameof(rules));
@@ -36,6 +40,7 @@ public sealed class ConstructionState : IStateHashable
         Network.SetTypeSpeeds(speeds);
         Player = new Company(Company.PlayerId, rules.StartingBalance);
         _companies.Add(Player);
+        _ownedRoads = new int[RoadRules.Types.Count];
         Plan.EnsureCapacity(Math.Min(rules.MaxTilesPerAction, 4096));
     }
 
@@ -67,6 +72,22 @@ public sealed class ConstructionState : IStateHashable
     public IReadOnlyList<Company> Companies => _companies;
 
     public UndoRecord Undo { get; } = new();
+
+    /// <summary>
+    /// Price level of construction in parts per million (feature 011, inflation, research R7): set by the finance
+    /// system each month; 1 000 000 without inflation. Not hashed here (the finance state hashes it).
+    /// </summary>
+    public long CostLevel { get; internal set; } = Finance.PaymentCalculator.LevelOne;
+
+    /// <summary>A planned cost at today's price level (rounded down).</summary>
+    public long Inflate(long cost) => CostLevel == Finance.PaymentCalculator.LevelOne ? cost : Finance.Money.MulDiv(cost, CostLevel, Finance.PaymentCalculator.LevelOne);
+
+    /// <summary>Road tiles owned by the company with this road type (incremental, research R5).</summary>
+    public int OwnedRoadTiles(int companyId, int roadType)
+    {
+        var index = (companyId * RoadRules.Types.Count) + roadType;
+        return (uint)roadType < (uint)RoadRules.Types.Count && (uint)index < (uint)_ownedRoads.Length ? _ownedRoads[index] : 0;
+    }
 
     /// <summary>Bumped by every applied action (lets previews know they must be planned again). Not hashed.</summary>
     public int Version { get; private set; }
@@ -210,6 +231,7 @@ public sealed class ConstructionState : IStateHashable
         foreach (var change in plan.Changes)
         {
             var tile = change.Index;
+            CountRoad(tile, -1);
             if (change.NewHeight != change.OldHeight)
             {
                 map.SetHeight(tile, change.NewHeight);
@@ -226,6 +248,7 @@ public sealed class ConstructionState : IStateHashable
                 Roads.Set(tile, change.NewRoad);
             }
 
+            CountRoad(tile, 1);
             _changedTiles.Add(tile);
         }
 
@@ -307,7 +330,9 @@ public sealed class ConstructionState : IStateHashable
 
         for (var i = 0; i < tiles.Length; i++)
         {
+            CountRoad(tiles[i], -1);
             UndoRecord.Restore(Map, Objects, Roads, tiles[i], before[i]);
+            CountRoad(tiles[i], 1);
             if (before[i].Height != after[i].Height || before[i].Scenery != after[i].Scenery || before[i].Kind != after[i].Kind
                 || before[i].Road != after[i].Road)
             {
@@ -342,7 +367,9 @@ public sealed class ConstructionState : IStateHashable
     /// </summary>
     internal void PlaceTownObject(int tile, TileObjectKind kind, TileOwner owner, bool notify)
     {
+        CountRoad(tile, -1);
         Objects.Set(tile, kind, owner);
+        CountRoad(tile, 1);
         var hadTree = Scenery.Kind(Map.SceneryData[tile]) != 0;
         if (kind != TileObjectKind.None && hadTree)
         {
@@ -367,7 +394,9 @@ public sealed class ConstructionState : IStateHashable
     /// </summary>
     internal void PlaceTownRoad(int tile, in RoadPiece piece, TileOwner owner, bool newPiece, bool notify)
     {
+        CountRoad(tile, -1);
         Roads.Set(tile, piece);
+        CountRoad(tile, 1);
         if (newPiece)
         {
             PlaceTownObject(tile, TileObjectKind.Road, owner, notify);
@@ -384,8 +413,35 @@ public sealed class ConstructionState : IStateHashable
     /// </summary>
     internal void PlaceInitialRoad(int tile, in RoadPiece piece, TileOwner owner)
     {
+        CountRoad(tile, -1);
         Roads.Set(tile, piece);
         Objects.Set(tile, piece.HasRoad ? TileObjectKind.Road : TileObjectKind.None, owner);
+        CountRoad(tile, 1);
         Map.SetScenery(tile, Scenery.None);
+    }
+
+    /// <summary>Adds (+1) or removes (−1) a tile's contribution to the owned-road counts (research R5).</summary>
+    private void CountRoad(int tile, int sign)
+    {
+        var owner = Objects.OwnerAt(tile);
+        if (owner.Kind != TileOwnerKind.Company || !Roads.HasRoad(tile))
+        {
+            return;
+        }
+
+        var types = RoadRules.Types.Count;
+        var type = Roads.TypeAt(tile);
+        if ((uint)type >= (uint)types)
+        {
+            return;
+        }
+
+        var index = (owner.Index * types) + type;
+        if (index >= _ownedRoads.Length)
+        {
+            Array.Resize(ref _ownedRoads, ((owner.Index + 1) * types));
+        }
+
+        _ownedRoads[index] += sign;
     }
 }

@@ -31,6 +31,7 @@ internal static class HeadlessArguments
                             [--record <session.json>] [--town-names mixed|english|spanish]
                             [--town-size small|normal|large] [--town-service <0-100>]
                             [--station-service <0-100>] [--seed-stations <n>]
+                            [--sandbox] [--inflation] [--infinite-money] [--station-service-pays]
           Talt.Headless replay <session.json> [--ticks <int>] [--checkpoint-every <int>] [--sequential]
         """;
 
@@ -71,6 +72,7 @@ internal static class HeadlessArguments
         var towns = Talt.Core.Towns.TownSettings.Default;
         var stationService = 0;
         var seedStations = 0;
+        var finance = Talt.Core.Finance.FinanceSettings.Default;
 
         try
         {
@@ -107,6 +109,10 @@ internal static class HeadlessArguments
                     case "--town-service": towns = towns with { DebugServicePercent = ParseInt(args, ref i) }; break;
                     case "--station-service": stationService = ParseInt(args, ref i); break;
                     case "--seed-stations": seedStations = ParseInt(args, ref i); break;
+                    case "--sandbox": finance = finance with { Sandbox = true }; break;
+                    case "--inflation": finance = finance with { Inflation = true }; break;
+                    case "--infinite-money": finance = finance with { InfiniteMoney = true }; break;
+                    case "--station-service-pays": finance = finance with { DebugServicePays = true }; break;
                     default:
                         if (command == HeadlessCommand.Replay && session is null && !args[i].StartsWith("--", StringComparison.Ordinal))
                         {
@@ -133,7 +139,8 @@ internal static class HeadlessArguments
 
         var settings = new ScenarioSettings(Seed: seed, StartYear: startYear, MapSizeTiles: map ?? defaults.MapSizeTiles, VehicleCount: vehicles, LineCount: lines,
             Towns: towns == Talt.Core.Towns.TownSettings.Default ? null : towns,
-            Stations: stationService == 0 ? null : new Talt.Core.Stations.StationSettings(stationService));
+            Stations: stationService == 0 ? null : new Talt.Core.Stations.StationSettings(stationService),
+            Finance: finance == Talt.Core.Finance.FinanceSettings.Default ? null : finance);
         if (mapText is not null)
         {
             if (!MapSettings.TryParse(mapText, out var parsedMap, out var mapError))

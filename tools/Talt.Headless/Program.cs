@@ -152,6 +152,28 @@ static void PrintSummary(GameSimulation simulation, TimeSpan setup, TimeSpan sim
         }
     }
 
+    if (simulation.Finance is { } finance)
+    {
+        // Feature 011: the player's finances (contracts/cli.md), internal units.
+        var report = finance.Report(Talt.Core.Construction.Company.PlayerId);
+        var ledger = simulation.Construction!.Player.Ledger!;
+        long income = 0, expenses = 0;
+        for (var back = 0; back < ledger.YearCount; back++)
+        {
+            income += ledger.YearIncome(back);
+            expenses += ledger.YearExpenses(back);
+        }
+
+        Console.WriteLine($"cash: {report.Cash}");
+        Console.WriteLine($"loan: {report.Loan}/{report.MaxLoan}");
+        Console.WriteLine($"company-value: {report.Value}");
+        Console.WriteLine($"income: {income}");
+        Console.WriteLine($"expenses: {expenses}");
+        Console.WriteLine($"deliveries-paid: {finance.Deliveries}");
+        Console.WriteLine($"bankrupt-months: {report.BankruptMonths}{(report.IsGameOver ? " (game over)" : string.Empty)}");
+        Console.WriteLine($"infinite-money: {(finance.UsedInfiniteMoney(Talt.Core.Construction.Company.PlayerId) ? "on" : "off")}");
+    }
+
     Console.WriteLine($"fingerprint: {StateHasher.Format(simulation.ComputeFingerprint())}");
     Console.WriteLine($"setup-ms: {setup.TotalMilliseconds.ToString("F0", c)}");
     Console.WriteLine($"simulate-ms: {simulate.TotalMilliseconds.ToString("F0", c)}");

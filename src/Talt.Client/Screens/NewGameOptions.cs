@@ -78,6 +78,9 @@ internal sealed class DefaultNewGameOptionsSource : INewGameOptionsSource
     public const string StartYear = "startYear";
     public const string TownNames = "townNames";
     public const string TownSize = "townSize";
+    public const string Sandbox = "sandbox";
+    public const string Inflation = "inflation";
+    public const string InfiniteMoney = "infiniteMoney";
 
     private static readonly MapSettings Defaults = new(Width: 512, Depth: 512, Seed: 2026);
 
@@ -114,6 +117,10 @@ internal sealed class DefaultNewGameOptionsSource : INewGameOptionsSource
             [new((int)Talt.Core.Towns.TownSize.Small, "newGame.townSize.small"), new((int)Talt.Core.Towns.TownSize.Normal, "newGame.townSize.normal"),
              new((int)Talt.Core.Towns.TownSize.Large, "newGame.townSize.large")],
             (int)Talt.Core.Towns.TownSize.Normal, "newGame.townSize.tooltip"),
+        // Feature 011: sandbox (no bankruptcy) and inflation, both off by default.
+        new(Sandbox, "newGame.sandbox", NewGameOptionKind.Choice, [new(0, "newGame.off"), new(1, "newGame.on")], 0, "newGame.sandbox.tooltip"),
+        new(Inflation, "newGame.inflation", NewGameOptionKind.Choice, [new(0, "newGame.off"), new(1, "newGame.on")], 0, "newGame.inflation.tooltip"),
+        new(InfiniteMoney, "newGame.infiniteMoney", NewGameOptionKind.Choice, [new(0, "newGame.off"), new(1, "newGame.on")], 0, "newGame.infiniteMoney.tooltip"),
     ];
 
     /// <summary>The sea must stay at least 2 voxels below the highest terrain (<see cref="MapSettings.Validate"/>).</summary>
@@ -153,6 +160,9 @@ internal sealed class DefaultNewGameOptionsSource : INewGameOptionsSource
             Seed: Value(Seed),
             StartYear: Value(StartYear),
             Map: map,
-            Towns: new TownSettings((TownNameStyle)Value(TownNames), (Talt.Core.Towns.TownSize)Value(TownSize)));
+            Towns: new TownSettings((TownNameStyle)Value(TownNames), (Talt.Core.Towns.TownSize)Value(TownSize)),
+            Finance: Value(Sandbox) == 0 && Value(Inflation) == 0 && Value(InfiniteMoney) == 0
+                ? null
+                : new Talt.Core.Finance.FinanceSettings(Sandbox: Value(Sandbox) == 1, Inflation: Value(Inflation) == 1, InfiniteMoney: Value(InfiniteMoney) == 1));
     }
 }

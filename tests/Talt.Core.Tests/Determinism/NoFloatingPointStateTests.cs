@@ -106,6 +106,18 @@ public class NoFloatingPointStateTests
         typeof(Talt.Core.Stations.BuildWarehouseCommand),
         typeof(Talt.Core.Stations.RemoveStationCommand),
         typeof(Talt.Core.Stations.RenameStationCommand),
+        typeof(Talt.Core.Finance.FinanceSystem),
+        typeof(Talt.Core.Finance.FinanceRules),
+        typeof(Talt.Core.Finance.FinanceSettings),
+        typeof(Talt.Core.Finance.CargoPayment),
+        typeof(Talt.Core.Finance.Ledger),
+        typeof(Talt.Core.Finance.RunningCosts),
+        typeof(Talt.Core.Finance.PaymentQuote),
+        typeof(Talt.Core.Finance.CompanyFinance),
+        typeof(Talt.Core.Finance.MoneyEvent),
+        typeof(Talt.Core.Finance.MoneyEventFeed),
+        typeof(Talt.Core.Finance.ChangeLoanCommand),
+        typeof(Talt.Core.Finance.EnableInfiniteMoneyCommand),
     ];
 
     private static readonly Type[] Forbidden =

@@ -51,6 +51,12 @@ internal sealed class Theme
     public required UiColor PreviewArea { get; init; }
     public required UiColor Background { get; init; }
 
+    /// <summary>Income and positive money figures (feature 011).</summary>
+    public required UiColor Positive { get; init; }
+
+    /// <summary>Expenses and negative cash (feature 011).</summary>
+    public required UiColor Negative { get; init; }
+
     public required float CornerRadius { get; init; }
     public required float BorderWidth { get; init; }
     public required float Spacing { get; init; }
@@ -115,6 +121,8 @@ internal sealed class Theme
             PreviewRemove = C("previewRemove"),
             PreviewArea = C("previewArea"),
             Background = C("background"),
+            Positive = C("positive"),
+            Negative = C("negative"),
             CornerRadius = data.CornerRadius,
             BorderWidth = data.BorderWidth,
             Spacing = data.Spacing,

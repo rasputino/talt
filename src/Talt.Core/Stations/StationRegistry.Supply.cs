@@ -333,8 +333,21 @@ public sealed partial class StationRegistry
                     continue;
                 }
 
-                Load(_groupKey[g], cargo, amount, _debugHold, Rules.DebugSpeedKmh);
+                var key = _groupKey[g];
+                Load(key, cargo, amount, _debugHold, Rules.DebugSpeedKmh);
                 _totalDebugCollected += _debugHold.Total;
+                if (DeliveryListener is { } listener)
+                {
+                    // Feature 011 (research R12): reported so --station-service-pays can pay it; changes no station state.
+                    var owner = _owner[SlotOf(key)];
+                    for (var i = 0; i < _debugHold.Count; i++)
+                    {
+                        var part = _debugHold[i];
+                        listener.OnDelivered(new CargoDelivery(
+                            owner, part.Cargo, part.Amount, part.Origin, key, part.SourceTown, part.PickupDay, _today, DeliveryConsumer.DebugService, -1));
+                    }
+                }
+
                 _debugHold.Clear();
             }
         }

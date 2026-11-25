@@ -21,6 +21,14 @@ public static class ConstructionReasons
     public const string UndoExpired = "undo-expired";
     public const string ChangedSince = "changed-since";
 
+    // Finance (feature 011, specs/011-economy-finance/contracts/commands.md).
+    public const string MaxLoan = "max-loan";
+    public const string NoLoan = "no-loan";
+    public const string NotEnoughCash = "not-enough-cash";
+    public const string GameOver = "game-over";
+    public const string InfiniteMoney = "infinite-money";
+    public const string AlreadyInfinite = "already-infinite";
+
     // Roads (feature 007, contracts/commands.md).
     public const string NoPath = "no-path";
     public const string RoadTypeUnavailable = "road-type-unavailable";
@@ -69,6 +77,12 @@ public static class ConstructionReasons
         OwnedByOther => "A tile belongs to someone else.",
         TooLarge => "The action is too large.",
         NotEnoughMoney => "Not enough money.",
+        MaxLoan => "The loan is already at its maximum.",
+        NoLoan => "There is no loan to repay.",
+        NotEnoughCash => "There is not enough cash to repay.",
+        GameOver => "The game is over.",
+        InfiniteMoney => "The company has infinite money: loans are not needed.",
+        AlreadyInfinite => "The company already has infinite money.",
         NothingToUndo => "There is nothing to undo.",
         UndoExpired => "The last action can no longer be undone.",
         ChangedSince => "Something changed the affected tiles since.",

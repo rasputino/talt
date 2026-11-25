@@ -17,6 +17,16 @@ public class HeadlessArgumentsTests
     }
 
     [Fact]
+    public void Run_WithFinanceOptions()
+    {
+        // Feature 011 (contracts/cli.md).
+        Assert.True(HeadlessArguments.TryParse(["run", "--ticks", "10"], out var plain, out _));
+        Assert.Null(plain!.Settings.Finance);
+        Assert.True(HeadlessArguments.TryParse(["run", "--ticks", "10", "--sandbox", "--inflation", "--station-service-pays", "--infinite-money"], out var options, out _));
+        Assert.Equal(new Talt.Core.Finance.FinanceSettings(Sandbox: true, Inflation: true, DebugServicePays: true, InfiniteMoney: true), options!.Settings.Finance);
+    }
+
+    [Fact]
     public void Run_WithAllOptions()
     {
         Assert.True(HeadlessArguments.TryParse(

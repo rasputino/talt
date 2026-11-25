@@ -80,6 +80,9 @@ public sealed partial class StationRegistry : IStateHashable, IProductionSink
     private readonly Dictionary<int, int> _slotById = [];
     private readonly Dictionary<long, int> _nameCounters = [];
 
+    // Centres of removed stations (feature 011, research R3), packed as z × 65 536 + x.
+    private readonly Dictionary<int, int> _removedCentre = [];
+
     // Stations by slot.
     private int[] _id = new int[InitialCapacity];
     private int[] _owner = new int[InitialCapacity];
@@ -206,6 +209,60 @@ public sealed partial class StationRegistry : IStateHashable, IProductionSink
 
     /// <summary>Slot of a station id, or −1.</summary>
     public int SlotOf(int stationId) => _slotById.TryGetValue(stationId, out var slot) ? slot : -1;
+
+    /// <summary>
+    /// The centre tile of a station's bounding box, also for stations removed since (feature 011, research R3):
+    /// deliveries are paid by the distance from where the cargo was picked up.
+    /// </summary>
+    public bool TryGetCentre(int stationId, out int x, out int z)
+    {
+        var slot = SlotOf(stationId);
+        if (slot >= 0)
+        {
+            x = (_x0[slot] + _x1[slot]) / 2;
+            z = (_z0[slot] + _z1[slot]) / 2;
+            return true;
+        }
+
+        if (_removedCentre.TryGetValue(stationId, out var packed))
+        {
+            x = packed & 0xFFFF;
+            z = packed >> 16;
+            return true;
+        }
+
+        x = z = -1;
+        return false;
+    }
+
+    /// <summary>
+    /// Counts a company's property for maintenance and company value (feature 011): road station pieces by piece
+    /// type into <paramref name="pieces"/> and warehouses by size into <paramref name="warehouses"/> (added to
+    /// what the spans hold). Walks the stations once; allocates nothing.
+    /// </summary>
+    public void CountProperty(int companyId, Span<int> pieces, Span<int> warehouses)
+    {
+        for (var slot = 0; slot < _count; slot++)
+        {
+            if (_owner[slot] != companyId)
+            {
+                continue;
+            }
+
+            if ((StationKind)_kind[slot] == StationKind.Warehouse)
+            {
+                warehouses[_warehouseType[slot]]++;
+                continue;
+            }
+
+            foreach (var tile in _tiles[slot])
+            {
+                pieces[_pieces[tile].Type]++;
+            }
+        }
+    }
+
+    private static int PackCentre(int x, int z) => (z << 16) | x;
 
     /// <summary>The station with a tile on (x, z).</summary>
     public bool TryGetStationAt(int x, int z, out int stationId)
@@ -349,6 +406,19 @@ public sealed partial class StationRegistry : IStateHashable, IProductionSink
         hasher.Append(_totalLost);
         hasher.Append(_totalDelivered);
         hasher.Append(_totalDebugCollected);
+        if (_removedCentre.Count > 0)
+        {
+            // Feature 011: only once a station was removed, so earlier station goldens stay valid.
+            var ids = new int[_removedCentre.Count];
+            _removedCentre.Keys.CopyTo(ids, 0);
+            Array.Sort(ids);
+            hasher.Append(ids.Length);
+            foreach (var id in ids)
+            {
+                hasher.Append(id);
+                hasher.Append(_removedCentre[id]);
+            }
+        }
     }
 
     private static long[] SortedKeys<TValue>(Dictionary<long, TValue> dictionary)

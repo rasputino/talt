@@ -5,6 +5,9 @@ public enum DeliveryConsumer : byte
 {
     Industry = 0,
     Town = 1,
+
+    /// <summary>The stations' debug service (<c>--station-service</c>); paid only with <c>--station-service-pays</c> (feature 011).</summary>
+    DebugService = 2,
 }
 
 /// <summary>How a vehicle unloads at a station (feature 012 orders).</summary>

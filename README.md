@@ -51,6 +51,11 @@ Stations (feature 010): `--station-service <0–100>` (debug: every station's ca
 percentage of the waiting cargo is collected every five days, so cargo flows before vehicles exist) and
 `--seed-stations <n>` (debug: builds up to n bays beside industries and town roads at the start, as recorded
 commands). The headless runner takes the same two options and prints a station summary.
+Finance (feature 011): `--sandbox` (the company never goes bankrupt) and `--inflation` (prices and payments rise
+over the years) and `--infinite-money` (money never limits you; it can also be turned on during play from the
+finance window and never turned off), all also on the new-game screen, and `--station-service-pays` (debug: the cargo collected by
+`--station-service` is paid as a delivery over 40 tiles, so income shows before vehicles exist). The headless
+runner takes the same options and prints the cash, loan, company value, income and expenses.
 
 In game: the top bar shows money, date and speed buttons, the toolbar on the left opens settings and
 the other tools, and clicking the map selects the tile, road, vehicle, industry or town under the cursor

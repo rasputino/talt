@@ -19,6 +19,7 @@ namespace Talt.Core.Scenarios;
 /// </param>
 /// <param name="Towns">Town options of a game with a map (feature 008); null means the defaults.</param>
 /// <param name="Stations">Station options of a game with a map (feature 010); null means the defaults.</param>
+/// <param name="Finance">Finance options of a game with a map (feature 011); null means the defaults.</param>
 public sealed record ScenarioSettings(
     int Seed = 2026,
     int StartYear = 1950,
@@ -29,8 +30,12 @@ public sealed record ScenarioSettings(
     int? LineCount = null,
     MapSettings? Map = null,
     Talt.Core.Towns.TownSettings? Towns = null,
-    Talt.Core.Stations.StationSettings? Stations = null)
+    Talt.Core.Stations.StationSettings? Stations = null,
+    Talt.Core.Finance.FinanceSettings? Finance = null)
 {
+    /// <summary>The finance options in effect (<see cref="Finance"/> or the defaults).</summary>
+    public Talt.Core.Finance.FinanceSettings EffectiveFinance => Finance ?? Talt.Core.Finance.FinanceSettings.Default;
+
     /// <summary>The station options in effect (<see cref="Stations"/> or the defaults).</summary>
     public Talt.Core.Stations.StationSettings EffectiveStations => Stations ?? Talt.Core.Stations.StationSettings.Default;
 

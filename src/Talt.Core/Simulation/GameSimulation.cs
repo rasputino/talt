@@ -2,6 +2,7 @@ using Talt.Core.Commands;
 using Talt.Core.Construction;
 using Talt.Core.Content;
 using Talt.Core.Determinism;
+using Talt.Core.Finance;
 using Talt.Core.Industries;
 using Talt.Core.Maps;
 using Talt.Core.Network;
@@ -68,6 +69,12 @@ public sealed class GameSimulation : IStateHashable
             // Feature 010: stations collect cargo from industries and towns and hand it to vehicles.
             Stations = StationRegistry.Create(construction, content, Industries, Towns, settings.EffectiveStations, Date);
             construction.AttachStations(Stations);
+            // Feature 011: company accounts, paid for the stations' deliveries.
+            var financeRules = ReferenceEquals(content, GameContent.Default) && ReferenceEquals(construction.RoadRules, RoadRules.Default)
+                && ReferenceEquals(Stations.Rules, StationRules.Default)
+                ? FinanceRules.Default
+                : FinanceRules.FromJson(FinanceRules.ReadResource(), content, construction.RoadRules, Stations.Rules);
+            Finance = new FinanceSystem(construction, Stations, content, financeRules, settings.EffectiveFinance, Date);
         }
 
         // Stations refresh their coverage before industries produce (industries hand them their share), then
@@ -89,6 +96,14 @@ public sealed class GameSimulation : IStateHashable
         {
             Events.OnMonthEnded(simulation => simulation.Stations!.AdvanceMonth(simulation.Date));
         }
+
+        if (Finance is not null)
+        {
+            // After the stations, so a day's deliveries and debug pickups are paid before its costs (research R9).
+            Events.OnDayEnded(simulation => simulation.Finance!.AdvanceDay(simulation.Date));
+            Events.OnMonthEnded(simulation => simulation.Finance!.AdvanceMonth(simulation.Date));
+            Events.OnYearEnded(simulation => simulation.Finance!.AdvanceYear(simulation.Date));
+        }
     }
 
     /// <summary>Number of completed ticks since the game started (data-model.md GameSimulation.CurrentTick).</summary>
@@ -108,6 +123,9 @@ public sealed class GameSimulation : IStateHashable
 
     /// <summary>The stations of a game with a map (feature 010); null for map-less scenarios.</summary>
     public StationRegistry? Stations { get; }
+
+    /// <summary>The company accounts of a game with a map (feature 011); null for map-less scenarios.</summary>
+    public FinanceSystem? Finance { get; }
 
     /// <summary>All industries of the world; empty when the game was created without a map.</summary>
     public IndustryFleet Industries { get; }
@@ -238,6 +256,11 @@ public sealed class GameSimulation : IStateHashable
         {
             hasher.Append(Stations); // Appends nothing until a station is built (FR-030).
         }
+
+        if (Finance is not null)
+        {
+            hasher.Append(Finance); // Appends nothing until the first booking (feature 011, research R11).
+        }
     }
 
     private void ProcessCommands()
@@ -249,7 +272,10 @@ public sealed class GameSimulation : IStateHashable
 
         while (_commands.TryDequeue(out var pending))
         {
-            var result = pending.Command.Validate(this);
+            // Feature 011 (FR-020): after game over every player command is refused.
+            var result = Finance is not null && Finance.IsGameOver(Company.PlayerId)
+                ? CommandResult.Rejected(ConstructionReasons.GameOver, ConstructionReasons.Describe(ConstructionReasons.GameOver))
+                : pending.Command.Validate(this);
             if (result.Succeeded)
             {
                 pending.Command.Apply(this);
