@@ -608,7 +608,7 @@ Money, loans, recurring costs, delivery income and the ledger. Spec and design: 
   `Company.Book` then updates only the ledger (cash frozen, figures still listed), `ConstructionCommand.Check` skips
   the money check, `changeLoan` is refused (`infinite-money`) and bankruptcy never counts.
   `FinanceSystem.UsedInfiniteMoney` is the flag for goals and scores (feature 020). The client asks for confirmation
-  in an overlay before sending the command and shows "∞" in the HUD.
+  in an overlay before sending the command and shows "Infinite money" in the HUD instead of the cash (no symbol: the bundled font has no ∞ glyph).
 - **Commands**: `changeLoan` (`borrow`, `repay`, `borrowMax`, `repayMax`; reasons `max-loan`, `no-loan`,
   `not-enough-cash`). After game over `GameSimulation` refuses every command with `game-over`.
 - **Settings**: `ScenarioSettings.Finance` (`FinanceSettings`: sandbox, inflation, debug paid service), written to

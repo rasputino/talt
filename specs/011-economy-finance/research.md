@@ -133,7 +133,7 @@
   and never counts. Nothing can turn it off. `FinanceSystem.UsedInfiniteMoney(companyId)` is the flag for feature
   020 (goals and scores).
 - **UI**: a new-game option; a finance window button that opens a confirmation overlay (confirm / cancel) before
-  submitting the command; the HUD shows "∞" instead of the cash and the window a line saying the mode is on.
+  submitting the command; the HUD shows "Infinite money" instead of the cash (text only: the bundled font has no ∞ glyph) and the window a line saying the mode is on.
 - **Alternatives**: topping cash up to a huge value (wrong figures, overflow risk); hiding costs (the player loses
   the information of what things cost).
 

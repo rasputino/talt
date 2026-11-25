@@ -98,7 +98,6 @@ internal sealed unsafe class FontAtlas
         yield return 0x2192;
         yield return 0x2193;
         yield return 0x2212; // −
-        yield return 0x221E; // ∞ (infinite money, feature 011)
         yield return 0x2715; // ✕ (when the font has it)
     }
 

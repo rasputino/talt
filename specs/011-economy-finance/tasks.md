@@ -76,7 +76,7 @@ quickstart). Tests are required by the constitution (IV): each story has its tes
 
 - [X] T042 [US7] `Company.HasInfiniteMoney`/`InfiniteMoneySinceTick` (data-model.md Company.HasInfiniteMoney/InfiniteMoneySinceTick), ledger-only bookings, hashing in `src/Talt.Core/Construction/Company.cs`; `FinanceSettings.InfiniteMoney` (data-model.md FinanceSettings) applied at creation in `src/Talt.Core/Finance/FinanceSystem.cs`
 - [X] T043 [US7] `EnableInfiniteMoneyCommand` in `src/Talt.Core/Finance/InfiniteMoneyCommand.cs` (registered in `CommandSerializer`); loans refused, money check skipped in `ConstructionCommand.Check`, bankruptcy never counts; reasons in `ConstructionReasons.cs`; session settings in `RecordedSession.cs`
-- [X] T044 [US7] Client: new-game option, `--infinite-money` (client and headless), finance window button with a confirmation overlay, HUD "∞", window line, strings en/es in `src/Talt.Client/Screens/*.cs` and `Localization/Strings.*.json`
+- [X] T044 [US7] Client: new-game option, `--infinite-money` (client and headless), finance window button with a confirmation overlay, HUD "Infinite money" text, window line, strings en/es in `src/Talt.Client/Screens/*.cs` and `Localization/Strings.*.json`
 - [X] T045 [P] [US7] Tests: settings start, command turns on once and never off, construction with no cash, cash frozen and ledger counts, loans refused, no bankruptcy, replay determinism in `tests/Talt.Core.Tests/Finance/InfiniteMoneyTests.cs`; client confirmation flow in `tests/Talt.Client.Tests/Screens/FinanceClientTests.cs`
 
 ## Phase 9: Polish
@@ -86,7 +86,7 @@ quickstart). Tests are required by the constitution (IV): each story has its tes
 - [X] T038 [P] Allocation tests (daily/monthly/payment, `AllocationAssert`) in `tests/Talt.Core.Tests/Finance/FinanceAllocationTests.cs`
 - [X] T039 [P] `FinanceBenchmarks` (daily, monthly with 5 000 stations on 4 096, payment) in `benchmarks/Talt.Benchmarks/FinanceBenchmarks.cs`
 - [X] T040 Docs: Finance section, data flow, benchmark numbers in `docs/ARCHITECTURE.md`; options in `README.md`; decisions in `docs/VISION.md`
-- [ ] T041 Run quickstart.md; launch the client for the developer's hand test
+- [X] T041 Run quickstart.md; launch the client for the developer's hand test
 
 ## Dependencies
 

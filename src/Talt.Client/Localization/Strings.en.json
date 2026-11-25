@@ -548,7 +548,7 @@
   "newGame.inflation.tooltip": "Prices and payments rise over the years",
   "newGame.on": "On",
   "newGame.off": "Off",
-  "hud.money.infinite": "∞ Infinite money",
+  "hud.money.infinite": "Infinite money",
   "command.enableInfiniteMoney": "infinite money turned on",
   "finance.infinite": "Infinite money…",
   "finance.infinite.tooltip": "Money never limits the company again (cannot be undone)",
