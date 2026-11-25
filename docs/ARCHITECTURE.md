@@ -22,6 +22,9 @@ Talt.slnx
 │   │   ├── Stations/       StationRegistry (pieces, stations, warehouse groups, coverage, supply, ratings,
 │   │   │                   Load/Unload), StationPlanner, station commands, CargoHold, CargoDelivery,
 │   │   │                   StationSeeder, StationRules (+ Data/stations.json) (010)
+│   │   ├── Finance/        FinanceSystem (payments, running costs, maintenance, interest, value, bankruptcy,
+│   │   │                   inflation), Ledger, PaymentCalculator, RunningCosts, changeLoan command,
+│   │   │                   FinanceRules (+ Data/finance.json), MoneyEvent feed (011)
 │   │   ├── Meshing/        GreedyMesher, LodVolume, PackedVertex, PackedMesh, FaceDirections,
 │   │   │                   MaterialPalette; ChunkMesher/ChunkMesh/VoxelVertex (naive reference)
 │   │   ├── Network/        RoadNetwork (incremental road graph), RoadRouter (A* + route cache);
@@ -562,6 +565,85 @@ month boundaries, so the tick budget is unchanged. Headless, 1024 × 1024 map, 2
 debug service, 4 000 ticks: 24 144 units supplied, 22 392 collected, 1 752 waiting, none lost; 0.05 ms average
 tick.
 
+## Economy and finance (feature 011)
+
+Money, loans, recurring costs, delivery income and the ledger. Spec and design: `specs/011-economy-finance/`
+(research R1–R16).
+
+- **Money**: whole internal units (1 = one US dollar) in `long`; products that can overflow (payment, inflation,
+  value) use one `Int128` intermediate and saturate at ±2⁶² (`Money`). No `float`, `double` or `decimal`.
+- **State**: `FinanceSystem` (namespace `Talt.Core.Finance`) is created by `GameSimulation` for games with a map,
+  after the stations, and becomes their `DeliveryListener`. `Company` (feature 006) is the account: cash (the old
+  `Balance`), `Loan`, a `Ledger`, `Value`, `BankruptMonths`, `IsGameOver` and three accrual remainders. Every change
+  of cash goes through `Company.Book(category, amount, cargo)` (construction's `Spend`/`Refund` book
+  `construction`); loan movements change cash and loan only. `Ledger` keeps one signed total per slot (six fixed
+  categories, then one income slot per cargo) for the last 24 months (ring) and for every game year, so the ledger
+  always equals the change of cash, loan movements apart (property-tested over 30 months).
+- **Payments** (research R2, R3, R12): `PaymentCalculator.Quote` = `floor(rate × units × distance × timeFactor‰ ×
+  paymentLevel / 10¹²)`; `rate` and `freeDays` per cargo in `finance.json`, decay and minimum share from
+  `cargo.json`; distance is the Manhattan distance between the origin and destination stations' centres (removed
+  stations keep their centre in `StationRegistry`, hashed once one is removed), at least `minDistance`. The debug
+  service reports its pickups as `DeliveryConsumer.DebugService`, paid over `debug.serviceDistance` only with
+  `--station-service-pays`. Each payment books `income:<cargo>` and writes a `MoneyEvent` to a fixed 512-entry
+  feed (not state) that the client drains into floating texts.
+- **Costs** (research R4, R5): daily, the running costs registered in `RunningCosts` (feature 012 registers its
+  vehicles with a yearly cost and a value) are charged as `(yearly × costLevel + carry) / daysInYear`; at each month
+  end, property maintenance (owned road tiles by road type, station pieces by type, warehouses by size, yearly
+  values in `finance.json`) and loan interest (`loan × perMille / 12 000`) are charged with their remainders
+  carried, so twelve months sum exactly to the yearly figure. Owned road tiles are counted incrementally by
+  `ConstructionState` around every tile mutation path (`Commit`, undo, town roads and objects, initial roads) and
+  tested against a full scan; station property is counted from the registry (O(stations)). Recurring costs may
+  take cash below zero; construction still needs the cash.
+- **Month end** (order): maintenance → interest → inflation → company value (cash − loan + property at
+  `propertyValuePercent` of its build cost × cost level + vehicle values) → bankruptcy (negative cash with the
+  maximum loan: 3 months → warning event, 6 → game over unless sandbox) → ledger month rotation. Year end (after
+  the month handlers): ledger year rotation. Handlers run after the stations', so a day's deliveries and debug
+  pickups book into the period that just ended.
+- **Inflation** (research R7, new-game option, off by default): cost and payment levels in parts per million grow
+  each month by `level × basisPoints / 120 000` for `inflation.years`; the cost level scales construction (applied
+  once per plan in `ConstructionCommand.Check`, so previews and commands agree), maintenance, running costs, the
+  loan step and the maximum loan (rounded down to whole steps); the payment level scales payments.
+- **Infinite money** (research R17): `Company.HasInfiniteMoney` / `InfiniteMoneySinceTick`, set by
+  `FinanceSettings.InfiniteMoney` at creation or the recorded `enableInfiniteMoney` command, never cleared and hashed.
+  `Company.Book` then updates only the ledger (cash frozen, figures still listed), `ConstructionCommand.Check` skips
+  the money check, `changeLoan` is refused (`infinite-money`) and bankruptcy never counts.
+  `FinanceSystem.UsedInfiniteMoney` is the flag for goals and scores (feature 020). The client asks for confirmation
+  in an overlay before sending the command and shows "∞" in the HUD.
+- **Commands**: `changeLoan` (`borrow`, `repay`, `borrowMax`, `repayMax`; reasons `max-loan`, `no-loan`,
+  `not-enough-cash`). After game over `GameSimulation` refuses every command with `game-over`.
+- **Settings**: `ScenarioSettings.Finance` (`FinanceSettings`: sandbox, inflation, debug paid service), written to
+  recorded sessions as `settings.finance` only when not default.
+- **Fingerprint** (research R11): hashed after the stations, only once something was borrowed, paid, registered
+  or bankrupt, the settings are not default, or a ledger holds a non-zero total (an action undone in the same
+  month leaves none). Map-less goldens, untouched map games and the industry/town goldens are unchanged; the
+  construction, road and station replay goldens changed on purpose (their ledgers are hashed). New golden:
+  `FinanceReplayTests`.
+- **Data**: `Finance/Data/finance.json` (`FinanceRules`, strict, checked against the cargo, road and station ids,
+  fingerprinted). Starting cash stays `construction.json`'s `startingBalance` (500 000).
+- **Client**: the HUD coin (or `F2`) opens `FinanceWindow` (table by category for the current and two previous years
+  with totals, cash/loan/limits/interest/value line, bankruptcy line, borrow/repay buttons, a `BarChart` of the last
+  24 months); negative cash is drawn in the theme's `negative` colour; `MoneyTexts` shows "+amount" above the
+  unloading station for 2.5 s (projected like the town plates, at most 64); a bankruptcy warning message; a
+  game-over overlay with the final figures. New-game options: sandbox, inflation and infinite money. Headless: `--sandbox`,
+  `--inflation`, `--station-service-pays` and a finance summary.
+
+### Finance numbers
+
+`FinanceBenchmarks` (2026-11-25, AMD Ryzen 7 160, 8 cores / 16 threads) on a 4096 × 4096 map with 5 000 bays
+seeded beside industries and town roads, the maximum loan, inflation on and 50 000 registered running costs:
+
+| Benchmark | Mean | Allocated | Budget |
+|---|---|---|---|
+| `DailyUpdate` (running costs of 50 000 registrations: one total per company) | 13 ns | 0 B | < 1 ms (SC-003) |
+| `MonthlyUpdate` (maintenance from 5 000 stations and the road counts, interest, inflation, value, bankruptcy, ledger rotation) | 0.14 ms | 0 B | < 1 ms (SC-003) |
+| `PayDelivery` (distance, time factor, ledger, money event) | 36 ns | 0 B | — |
+
+`FinanceAllocationTests` checks the same paths with `AllocationAssert`; a first version allocated 120 B a month
+end (`foreach` over `IReadOnlyList<Company>` boxed its enumerator). Finance runs only on deliveries and day/month
+boundaries, so the tick budget is unchanged. Headless, 512 × 512 map, 40 seeded stations, `--station-service 60
+--station-service-pays`, 20 000 ticks: 2 542 deliveries paid, income 2 089 504, expenses −91 480 (construction
+and maintenance), the same fingerprint on two runs.
+
 ## Determinism
 
 The same settings and the same commands produce the same state at every tick, on every platform.
@@ -597,7 +679,7 @@ Design: `specs/006-construction-framework/` (research R1–R14, data model, cont
   it (headless replay). `GameSimulation.Construction` (`ConstructionState`) holds the map's tile data,
   a dense object/owner layer (`TileObjects`: kind byte + `TileOwner` ushort per tile; road
   pieces are `Road` objects owned by a company or a town, feature 007), the road layer, the companies (only the player's for now, balance in whole
-  US dollars) and the one-level `UndoRecord`. It is hashed into the fingerprint only when a map exists,
+  US dollars; the full account arrives with feature 011) and the one-level `UndoRecord`. It is hashed into the fingerprint only when a map exists,
   so map-less scenarios (CI goldens, benchmarks) kept their fingerprints. Recorded sessions carry the map
   as its shareable text (`settings.map`, format version unchanged).
 - **One planner for preview and command.** `ConstructionPlanner` fills a reusable `ConstructionPlan`

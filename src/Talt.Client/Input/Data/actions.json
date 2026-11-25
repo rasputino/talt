@@ -21,6 +21,7 @@
     { "id": "back", "label": "action.back", "category": "interface", "kind": "press", "keys": ["Escape"] },
     { "id": "closeAllWindows", "label": "action.closeAllWindows", "category": "interface", "kind": "press", "keys": ["Shift+Delete"] },
     { "id": "settings", "label": "action.settings", "category": "interface", "kind": "press", "keys": ["F10"] },
+    { "id": "finance", "label": "action.finance", "category": "interface", "kind": "press", "keys": ["F2"] },
     { "id": "toolRaise", "label": "action.toolRaise", "category": "tools", "kind": "press", "keys": ["PageUp"] },
     { "id": "toolLower", "label": "action.toolLower", "category": "tools", "kind": "press", "keys": ["PageDown"] },
     { "id": "toolLevel", "label": "action.toolLevel", "category": "tools", "kind": "press", "keys": ["L"] },

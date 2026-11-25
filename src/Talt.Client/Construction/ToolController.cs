@@ -133,7 +133,7 @@ internal sealed class ToolController
         }
 
         var (start, end) = IsDragging ? Shape(_start, _hover ?? _start) : (_hover!.Value, _hover.Value);
-        var key = new PreviewKey(Active, start, end, state.Version, state.Player.Balance, RoadToolOptions.Version ^ (StationToolOptions.Version << 16), state.Year);
+        var key = new PreviewKey(Active, start, end, state.Version, state.Player.Balance ^ state.CostLevel, RoadToolOptions.Version ^ (StationToolOptions.Version << 16), state.Year);
         if (HasPreview && key == _planned)
         {
             return;
@@ -142,7 +142,7 @@ internal sealed class ToolController
         _planned = key;
         Active.Plan(_planner, state, state.Player.Id, start, end, Preview);
         Preview.RatingChange = state.Towns?.PlanRatingChange(Preview, state.Player.Id) ?? 0; // Feature 008.
-        PreviewResult = ConstructionCommand.Check(state.Player, Preview);
+        PreviewResult = ConstructionCommand.Check(state, state.Player, Preview);
         HasPreview = true;
         PreviewVersion++;
     }

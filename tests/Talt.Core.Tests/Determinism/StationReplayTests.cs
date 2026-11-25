@@ -12,12 +12,12 @@ namespace Talt.Core.Tests.Determinism;
 /// same state; parallel and sequential runs agree and the fingerprint is pinned so every CI platform must agree.
 /// </summary>
 /// <remarks>
-/// Regenerate the golden only when station rules, their data file, industries, towns, construction or map
+/// Regenerate the golden only when station rules, their data file, industries, towns, construction, finance or map
 /// generation change on purpose.
 /// </remarks>
 public class StationReplayTests
 {
-    private const string ExpectedAtTick2000 = "778F11536E039516";
+    private const string ExpectedAtTick2000 = "BAAC9D06990E9E24";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 31,

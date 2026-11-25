@@ -13,12 +13,12 @@ namespace Talt.Core.Tests.Determinism;
 /// state; parallel and sequential runs agree and the fingerprint is pinned so every CI platform must agree.
 /// </summary>
 /// <remarks>
-/// Regenerate the golden only when road rules, seeding, construction or map generation change on purpose. It
+/// Regenerate the golden only when road rules, seeding, construction, finance or map generation change on purpose. It
 /// changed with feature 008: towns are founded on the seeded streets (buildings, extra streets, town state).
 /// </remarks>
 public class RoadReplayTests
 {
-    private const string ExpectedAtTick400 = "4C9FAF5BCA22A066";
+    private const string ExpectedAtTick400 = "9F3321082557F362";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 21,

@@ -26,6 +26,8 @@
     <!-- Town building types, growth and rating balancing, name parts (feature 008, contracts/data-files.md). -->
     <EmbeddedResource Include="Towns\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Towns.Data.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Stations\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Stations.Data.%(Filename)%(Extension)" />
+    <!-- Finance balancing (feature 011, contracts/data-files.md). -->
+    <EmbeddedResource Include="Finance\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Finance.Data.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

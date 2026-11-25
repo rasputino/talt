@@ -38,6 +38,9 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     private readonly StackPanel _messages = new(Orientation.Vertical) { Spacing = 4 };
     private readonly List<double> _messageExpiry = [];
     private readonly Panel _pauseMenu;
+    private readonly MoneyTexts _moneyTexts;
+    private readonly Panel _gameOver;
+    private readonly Panel _confirmInfinite;
     private readonly ToolController _tools = new();
     private readonly PreviewBoxes _previewBoxes = new();
     private readonly TreeInstances _trees = new();
@@ -54,6 +57,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     private bool _rotating;
     private bool _panning;
     private bool _pausedByMenu;
+    private bool _gameOverShown;
 
     public InGameScreen(IScreenHost host, GameSession session, OrbitCamera camera, Func<Key, bool> isKeyDown)
     {
@@ -76,9 +80,12 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             _labels = new TownLabels(towns, session.Heightmap);
         }
 
+        _moneyTexts = new MoneyTexts(session.Heightmap);
         _cursorLabel = BuildCursorLabel();
         Root = BuildHud();
         _pauseMenu = BuildPauseMenu();
+        _gameOver = BuildGameOver();
+        _confirmInfinite = BuildInfiniteMoneyConfirmation();
     }
 
     public Widget Root { get; }
@@ -91,6 +98,15 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     public PickResult Selected => _selected;
 
     public bool IsPauseMenuOpen => _host.Ui.Overlay == _pauseMenu;
+
+    /// <summary>True once the game-over screen is shown (feature 011, FR-020).</summary>
+    public bool IsGameOverShown => _gameOverShown;
+
+    /// <summary>True while the infinite-money confirmation is shown (feature 011, research R17).</summary>
+    public bool IsInfiniteMoneyConfirmationOpen => _host.Ui.Overlay == _confirmInfinite;
+
+    /// <summary>Floating money texts on the map (feature 011).</summary>
+    internal MoneyTexts MoneyTexts => _moneyTexts;
 
     /// <summary>Boxes to outline this frame (hover and selection).</summary>
     public ReadOnlySpan<HighlightBox> Highlights => _highlights.AsSpan(0, _highlightCount);
@@ -167,6 +183,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         }
 
         FollowTerrain(dt);
+        DrainMoneyEvents();
         ExpireMessages();
     }
 
@@ -192,6 +209,11 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         if (_labels is not null && viewport.X >= 1 && viewport.Y >= 1)
         {
             _labels.Update(_camera.ViewProjection(viewport.X / viewport.Y), viewport, _camera.Position, _camera.Distance * 2.5f);
+        }
+
+        if (viewport.X >= 1 && viewport.Y >= 1)
+        {
+            _moneyTexts.Update(_camera.ViewProjection(viewport.X / viewport.Y), viewport, _camera.Position, _camera.Distance * 2.5f, (float)_host.Ui.Time);
         }
 
         UpdateTool(cursor, cursorOverWorld && !IsPauseMenuOpen);
@@ -292,6 +314,9 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             case "statistics":
                 _host.ShowStatistics = !_host.ShowStatistics;
                 return true;
+            case "finance":
+                OpenFinance();
+                return true;
             default:
                 return false;
         }
@@ -301,7 +326,11 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     public void Back()
     {
         var ui = _host.Ui;
-        if (ui.Popup is not null)
+        if (IsInfiniteMoneyConfirmationOpen)
+        {
+            CancelInfiniteMoney();
+        }
+        else if (ui.Popup is not null)
         {
             ui.ClosePopup();
         }
@@ -324,7 +353,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
 
     public void OpenPauseMenu()
     {
-        if (IsPauseMenuOpen)
+        if (IsPauseMenuOpen || _gameOverShown)
         {
             return;
         }
@@ -639,17 +668,21 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             root.Add(_labels); // Town plates under every other HUD element (feature 008).
         }
 
+        root.Add(_moneyTexts); // Floating income texts (feature 011), above the town plates.
+
         // Top bar: menu, money, date, speed controls (FR-004).
         var topBar = root.Add(new Panel { Style = PanelStyle.Panel, VerticalAlignment = Alignment.Start, Height = theme.TopBarHeight, Padding = new Thickness(6, 3) });
         var bar = topBar.Add(new StackPanel(Orientation.Horizontal) { Spacing = 6 });
         HudButtons.Add(bar.Add(new Button(null, OpenPauseMenu, "menu") { Style = ButtonStyle.Flat, Tooltip = TextRef.Of("hud.menu.tooltip"), ShortcutAction = "back" }));
-        bar.Add(new IconView("coin") { Tooltip = TextRef.Of("hud.money.tooltip") });
+        // Feature 011: the coin opens the finance window; negative cash is red.
+        HudButtons.Add(bar.Add(new Button(null, OpenFinance, "coin") { Style = ButtonStyle.Flat, Tooltip = TextRef.Of("hud.money.tooltip"), ShortcutAction = "finance" }));
         var company = _session.Construction.Player;
         bar.Add(new Label(TextRef.Dynamic(
-            () => company.Balance ^ ((long)_host.Currency.Code.GetHashCode(StringComparison.Ordinal) << 40),
-            s => _host.Money.Format(company.Balance, _host.Currency, s.Culture)), TextSize.Title)
+            () => company.Balance ^ ((long)_host.Currency.Code.GetHashCode(StringComparison.Ordinal) << 40) ^ (company.HasInfiniteMoney ? 1L << 62 : 0),
+            s => company.HasInfiniteMoney ? s.Get("hud.money.infinite") : _host.Money.Format(company.Balance, _host.Currency, s.Culture)), TextSize.Title)
         {
             MinWidth = 110,
+            ColorOf = () => company.HasInfiniteMoney ? TextColor.Accent : company.Balance < 0 ? TextColor.Negative : TextColor.Normal,
             Tooltip = TextRef.Of("hud.money.tooltip"),
         });
         bar.Add(new IconView("calendar") { Margin = new Thickness(12, 0, 0, 0), Tooltip = TextRef.Of("hud.date.tooltip") });
@@ -909,6 +942,144 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         column.Add(new Button(TextRef.Of("pause.resume"), ClosePauseMenu) { Style = ButtonStyle.Menu, TextSize = TextSize.Title, ShortcutAction = "back", Tooltip = TextRef.Of("pause.resume.tooltip") });
         column.Add(new Button(TextRef.Of("pause.settings"), _host.OpenSettings) { Style = ButtonStyle.Menu, TextSize = TextSize.Title });
         column.Add(new Button(TextRef.Of("pause.mainMenu"), _host.ShowMainMenu) { Style = ButtonStyle.Menu, TextSize = TextSize.Title, Tooltip = TextRef.Of("pause.mainMenu.tooltip") });
+        column.Add(new Button(TextRef.Of("pause.quit"), _host.Quit) { Style = ButtonStyle.Menu, TextSize = TextSize.Title });
+        return overlay;
+    }
+
+    /// <summary>Opens (or focuses) the finance window (feature 011, US4).</summary>
+    public void OpenFinance()
+    {
+        if (_session.Simulation.Finance is null)
+        {
+            return;
+        }
+
+        _host.Ui.Windows.Open(FinanceWindow.Create(_session, (amount, s) => _host.Money.Format(amount, _host.Currency, s.Culture), RequestInfiniteMoney));
+    }
+
+    /// <summary>Shows the confirmation before turning infinite money on (it cannot be undone, FR-029).</summary>
+    public void RequestInfiniteMoney()
+    {
+        if (_gameOverShown || _session.Construction.Player.HasInfiniteMoney || _host.Ui.Overlay is not null)
+        {
+            return;
+        }
+
+        _host.Ui.Overlay = _confirmInfinite;
+    }
+
+    /// <summary>The player confirmed: sends the recorded command and closes the confirmation.</summary>
+    public void ConfirmInfiniteMoney()
+    {
+        if (IsInfiniteMoneyConfirmationOpen)
+        {
+            _host.Ui.Overlay = null;
+            _session.Submit(new Talt.Core.Finance.EnableInfiniteMoneyCommand(_session.Construction.Player.Id));
+        }
+    }
+
+    public void CancelInfiniteMoney()
+    {
+        if (IsInfiniteMoneyConfirmationOpen)
+        {
+            _host.Ui.Overlay = null;
+        }
+    }
+
+    private Panel BuildInfiniteMoneyConfirmation()
+    {
+        var overlay = new Panel { Style = PanelStyle.Overlay };
+        var panel = overlay.Add(new Panel { Style = PanelStyle.Panel, HorizontalAlignment = Alignment.Center, VerticalAlignment = Alignment.Center, Width = 420, Padding = new Thickness(18) });
+        var column = panel.Add(new StackPanel(Orientation.Vertical) { Spacing = 10 });
+        column.Add(new Label(TextRef.Of("finance.infinite.confirm.title"), TextSize.Title) { TextAlignment = Alignment.Center });
+        column.Add(new Label(TextRef.Of("finance.infinite.confirm.text")) { Wrap = true, Width = 380 });
+        var buttons = column.Add(new StackPanel(Orientation.Horizontal) { Spacing = 8, HorizontalAlignment = Alignment.Center });
+        buttons.Add(new Button(TextRef.Of("finance.infinite.confirm.yes"), ConfirmInfiniteMoney));
+        buttons.Add(new Button(TextRef.Of("finance.infinite.confirm.no"), CancelInfiniteMoney) { ShortcutAction = "back" });
+        return overlay;
+    }
+
+    /// <summary>Turns the finance events of the player's company into floating texts, messages and the game-over screen.</summary>
+    private void DrainMoneyEvents()
+    {
+        var finance = _session.Simulation.Finance;
+        if (finance is null)
+        {
+            return;
+        }
+
+        var player = _session.Construction.Player.Id;
+        while (finance.Events.TryDequeue(out var e))
+        {
+            if (e.CompanyId != player)
+            {
+                continue;
+            }
+
+            switch (e.Kind)
+            {
+                case Talt.Core.Finance.MoneyEventKind.Income when e.X >= 0:
+                    _moneyTexts.Add(e.X, e.Z, "+" + _host.Money.Format(e.Amount, _host.Currency, _host.Ui.Strings.Culture), positive: true, (float)_host.Ui.Time);
+                    break;
+                case Talt.Core.Finance.MoneyEventKind.Expense when e.X >= 0:
+                    _moneyTexts.Add(e.X, e.Z, _host.Money.Format(-Math.Abs(e.Amount), _host.Currency, _host.Ui.Strings.Culture), positive: false, (float)_host.Ui.Time);
+                    break;
+                case Talt.Core.Finance.MoneyEventKind.BankruptcyWarning:
+                {
+                    var report = finance.Report(player);
+                    ShowMessage(TextRef.Of("finance.warning",
+                        ("months", report.BankruptMonths.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                        ("limit", report.GameOverMonths.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+                    break;
+                }
+
+                case Talt.Core.Finance.MoneyEventKind.GameOver:
+                    ShowGameOver();
+                    break;
+            }
+        }
+    }
+
+    /// <summary>Pauses the game and shows the game-over screen (FR-020); it stays until the player leaves the game.</summary>
+    internal void ShowGameOver()
+    {
+        if (_gameOverShown)
+        {
+            return;
+        }
+
+        _gameOverShown = true;
+        if (!_session.Runner.IsPaused)
+        {
+            _session.Runner.TogglePause();
+        }
+
+        _host.Ui.Overlay = _gameOver;
+    }
+
+    private Panel BuildGameOver()
+    {
+        var finance = _session.Simulation.Finance;
+        var overlay = new Panel { Style = PanelStyle.Overlay };
+        var panel = overlay.Add(new Panel { Style = PanelStyle.Panel, HorizontalAlignment = Alignment.Center, VerticalAlignment = Alignment.Center, Width = 420, Padding = new Thickness(18) });
+        var column = panel.Add(new StackPanel(Orientation.Vertical) { Spacing = 10 });
+        column.Add(new Label(TextRef.Of("gameOver.title"), TextSize.Heading) { TextAlignment = Alignment.Center });
+        column.Add(new Label(TextRef.Of("gameOver.reason")) { Wrap = true, Width = 380 });
+        if (finance is not null)
+        {
+            var player = _session.Construction.Player.Id;
+            column.Add(new Label(TextRef.Dynamic(() => _session.Simulation.CurrentTick, s =>
+            {
+                var report = finance.Report(player);
+                return s.Format("gameOver.figures",
+                    ("cash", _host.Money.Format(report.Cash, _host.Currency, s.Culture)),
+                    ("loan", _host.Money.Format(report.Loan, _host.Currency, s.Culture)),
+                    ("value", _host.Money.Format(report.Value, _host.Currency, s.Culture)));
+            }))
+            { Wrap = true, Width = 380 });
+        }
+
+        column.Add(new Button(TextRef.Of("pause.mainMenu"), _host.ShowMainMenu) { Style = ButtonStyle.Menu, TextSize = TextSize.Title });
         column.Add(new Button(TextRef.Of("pause.quit"), _host.Quit) { Style = ButtonStyle.Menu, TextSize = TextSize.Title });
         return overlay;
     }

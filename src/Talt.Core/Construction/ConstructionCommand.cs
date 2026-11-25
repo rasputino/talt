@@ -60,24 +60,32 @@ public abstract record ConstructionCommand(int CompanyId) : ISimulationCommand
 
         Plan(state, planner, plan);
         plan.RatingChange = state.Towns?.PlanRatingChange(plan, CompanyId) ?? 0;
-        return Check(company, plan);
+        return Check(state, company, plan);
     }
 
     /// <summary>
-    /// The checks after planning (limits were checked by the planner; here the plan's reason and the
-    /// money). Public so a tool preview that planned with the planner directly, without creating a
+    /// The checks after planning (limits were checked by the planner; here the price level, the plan's
+    /// reason and the money). Public so a tool preview that planned with the planner directly, without creating a
     /// command, runs exactly the same checks.
     /// </summary>
-    public static CommandResult Check(Company company, ConstructionPlan plan)
+    public static CommandResult Check(ConstructionState state, Company company, ConstructionPlan plan)
     {
+        ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(company);
         ArgumentNullException.ThrowIfNull(plan);
+        if (!plan.CostInflated)
+        {
+            // Feature 011 (research R7): the planned cost at today's price level, applied once per plan.
+            plan.Cost = state.Inflate(plan.Cost);
+            plan.CostInflated = true;
+        }
+
         if (plan.Reason is not null)
         {
             return Rejected(plan.Reason);
         }
 
-        if (plan.Cost > company.Balance)
+        if (plan.Cost > company.Balance && !company.HasInfiniteMoney)
         {
             plan.Reason = ConstructionReasons.NotEnoughMoney;
             return Rejected(ConstructionReasons.NotEnoughMoney);

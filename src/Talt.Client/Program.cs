@@ -30,6 +30,10 @@ using Talt.Core.Maps;
 //   --town-service <0-100>       debug: percent of every town's passengers and mail counted as transported (towns grow)
 //   --station-service <0-100>    debug: every station's cargo is served and that percent of waiting cargo is collected
 //   --seed-stations <n>          debug: build up to n stations beside industries and town roads at the start
+//   --sandbox                    the company never goes bankrupt (feature 011)
+//   --inflation                  prices and payments rise over the years (feature 011)
+//   --infinite-money             the company has infinite money from the start (cannot be turned off; feature 011)
+//   --station-service-pays       debug: cargo collected by --station-service is paid as a delivery (feature 011)
 // Map options (feature 004); any of them starts a game straight away:
 //   --map <N|WxD>                map size in tiles, multiples of 32, 256 to 16384 (default from chunks-per-side)
 //   --seed <number>              map seed (default 2026; the map settings text is printed to share the map)
@@ -61,6 +65,7 @@ var townSettings = Talt.Core.Towns.TownSettings.Default;
 var townOptionGiven = false;
 Talt.Core.Stations.StationSettings? stationSettings = null;
 var seedStations = 0;
+var financeSettings = Talt.Core.Finance.FinanceSettings.Default;
 var mapOptions = new List<(string Name, string Value)>();
 
 for (var i = 0; i < args.Length; i++)
@@ -100,6 +105,22 @@ for (var i = 0; i < args.Length; i++)
             break;
         case "--seed-stations":
             seedStations = int.Parse(args[++i], CultureInfo.InvariantCulture);
+            townOptionGiven = true;
+            break;
+        case "--sandbox":
+            financeSettings = financeSettings with { Sandbox = true };
+            townOptionGiven = true;
+            break;
+        case "--inflation":
+            financeSettings = financeSettings with { Inflation = true };
+            townOptionGiven = true;
+            break;
+        case "--infinite-money":
+            financeSettings = financeSettings with { InfiniteMoney = true };
+            townOptionGiven = true;
+            break;
+        case "--station-service-pays":
+            financeSettings = financeSettings with { DebugServicePays = true };
             townOptionGiven = true;
             break;
         case "--start-year":
@@ -258,7 +279,8 @@ using var window = new GameWindow(new ClientOptions(
     LanguageOverride: language,
     UiScaleOverride: uiScale,
     StartGame: startGame ? new NewGameOptions(chunksPerSide, vehicleCount, seed, startYear, mapOptions.Count > 0 ? mapSettings : null, roadGrid,
-        townSettings == Talt.Core.Towns.TownSettings.Default ? null : townSettings, stationSettings, seedStations) : null,
+        townSettings == Talt.Core.Towns.TownSettings.Default ? null : townSettings, stationSettings, seedStations,
+        financeSettings == Talt.Core.Finance.FinanceSettings.Default ? null : financeSettings) : null,
     Session: new SessionOptions(recordPath, printFingerprintAt, exitAfterFingerprint),
     ShowStatistics: showStatistics,
     InitialZoom: zoom,

@@ -40,6 +40,9 @@ internal abstract class Widget
 
     public bool Visible { get; set; } = true;
 
+    /// <summary>When set, decides <see cref="Visible"/> at every layout (for example buttons hidden once a mode is on).</summary>
+    public Func<bool>? VisibleWhen { get; set; }
+
     /// <summary>Disabled widgets ignore clicks but still show their tooltip.</summary>
     public bool Enabled { get; set; } = true;
 
@@ -106,6 +109,11 @@ internal abstract class Widget
     public Vector2 Measure(UiContext ui, Vector2 available)
     {
         ArgumentNullException.ThrowIfNull(ui);
+        if (VisibleWhen is { } visibleWhen)
+        {
+            Visible = visibleWhen();
+        }
+
         if (!Visible)
         {
             DesiredSize = Vector2.Zero;

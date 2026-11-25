@@ -125,6 +125,8 @@ internal sealed class UiContext
         {
             TextColor.Muted => Theme.TextMuted,
             TextColor.Accent => Theme.Accent,
+            TextColor.Positive => Theme.Positive,
+            TextColor.Negative => Theme.Negative,
             _ => Theme.Text,
         };
 

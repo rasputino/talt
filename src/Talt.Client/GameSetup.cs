@@ -15,9 +15,11 @@ namespace Talt.Client;
 /// <paramref name="Towns"/> holds the town options (feature 008); null for the defaults.
 /// <paramref name="Stations"/> holds the station options (feature 010, debug <c>--station-service</c>); null for the
 /// defaults. <paramref name="SeedStations"/> (debug, <c>--seed-stations</c>) submits that many station commands.
+/// <paramref name="Finance"/> holds the finance options (feature 011: sandbox, inflation, debug paid service).
 /// </summary>
 internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount = 20_000, int Seed = 2026, int StartYear = 1950, MapSettings? Map = null, int? RoadGridSpacing = null,
-    Talt.Core.Towns.TownSettings? Towns = null, Talt.Core.Stations.StationSettings? Stations = null, int SeedStations = 0)
+    Talt.Core.Towns.TownSettings? Towns = null, Talt.Core.Stations.StationSettings? Stations = null, int SeedStations = 0,
+    Talt.Core.Finance.FinanceSettings? Finance = null)
 {
     public int MapSizeTiles => Map is null ? ChunksPerSide * Chunk.Size : Math.Min(Map.Width, Map.Depth);
 
@@ -32,7 +34,8 @@ internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount =
         VehicleCount: VehicleCount,
         Map: MapSettings,
         Towns: Towns,
-        Stations: Stations);
+        Stations: Stations,
+        Finance: Finance);
 }
 
 /// <summary>A freshly generated game: simulation, map data, voxel world and heightmap.</summary>

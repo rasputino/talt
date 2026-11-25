@@ -347,6 +347,8 @@ public sealed partial class StationRegistry
     /// <summary>Removes a station with no pieces left (swap with the last slot).</summary>
     private void RemoveStationSlot(int slot)
     {
+        // Feature 011 (research R3): cargo picked up here may still be delivered, paid by distance from here.
+        _removedCentre[_id[slot]] = PackCentre((_x0[slot] + _x1[slot]) / 2, (_z0[slot] + _z1[slot]) / 2);
         _slotById.Remove(_id[slot]);
         var last = _count - 1;
         if (slot != last)

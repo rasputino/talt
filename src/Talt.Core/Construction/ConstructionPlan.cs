@@ -83,8 +83,11 @@ public sealed class ConstructionPlan
 
     public ReadOnlySpan<TileProblem> Problems => _problems.AsSpan(0, ProblemCount);
 
-    /// <summary>Total cost in internal money units.</summary>
+    /// <summary>Total cost in internal money units (at today's price level once checked, feature 011).</summary>
     public long Cost { get; internal set; }
+
+    /// <summary>True once <see cref="ConstructionCommand.Check"/> applied the price level to <see cref="Cost"/>.</summary>
+    internal bool CostInflated { get; set; }
 
     /// <summary>The first problem's reason, or a whole-action reason (<c>too-large</c>, <c>nothing-to-do</c>...).</summary>
     public string? Reason { get; internal set; }
@@ -109,6 +112,7 @@ public sealed class ConstructionPlan
         ChangeCount = 0;
         ProblemCount = 0;
         Cost = 0;
+        CostInflated = false;
         RatingChange = 0;
         Reason = null;
         HasArea = false;
@@ -159,6 +163,7 @@ public sealed class ConstructionPlan
         }
 
         Cost = other.Cost;
+        CostInflated = other.CostInflated;
         RatingChange = other.RatingChange;
         Reason = other.Reason;
         Area = other.Area;

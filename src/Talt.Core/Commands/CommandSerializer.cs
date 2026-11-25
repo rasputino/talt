@@ -28,6 +28,8 @@ public static class CommandSerializer
         [Stations.BuildWarehouseCommand.Type] = Stations.BuildWarehouseCommand.Read,
         [Stations.RemoveStationCommand.Type] = Stations.RemoveStationCommand.Read,
         [Stations.RenameStationCommand.Type] = Stations.RenameStationCommand.Read,
+        [Finance.ChangeLoanCommand.Type] = Finance.ChangeLoanCommand.Read,
+        [Finance.EnableInfiniteMoneyCommand.Type] = Finance.EnableInfiniteMoneyCommand.Read,
     };
 
     private static readonly Lock Gate = new();

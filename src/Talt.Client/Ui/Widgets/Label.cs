@@ -18,6 +18,12 @@ internal enum TextColor
     Normal,
     Muted,
     Accent,
+
+    /// <summary>Income and positive money (feature 011).</summary>
+    Positive,
+
+    /// <summary>Expenses and negative money (feature 011).</summary>
+    Negative,
 }
 
 /// <summary>Localized text, on one line (cut with an ellipsis) or wrapped.</summary>
@@ -40,6 +46,9 @@ internal sealed class Label : Widget
     public TextSize Size { get; set; }
 
     public TextColor Color { get; set; } = TextColor.Normal;
+
+    /// <summary>When set, picks the colour every frame instead of <see cref="Color"/> (red negative cash).</summary>
+    public Func<TextColor>? ColorOf { get; set; }
 
     /// <summary>0 (invisible) to 1 (opaque), for fading messages.</summary>
     public float Opacity { get; set; } = 1f;
@@ -76,7 +85,7 @@ internal sealed class Label : Widget
     {
         var text = Text.Resolve(ui);
         var size = ui.FontSize(Size);
-        var color = ui.TextColorOf(Color, IsEnabledInTree).WithAlpha(Opacity);
+        var color = ui.TextColorOf(ColorOf?.Invoke() ?? Color, IsEnabledInTree).WithAlpha(Opacity);
         var lineHeight = MathF.Ceiling(TextLayout.LineHeight(ui.Font, size));
         if (!Wrap)
         {
