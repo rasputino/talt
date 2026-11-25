@@ -193,6 +193,12 @@ public sealed partial class RoadPlanner
                 continue;
             }
 
+            if (oldPiece != _piece[slot] && (_state.Stations?.RoadChangeBlocked(tile, _piece[slot]) ?? false))
+            {
+                // Feature 010: the road under a drive-through stop and the link into a bay stay while the station stands.
+                plan.AddProblem(tile, ConstructionReasons.StationRoad);
+            }
+
             var height = (byte)Height(tile);
             plan.AddChange(new TileChange(tile, height, height, oldScenery, _scenery[slot], oldKind, _kind[slot], oldOwner, _owner[slot],
                 oldPiece, _piece[slot], oldPiece != _piece[slot]));

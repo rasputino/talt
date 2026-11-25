@@ -35,6 +35,11 @@
     { "id": "toolMotorwayExit", "label": "action.toolMotorwayExit", "category": "tools", "kind": "press", "keys": ["Comma"] },
     { "id": "toolMotorwayEntry", "label": "action.toolMotorwayEntry", "category": "tools", "kind": "press", "keys": ["Period"] },
     { "id": "roadType", "label": "action.roadType", "category": "tools", "kind": "press", "keys": ["Y"] },
+    { "id": "toolBusStop", "label": "action.toolBusStop", "category": "tools", "kind": "press", "keys": ["G"] },
+    { "id": "toolTruckStop", "label": "action.toolTruckStop", "category": "tools", "kind": "press", "keys": ["H"] },
+    { "id": "toolWarehouse", "label": "action.toolWarehouse", "category": "tools", "kind": "press", "keys": ["K"] },
+    { "id": "toolRemoveStation", "label": "action.toolRemoveStation", "category": "tools", "kind": "press", "keys": ["Shift+H"] },
+    { "id": "warehouseSize", "label": "action.warehouseSize", "category": "tools", "kind": "press", "keys": ["Shift+K"] },
     { "id": "statistics", "label": "action.statistics", "category": "debug", "kind": "press", "keys": ["F3"] }
   ]
 }

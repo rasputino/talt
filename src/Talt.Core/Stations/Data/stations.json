@@ -1,0 +1,72 @@
+{
+  // Station balancing (feature 010, contracts/data-files.md). Every value is original to TALT. Money in the
+  // internal unit (1 = one US dollar); distances in tiles; ratings 0–1000; amounts in cargo units.
+  // Changing a value changes what recorded sessions replay to.
+  "pieces": [
+    {
+      "id": "bus-bay", "nameKey": "station.piece.bus-bay", "kind": "bus", "form": "bay",
+      "cost": 1800, "removeCost": 400, "catchmentRadius": 3, "categories": ["passenger"],
+      "model": { "base": "#9AA3AC", "roof": "#2E77C8" }
+    },
+    {
+      "id": "bus-stop", "nameKey": "station.piece.bus-stop", "kind": "bus", "form": "driveThrough",
+      "cost": 1400, "removeCost": 300, "catchmentRadius": 3, "categories": ["passenger"],
+      "model": { "base": "#9AA3AC", "roof": "#2E77C8" }
+    },
+    {
+      "id": "truck-bay", "nameKey": "station.piece.truck-bay", "kind": "truck", "form": "bay",
+      "cost": 2400, "removeCost": 500, "catchmentRadius": 4, "categories": ["mail", "raw", "processed", "goods"],
+      "model": { "base": "#A39A8C", "roof": "#C7782E" }
+    },
+    {
+      "id": "truck-stop", "nameKey": "station.piece.truck-stop", "kind": "truck", "form": "driveThrough",
+      "cost": 1900, "removeCost": 400, "catchmentRadius": 4, "categories": ["mail", "raw", "processed", "goods"],
+      "model": { "base": "#A39A8C", "roof": "#C7782E" }
+    }
+  ],
+  // Warehouses group the company's stations inside their influence radius (clarification Q2).
+  "warehouses": [
+    {
+      "id": "small", "nameKey": "station.warehouse.small", "width": 2, "depth": 2,
+      "cost": 12000, "removeCost": 2000, "influenceRadius": 8,
+      "model": { "base": "#8C7B6A", "roof": "#5B6B4E" }
+    },
+    {
+      "id": "medium", "nameKey": "station.warehouse.medium", "width": 3, "depth": 3,
+      "cost": 30000, "removeCost": 5000, "influenceRadius": 16,
+      "model": { "base": "#8C7B6A", "roof": "#4E5F6B" }
+    },
+    {
+      "id": "large", "nameKey": "station.warehouse.large", "width": 4, "depth": 4,
+      "cost": 80000, "removeCost": 12000, "influenceRadius": 32,
+      "model": { "base": "#8C7B6A", "roof": "#6B4E5F" }
+    }
+  ],
+  // Largest side of a station's bounding box, in tiles.
+  "maxSpread": 12,
+  // Most units of one cargo waiting per station group; the excess is lost.
+  "waitingCap": 4000,
+  // How many station groups share one producer's output (the best-rated ones).
+  "maxStationsPerProducer": 2,
+  // Town buildings accept passengers and mail in proportion to what they produce: this monthly
+  // production gives a whole unit (8 eighths) of acceptance.
+  "acceptance": { "passengersFullAt": 24, "mailFullAt": 8 },
+  "rating": {
+    "initial": 550,
+    "base": 170,
+    "maxStepPerDay": 10,
+    "overflowPenalty": 40,
+    // [days since the last pickup at most, points]; later than the last row: 0.
+    "pickupDays": [[3, 300], [7, 230], [14, 160], [30, 90], [60, 30]],
+    // [last vehicle speed at least (km/h), points]; slower than the last row: 0.
+    "speedKmh": [[100, 200], [80, 160], [60, 110], [40, 60], [20, 20]],
+    // [units waiting at most, points]; more than the last row: waitingBeyond.
+    "waiting": [[100, 150], [300, 80], [700, 20], [1500, -40], [3000, -100]],
+    "waitingBeyond": -160
+  },
+  // Below this rating and above this waiting amount, cargo is lost each day:
+  // waiting × perMilleAtZero × (belowRating − rating) / belowRating / 1000 units (at least 1).
+  "loss": { "belowRating": 350, "aboveWaiting": 200, "perMilleAtZero": 40 },
+  // --station-service: pickups every intervalDays at this speed.
+  "debug": { "intervalDays": 5, "speedKmh": 60 }
+}

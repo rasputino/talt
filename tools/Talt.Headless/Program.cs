@@ -55,6 +55,12 @@ static int Run(HeadlessOptions options)
         simulation.AttachRecorder(recorder);
     }
 
+    // Feature 010: debug stations as ordinary commands, processed at the first tick (recorded and replayed).
+    foreach (var command in Talt.Core.Stations.StationSeeder.Plan(simulation, options.SeedStations))
+    {
+        simulation.Submit(command);
+    }
+
     stopwatch.Restart();
     var ticks = options.Ticks!.Value;
     for (long t = 0; t < ticks; t++)
@@ -128,6 +134,24 @@ static void PrintSummary(GameSimulation simulation, TimeSpan setup, TimeSpan sim
             Console.WriteLine($"  {towns.NameOf(town)}: {towns.PopulationOf(town)}");
         }
     }
+    if (simulation.Stations is { Count: > 0 } stations)
+    {
+        // Feature 010: station summary (contracts/cli.md).
+        Console.WriteLine($"stations: {stations.Count}");
+        Console.WriteLine($"station-groups: {stations.GroupCount}");
+        Console.WriteLine($"waiting: {stations.TotalWaiting}");
+        Console.WriteLine($"supplied: {stations.TotalSupplied}");
+        Console.WriteLine($"collected: {stations.TotalDebugCollected}");
+        Console.WriteLine($"lost: {stations.TotalLost}");
+        var busiest = Enumerable.Range(0, stations.Count)
+            .Select(slot => (Id: stations.IdAt(slot), Waiting: Enumerable.Range(0, simulation.Content.CargoCount).Sum(c => stations.WaitingAt(stations.IdAt(slot), c))))
+            .OrderByDescending(s => s.Waiting).ThenBy(s => s.Id).Take(5);
+        foreach (var (id, waiting) in busiest)
+        {
+            Console.WriteLine($"  station {id}: {waiting} waiting");
+        }
+    }
+
     Console.WriteLine($"fingerprint: {StateHasher.Format(simulation.ComputeFingerprint())}");
     Console.WriteLine($"setup-ms: {setup.TotalMilliseconds.ToString("F0", c)}");
     Console.WriteLine($"simulate-ms: {simulate.TotalMilliseconds.ToString("F0", c)}");

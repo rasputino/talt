@@ -695,6 +695,111 @@
         ".....yyyyyy.....",
         "......yyyy......"
       ]
+    },
+    "busStop": {
+      "palette": {"b": "#2E77C8", "w": "#DCE9F7", "k": "#2B2F36", "p": "#9AA3AC"},
+      "rows": [
+        "................",
+        "..pp............",
+        "..pp............",
+        "..pp.bbbbbbbbbb.",
+        "..pp.bwwbwwbwwb.",
+        "..pp.bwwbwwbwwb.",
+        "..pp.bbbbbbbbbb.",
+        "..pp.bbbbbbbbbb.",
+        "..pp.bbbbbbbbbb.",
+        "..pp.bkkbbbbkkb.",
+        "..pp..kk....kk..",
+        "..pp............",
+        "..pp............",
+        "pppppppppppppppp",
+        "................",
+        "................"
+      ]
+    },
+    "truckStop": {
+      "palette": {"o": "#C7782E", "w": "#F4E2CC", "k": "#2B2F36", "c": "#8C7B6A"},
+      "rows": [
+        "................",
+        "................",
+        "................",
+        ".cccccccc.......",
+        ".cccccccc.......",
+        ".cccccccc.ooo...",
+        ".cccccccc.owwo..",
+        ".cccccccc.owwoo.",
+        ".cccccccc.ooooo.",
+        ".cccccccc.ooooo.",
+        ".kkkcccccckkkoo.",
+        ".kkk......kkk...",
+        "................",
+        "cccccccccccccccc",
+        "................",
+        "................"
+      ]
+    },
+    "warehouse": {
+      "palette": {"r": "#5B6B4E", "w": "#B8A894", "d": "#5A4A3C"},
+      "rows": [
+        "................",
+        "................",
+        ".......rr.......",
+        ".....rrrrrr.....",
+        "...rrrrrrrrrr...",
+        ".rrrrrrrrrrrrrr.",
+        ".wwwwwwwwwwwwww.",
+        ".wwwwwwwwwwwwww.",
+        ".wwwddddddddwww.",
+        ".wwwddddddddwww.",
+        ".wwwddddddddwww.",
+        ".wwwddddddddwww.",
+        ".wwwddddddddwww.",
+        ".wwwddddddddwww.",
+        "................",
+        "................"
+      ]
+    },
+    "removeStation": {
+      "palette": {"p": "#9AA3AC", "b": "#2E77C8", "x": "#D9483B"},
+      "rows": [
+        "................",
+        "..pp............",
+        "..pp..bbbbbbbb..",
+        "..pp..bbbbbbbb..",
+        "..pp....x....x..",
+        "..pp.....x..x...",
+        "..pp......xx....",
+        "..pp......xx....",
+        "..pp.....x..x...",
+        "..pp....x....x..",
+        "..pp...x......x.",
+        "..pp............",
+        "..pp............",
+        "pppppppppppppppp",
+        "................",
+        "................"
+      ]
+    },
+    "warehouseSize": {
+      "palette": {"w": "#B8A894", "r": "#5B6B4E"},
+      "rows": [
+        "................",
+        "................",
+        "................",
+        "................",
+        "..........rrrrr.",
+        "..........wwwww.",
+        "......rrr.wwwww.",
+        "......www.wwwww.",
+        ".rr...www.wwwww.",
+        ".ww...www.wwwww.",
+        ".ww...www.wwwww.",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................"
+      ]
     }
   }
 }

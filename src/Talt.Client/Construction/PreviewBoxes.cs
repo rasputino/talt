@@ -95,6 +95,31 @@ internal sealed class PreviewBoxes
         }
     }
 
+    /// <summary>
+    /// Adds a station's catchment (feature 010, FR-011): a thin slab in the area colour on every tile not already
+    /// marked by the plan.
+    /// </summary>
+    public void AppendArea(IReadOnlyList<int> tiles, MapData map, Theme theme)
+    {
+        ArgumentNullException.ThrowIfNull(tiles);
+        ArgumentNullException.ThrowIfNull(map);
+        ArgumentNullException.ThrowIfNull(theme);
+        var color = Linear(theme.PreviewArea);
+        var width = map.Width;
+        for (var i = 0; i < tiles.Count; i++)
+        {
+            var tile = tiles[i];
+            if (_marked.Find(tile) >= 0)
+            {
+                continue;
+            }
+
+            var x = tile % width;
+            var z = tile / width;
+            Add(x, z, map.SurfaceHeightAt(x, z), color);
+        }
+    }
+
     private void Add(int x, int z, int height, Vector4 color)
     {
         Grow(_count + 1);

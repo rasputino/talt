@@ -44,7 +44,7 @@ public sealed partial class TownRegistry
             }
 
             var tile = _map.Index(x, z);
-            if (!roads.HasRoad(tile) || _state.Objects.OwnerAt(tile) != owner || !OrdinaryPiece(roads.PieceAt(tile)))
+            if (!roads.HasRoad(tile) || _state.Objects.OwnerAt(tile) != owner || !OrdinaryPiece(roads.PieceAt(tile)) || IsStation(tile))
             {
                 continue;
             }
@@ -123,7 +123,7 @@ public sealed partial class TownRegistry
             var joins = _state.Roads.HasRoad(next);
             if (joins)
             {
-                if (!OrdinaryPiece(_state.Roads.PieceAt(next)))
+                if (!OrdinaryPiece(_state.Roads.PieceAt(next)) || IsStation(next))
                 {
                     break;
                 }
@@ -163,6 +163,9 @@ public sealed partial class TownRegistry
         piece.HasRoad
         && (piece.Flags & (RoadFeatures.LongLinkEnd | RoadFeatures.Connector)) == 0
         && !_state.RoadRules.IsMotorway(piece.TypeIndex);
+
+    /// <summary>Station pieces (feature 010): towns never extend or join their streets through them.</summary>
+    private bool IsStation(int tile) => _state.Stations?.HasPiece(tile) ?? false;
 
     /// <summary>A tile a new street piece may use: land, nothing on it, nothing passing, no industry.</summary>
     private bool StreetTileFree(int tile)

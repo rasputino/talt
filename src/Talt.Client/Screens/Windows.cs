@@ -29,6 +29,7 @@ internal static class ObjectInfoWindow
             PickKind.Road => TextRef.Of("info.road.title"),
             PickKind.Industry => IndustryTitle(pick.IndustryId, session),
             PickKind.Town when session.Simulation.Towns is { } towns => TownWindow.Title(towns, pick.TownId),
+            PickKind.Station when session.Simulation.Stations is { } stations => StationWindow.Title(stations, session.Simulation.Towns, pick.StationId),
             _ => TextRef.Of("info.tile.title"),
         };
         var window = new UiWindow(Kind, title) { Key = pick.Key };
@@ -50,6 +51,10 @@ internal static class ObjectInfoWindow
         else if (pick.Kind == PickKind.Town && session.Simulation.Towns is { } towns)
         {
             TownWindow.Add(content, towns, pick.TownId, () => (session.Simulation.CurrentTick / Talt.Core.Simulation.GameClock.TicksPerDay) ^ ((long)session.Construction.Version << 32));
+        }
+        else if (pick.Kind == PickKind.Station && session.Simulation.Stations is { } stations)
+        {
+            StationWindow.Add(content, window, stations, pick.StationId, session);
         }
         else if (pick.Kind == PickKind.Road && session.Construction.Roads.Contains(pick.TileX, pick.TileZ))
         {

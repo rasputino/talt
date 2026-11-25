@@ -18,7 +18,8 @@ internal sealed record HeadlessOptions(
     bool Sequential,
     string? RecordPath,
     string? SessionPath,
-    int CheckpointEvery);
+    int CheckpointEvery,
+    int SeedStations = 0);
 
 /// <summary>Parses the headless runner's arguments without side effects (unit-testable).</summary>
 internal static class HeadlessArguments
@@ -29,6 +30,7 @@ internal static class HeadlessArguments
                             [--start-year <int>] [--map-text <T2-...>] --ticks <int> [--sequential]
                             [--record <session.json>] [--town-names mixed|english|spanish]
                             [--town-size small|normal|large] [--town-service <0-100>]
+                            [--station-service <0-100>] [--seed-stations <n>]
           Talt.Headless replay <session.json> [--ticks <int>] [--checkpoint-every <int>] [--sequential]
         """;
 
@@ -67,6 +69,8 @@ internal static class HeadlessArguments
         string? session = null;
         string? mapText = null;
         var towns = Talt.Core.Towns.TownSettings.Default;
+        var stationService = 0;
+        var seedStations = 0;
 
         try
         {
@@ -101,6 +105,8 @@ internal static class HeadlessArguments
                         };
                         break;
                     case "--town-service": towns = towns with { DebugServicePercent = ParseInt(args, ref i) }; break;
+                    case "--station-service": stationService = ParseInt(args, ref i); break;
+                    case "--seed-stations": seedStations = ParseInt(args, ref i); break;
                     default:
                         if (command == HeadlessCommand.Replay && session is null && !args[i].StartsWith("--", StringComparison.Ordinal))
                         {
@@ -126,7 +132,8 @@ internal static class HeadlessArguments
         }
 
         var settings = new ScenarioSettings(Seed: seed, StartYear: startYear, MapSizeTiles: map ?? defaults.MapSizeTiles, VehicleCount: vehicles, LineCount: lines,
-            Towns: towns == Talt.Core.Towns.TownSettings.Default ? null : towns);
+            Towns: towns == Talt.Core.Towns.TownSettings.Default ? null : towns,
+            Stations: stationService == 0 ? null : new Talt.Core.Stations.StationSettings(stationService));
         if (mapText is not null)
         {
             if (!MapSettings.TryParse(mapText, out var parsedMap, out var mapError))
@@ -168,7 +175,13 @@ internal static class HeadlessArguments
             return false;
         }
 
-        options = new HeadlessOptions(command.Value, settings, ticks, sequential, record, session, checkpointEvery);
+        if (seedStations < 0)
+        {
+            error = "--seed-stations cannot be negative.";
+            return false;
+        }
+
+        options = new HeadlessOptions(command.Value, settings, ticks, sequential, record, session, checkpointEvery, seedStations);
         return true;
     }
 

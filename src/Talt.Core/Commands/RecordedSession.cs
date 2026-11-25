@@ -67,6 +67,13 @@ public sealed class RecordedSession
                 writer.WriteString("size", Towns.TownSettings.ToText(towns.Size));
                 writer.WriteNumber("servicePercent", towns.DebugServicePercent);
                 writer.WriteEndObject();
+                if (Settings.Stations is { } stations && stations != Stations.StationSettings.Default)
+                {
+                    // Feature 010: written only when set, so earlier sessions keep their exact form.
+                    writer.WriteStartObject("stations");
+                    writer.WriteNumber("servicePercent", stations.DebugServicePercent);
+                    writer.WriteEndObject();
+                }
             }
 
             writer.WriteEndObject();
@@ -144,6 +151,16 @@ public sealed class RecordedSession
             }
         }
 
+        Stations.StationSettings? stationSettings = null;
+        if (s.TryGetProperty("stations", out var stationsElement))
+        {
+            stationSettings = new Stations.StationSettings(stationsElement.GetProperty("servicePercent").GetInt32());
+            if (stationSettings == Stations.StationSettings.Default)
+            {
+                stationSettings = null;
+            }
+        }
+
         var settings = new ScenarioSettings(
             Seed: s.GetProperty("seed").GetInt32(),
             StartYear: s.GetProperty("startYear").GetInt32(),
@@ -153,7 +170,8 @@ public sealed class RecordedSession
             VehicleCount: s.GetProperty("vehicleCount").GetInt32(),
             LineCount: s.GetProperty("lineCount").GetInt32(),
             Map: map,
-            Towns: townSettings);
+            Towns: townSettings,
+            Stations: stationSettings);
 
         var gameVersion = root.TryGetProperty("gameVersion", out var gv) ? gv.GetString() ?? "unknown" : "unknown";
         var session = new RecordedSession(settings, gameVersion);

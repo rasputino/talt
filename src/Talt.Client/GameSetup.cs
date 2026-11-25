@@ -13,9 +13,11 @@ namespace Talt.Client;
 /// The new-game screen builds this from <see cref="Screens.INewGameOptionsSource"/>.
 /// <paramref name="RoadGridSpacing"/> (debug, <c>--road-grid</c>) lays a full road grid at that spacing after creation.
 /// <paramref name="Towns"/> holds the town options (feature 008); null for the defaults.
+/// <paramref name="Stations"/> holds the station options (feature 010, debug <c>--station-service</c>); null for the
+/// defaults. <paramref name="SeedStations"/> (debug, <c>--seed-stations</c>) submits that many station commands.
 /// </summary>
 internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount = 20_000, int Seed = 2026, int StartYear = 1950, MapSettings? Map = null, int? RoadGridSpacing = null,
-    Talt.Core.Towns.TownSettings? Towns = null)
+    Talt.Core.Towns.TownSettings? Towns = null, Talt.Core.Stations.StationSettings? Stations = null, int SeedStations = 0)
 {
     public int MapSizeTiles => Map is null ? ChunksPerSide * Chunk.Size : Math.Min(Map.Width, Map.Depth);
 
@@ -29,7 +31,8 @@ internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount =
         MapSizeTiles: MapSizeTiles,
         VehicleCount: VehicleCount,
         Map: MapSettings,
-        Towns: Towns);
+        Towns: Towns,
+        Stations: Stations);
 }
 
 /// <summary>A freshly generated game: simulation, map data, voxel world and heightmap.</summary>
@@ -64,6 +67,18 @@ internal static class GameSetup
         {
             // Debug (--road-grid): a full road grid for the dense-network frame-rate check (SC-005).
             construction.SeedDebugGrid(spacing);
+        }
+
+        if (options.SeedStations > 0)
+        {
+            // Debug (--seed-stations): station commands processed at the first tick, so recordings replay them.
+            var commands = Talt.Core.Stations.StationSeeder.Plan(simulation, options.SeedStations);
+            foreach (var command in commands)
+            {
+                simulation.Submit(command);
+            }
+
+            report?.Invoke($"Seeded {commands.Count} station commands.");
         }
 
         report?.Invoke($"Created simulation ({construction.Roads.RoadTileCount:N0} road tiles, {construction.Network.NodeCount:N0} road junctions, {simulation.Industries.Count:N0} industries, {simulation.Towns?.Count ?? 0:N0} towns with {simulation.Towns?.Buildings.Count ?? 0:N0} buildings) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");

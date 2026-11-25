@@ -43,6 +43,18 @@ public static class ConstructionReasons
     // Towns (feature 008).
     public const string TownRefuses = "town-refuses";
 
+    // Stations (feature 010, specs/010-stations-cargo/contracts/commands.md).
+    public const string NoRoad = "no-road";
+    public const string NotStraightRoad = "not-straight-road";
+    public const string NotFlat = "not-flat";
+    public const string AdjacentTwoStations = "adjacent-two-stations";
+    public const string StationTooSpread = "station-too-spread";
+    public const string NoStation = "no-station";
+    public const string StationRoad = "station-road";
+    public const string UseStationTool = "use-station-tool";
+    public const string NameTooLong = "name-too-long";
+    public const string UnknownStationType = "unknown-station-type";
+
     /// <summary>An English description for logs and recorded sessions (players see localized texts).</summary>
     public static string Describe(string code) => code switch
     {
@@ -78,6 +90,16 @@ public static class ConstructionReasons
         UseRoadRemoval => "Roads are removed with the road removal tool.",
         NotACarriageway => "Connectors go on a straight, flat motorway carriageway.",
         TownRefuses => "The town's rating of the company is too low for this.",
+        NoRoad => "A station bay or warehouse must touch a road on one of its sides.",
+        NotStraightRoad => "A drive-through stop needs a straight road tile without junctions, bridge or tunnel ends.",
+        NotFlat => "The ground must be flat and level with the road.",
+        AdjacentTwoStations => "The piece would touch two different stations.",
+        StationTooSpread => "The station would become too spread out.",
+        NoStation => "There is no station of the company here.",
+        StationRoad => "A station uses this road.",
+        UseStationTool => "Stations are removed with the station removal tool.",
+        NameTooLong => "The name is too long.",
+        UnknownStationType => "The station type does not exist.",
         _ => "Refused.",
     };
 
@@ -89,5 +111,7 @@ public static class ConstructionReasons
         NoPath, RoadTypeUnavailable, UnknownRoadType, Downgrade, Industry, BridgeTooLong, BridgeEnds, BridgeBlocked,
         TunnelNoExit, TunnelTooLong, TunnelBlocked, NotStraight, MotorwayJunction, NotARoad, TownNeedsRoad,
         UseRoadRemoval, NotACarriageway, TownRefuses,
+        NoRoad, NotStraightRoad, NotFlat, AdjacentTwoStations, StationTooSpread, NoStation, StationRoad, UseStationTool,
+        NameTooLong, UnknownStationType,
     ];
 }

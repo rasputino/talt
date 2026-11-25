@@ -40,6 +40,12 @@ public sealed class TownBuildings : IStateHashable
     /// </summary>
     public bool TrackChanges { get; set; }
 
+    /// <summary>
+    /// Simulation-side list of changed footprint tiles for station coverage (feature 010, research R5), set by the
+    /// station registry; independent of the client's <see cref="TrackChanges"/> list. Not simulation state.
+    /// </summary>
+    internal List<int>? StationWatch { get; set; }
+
     /// <summary>Number of buildings; valid slots are <c>0..Count-1</c>.</summary>
     public int Count { get; private set; }
 
@@ -123,6 +129,7 @@ public sealed class TownBuildings : IStateHashable
             {
                 var tile = x + dx + ((z + dz) * _mapWidth);
                 _buildingAtTile[tile] = id;
+                StationWatch?.Add(tile);
                 if (TrackChanges)
                 {
                     _changedTiles.Add(tile);
@@ -143,6 +150,7 @@ public sealed class TownBuildings : IStateHashable
             {
                 var tile = _x[slot] + dx + ((_z[slot] + dz) * _mapWidth);
                 _buildingAtTile.Remove(tile);
+                StationWatch?.Add(tile);
                 if (TrackChanges)
                 {
                     _changedTiles.Add(tile);

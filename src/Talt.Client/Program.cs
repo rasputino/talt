@@ -28,6 +28,8 @@ using Talt.Core.Maps;
 //   --town-names <style>         town name style: mixed (default), english or spanish
 //   --town-size <size>           starting town sizes: small, normal (default) or large
 //   --town-service <0-100>       debug: percent of every town's passengers and mail counted as transported (towns grow)
+//   --station-service <0-100>    debug: every station's cargo is served and that percent of waiting cargo is collected
+//   --seed-stations <n>          debug: build up to n stations beside industries and town roads at the start
 // Map options (feature 004); any of them starts a game straight away:
 //   --map <N|WxD>                map size in tiles, multiples of 32, 256 to 16384 (default from chunks-per-side)
 //   --seed <number>              map seed (default 2026; the map settings text is printed to share the map)
@@ -57,6 +59,8 @@ var noAudio = false;
 int? roadGrid = null;
 var townSettings = Talt.Core.Towns.TownSettings.Default;
 var townOptionGiven = false;
+Talt.Core.Stations.StationSettings? stationSettings = null;
+var seedStations = 0;
 var mapOptions = new List<(string Name, string Value)>();
 
 for (var i = 0; i < args.Length; i++)
@@ -87,6 +91,15 @@ for (var i = 0; i < args.Length; i++)
         case "--town-service":
             townSettings = townSettings with { DebugServicePercent = int.Parse(args[++i], CultureInfo.InvariantCulture) };
             townSettings.Validate();
+            townOptionGiven = true;
+            break;
+        case "--station-service":
+            stationSettings = new Talt.Core.Stations.StationSettings(int.Parse(args[++i], CultureInfo.InvariantCulture));
+            stationSettings.Validate();
+            townOptionGiven = true;
+            break;
+        case "--seed-stations":
+            seedStations = int.Parse(args[++i], CultureInfo.InvariantCulture);
             townOptionGiven = true;
             break;
         case "--start-year":
@@ -245,7 +258,7 @@ using var window = new GameWindow(new ClientOptions(
     LanguageOverride: language,
     UiScaleOverride: uiScale,
     StartGame: startGame ? new NewGameOptions(chunksPerSide, vehicleCount, seed, startYear, mapOptions.Count > 0 ? mapSettings : null, roadGrid,
-        townSettings == Talt.Core.Towns.TownSettings.Default ? null : townSettings) : null,
+        townSettings == Talt.Core.Towns.TownSettings.Default ? null : townSettings, stationSettings, seedStations) : null,
     Session: new SessionOptions(recordPath, printFingerprintAt, exitAfterFingerprint),
     ShowStatistics: showStatistics,
     InitialZoom: zoom,

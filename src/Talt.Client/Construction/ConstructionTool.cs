@@ -1,5 +1,6 @@
 using Talt.Core.Construction;
 using Talt.Core.Roads;
+using Talt.Core.Stations;
 
 namespace Talt.Client.Construction;
 
@@ -43,6 +44,19 @@ internal sealed record ConstructionTool(
 {
     /// <summary>The tool takes things away: its preview marks them in the removal colour, not the build colour.</summary>
     public bool Removes { get; init; }
+
+    /// <summary>
+    /// Builds the command when it depends on the game state (feature 010: the station form follows the tile);
+    /// used instead of <see cref="Create"/> when set.
+    /// </summary>
+    public Func<ConstructionState, int, (int X, int Z), (int X, int Z), ConstructionCommand>? CreateFor { get; init; }
+
+    /// <summary>A station tool (feature 010): drawn in the stations column, previews its catchment.</summary>
+    public bool IsStation { get; init; }
+
+    /// <summary>The command for a drag, from <see cref="CreateFor"/> or <see cref="Create"/>.</summary>
+    public ConstructionCommand Command(ConstructionState state, int company, (int X, int Z) start, (int X, int Z) end) =>
+        CreateFor is not null ? CreateFor(state, company, start, end) : Create(company, start, end);
 
     public static ConstructionTool Raise { get; } = Terraform("raise", "toolRaise", TerraformMode.Raise);
 
@@ -90,9 +104,42 @@ internal sealed record ConstructionTool(
         static (planner, state, company, a, _, plan) => planner.Roads.PlanConnector(state, company, a, exit: false, plan),
         static (company, a, _) => new BuildMotorwayConnectorCommand(company, a.X, a.Z, false));
 
-    /// <summary>The construction tools in toolbar order: terrain (feature 006), then roads (feature 007).</summary>
+    /// <summary>Bus stop (feature 010): drive-through on a straight road, a bay beside one elsewhere.</summary>
+    public static ConstructionTool BusStop { get; } = Station("busStop", "toolBusStop", StationPieceKind.Bus);
+
+    /// <summary>Truck stop (feature 010), in the same two forms.</summary>
+    public static ConstructionTool TruckStop { get; } = Station("truckStop", "toolTruckStop", StationPieceKind.Truck);
+
+    /// <summary>Warehouse of the chosen size (feature 010); the cursor tile is the footprint's minimum corner.</summary>
+    public static ConstructionTool Warehouse { get; } = new("warehouse", "toolWarehouse", DragShape.Tile,
+        static (_, state, company, a, _, plan) => StationPlanner.PlanWarehouse(state, company, StationToolOptions.SizeIndex(RulesOf(state)), a.X, a.Z, plan),
+        static (company, a, _) => new BuildWarehouseCommand(company, "small", a.X, a.Z))
+    {
+        CreateFor = static (state, company, a, _) => new BuildWarehouseCommand(company, StationToolOptions.SizeId(RulesOf(state)), a.X, a.Z),
+        IsStation = true,
+    };
+
+    public static ConstructionTool RemoveStation { get; } = new("removeStation", "toolRemoveStation", DragShape.Tile,
+        static (_, state, company, a, _, plan) => StationPlanner.PlanRemoval(state, company, a.X, a.Z, plan),
+        static (company, a, _) => new RemoveStationCommand(company, a.X, a.Z))
+    {
+        Removes = true,
+        IsStation = true,
+    };
+
+    /// <summary>The construction tools in toolbar order: terrain (feature 006), roads (feature 007), stations (feature 010).</summary>
     public static IReadOnlyList<ConstructionTool> All { get; } =
-        [Raise, Lower, Level, Clear, Road, Bridge, Tunnel, RemoveRoad, OneWay, Motorway, MotorwayExit, MotorwayEntry];
+        [Raise, Lower, Level, Clear, Road, Bridge, Tunnel, RemoveRoad, OneWay, Motorway, MotorwayExit, MotorwayEntry, BusStop, TruckStop, Warehouse, RemoveStation];
+
+    private static StationRules RulesOf(ConstructionState state) => state.Stations?.Rules ?? StationRules.Default;
+
+    private static ConstructionTool Station(string id, string action, StationPieceKind kind) => new(id, action, DragShape.Tile,
+        (_, state, company, a, _, plan) => StationPlanner.PlanPiece(state, company, StationPlanner.ChoosePiece(state, kind, a.X, a.Z), a.X, a.Z, plan),
+        (company, a, _) => new BuildStationCommand(company, kind == StationPieceKind.Bus ? "bus-bay" : "truck-bay", a.X, a.Z))
+    {
+        CreateFor = (state, company, a, _) => new BuildStationCommand(company, RulesOf(state).Pieces[StationPlanner.ChoosePiece(state, kind, a.X, a.Z)].Id, a.X, a.Z),
+        IsStation = true,
+    };
 
     /// <summary>A tunnel goes from the press tile towards the drag; a click picks the single higher neighbour (-1).</summary>
     private static int TunnelDirection((int X, int Z) a, (int X, int Z) b) =>
