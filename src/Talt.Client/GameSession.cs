@@ -58,6 +58,9 @@ internal sealed class GameSession
     private int _drawCount;
     private float _drawFactor;
     private IndustryInstance[] _industryInstances = [];
+    private float[] _yaws = [];
+    private ModelEntry? _vehicleModel;
+    private ModelEntry?[] _industryModels = [];
     private int _industryCount;
     private int _industryVersion = -1;
 
@@ -195,6 +198,69 @@ internal sealed class GameSession
         BuildIndustryInstances();
     }
 
+    /// <summary>Whether vehicles are drawn as models (then their placeholder boxes are not uploaded).</summary>
+    public bool HasVehicleModels => _vehicleModel is not null;
+
+    /// <summary>
+    /// Uses voxel models for vehicles (key <c>vehicle</c>) and for the industry kinds that have one (key
+    /// <c>industry:&lt;id&gt;</c>), feature 018; the others keep their boxes.
+    /// </summary>
+    public void UseModels(ModelLibrary? library)
+    {
+        _vehicleModel = library is not null && library.TryGet("vehicle", out var vehicle) ? vehicle : null;
+        var kinds = Simulation.Content.AllIndustryKinds;
+        _industryModels = new ModelEntry?[kinds.Count];
+        for (var k = 0; k < kinds.Count; k++)
+        {
+            _industryModels[k] = library is not null && library.TryGet("industry:" + kinds[k].Id, out var entry) ? entry : null;
+        }
+
+        _industryVersion = -1;
+    }
+
+    /// <summary>Adds the vehicles of the last <see cref="BuildInstances"/> to the frame's model batch.</summary>
+    public void AppendVehicleModels(ModelBatch batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        if (_vehicleModel is not { } model)
+        {
+            return;
+        }
+
+        for (var v = 0; v < _drawCount; v++)
+        {
+            var instance = _instances[v];
+            var id = _instanceIds[v];
+            var position = new Vector3(instance.Position.X, instance.Position.Y, instance.Position.Z);
+            var tint = new Vector3(instance.Color.X, instance.Color.Y, instance.Color.Z);
+            batch.Add(model.Variant(id), position, _yaws[v], tint, (unchecked((uint)id * 2654435761u) >> 16) / 65536f);
+        }
+    }
+
+    /// <summary>Adds the industries that have models to the frame's model batch.</summary>
+    public void AppendIndustryModels(ModelBatch batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        var industries = Simulation.Industries;
+        for (var slot = 0; slot < industries.Count; slot++)
+        {
+            var kindIndex = industries.KindIndexAt(slot);
+            if (kindIndex >= _industryModels.Length || _industryModels[kindIndex] is not { } entry)
+            {
+                continue;
+            }
+
+            var kind = Simulation.Content.IndustryKind(kindIndex);
+            var x = industries.XAt(slot);
+            var z = industries.ZAt(slot);
+            var position = new Vector3(
+                x + (kind.FootprintWidth % 2 == 0 ? 0f : 0.5f),
+                Game.Map.HeightAt(x, z),
+                z + (kind.FootprintDepth % 2 == 0 ? 0f : 0.5f));
+            batch.Add(entry.Variant(slot), position, 0f, Vector3.One, (slot * 37 % 100) / 100f);
+        }
+    }
+
     /// <summary>Writes the recorded session, if recording.</summary>
     public void SaveRecording()
     {
@@ -301,6 +367,7 @@ internal sealed class GameSession
         Array.Resize(ref _currentIds, size);
         Array.Resize(ref _instances, size);
         Array.Resize(ref _instanceIds, size);
+        Array.Resize(ref _yaws, size);
     }
 
     private void BuildInstancesBatch(int batch)
@@ -322,6 +389,7 @@ internal sealed class GameSession
                 new Vector4(p.X, map.Get(position.X, position.Y), p.Y, alongZ),
                 VehicleColors[_currentIds[v] % VehicleColors.Length]);
             _instanceIds[v] = _currentIds[v];
+            _yaws[v] = MathF.Atan2(direction.X, direction.Y); // Model front (+Z) along the travel direction.
         }
     }
 
@@ -341,7 +409,11 @@ internal sealed class GameSession
         var total = 0;
         for (var slot = 0; slot < industries.Count; slot++)
         {
-            total += Simulation.Content.IndustryKind(industries.KindIndexAt(slot)).Model.Count;
+            var kindIndex = industries.KindIndexAt(slot);
+            if (kindIndex >= _industryModels.Length || _industryModels[kindIndex] is null)
+            {
+                total += Simulation.Content.IndustryKind(kindIndex).Model.Count;
+            }
         }
 
         if (_industryInstances.Length < total)
@@ -352,7 +424,13 @@ internal sealed class GameSession
         var index = 0;
         for (var slot = 0; slot < industries.Count; slot++)
         {
-            var kind = Simulation.Content.IndustryKind(industries.KindIndexAt(slot));
+            var kindIndex = industries.KindIndexAt(slot);
+            if (kindIndex < _industryModels.Length && _industryModels[kindIndex] is not null)
+            {
+                continue; // Drawn as a model.
+            }
+
+            var kind = Simulation.Content.IndustryKind(kindIndex);
             var x = industries.XAt(slot);
             var z = industries.ZAt(slot);
             var ground = Game.Map.HeightAt(x, z);

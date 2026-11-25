@@ -41,6 +41,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     private readonly ToolController _tools = new();
     private readonly PreviewBoxes _previewBoxes = new();
     private readonly TreeInstances _trees = new();
+    private readonly DecorScatter _decor = new();
     private readonly Panel _cursorLabel;
     private int _uploadedPreviewVersion = -1;
     private int _highlightCount;
@@ -117,6 +118,23 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         _uploadedPreviewVersion = _tools.PreviewVersion;
         return true;
     }
+
+    /// <summary>Trees drawn as models (feature 018).</summary>
+    public ReadOnlySpan<ModelPlacement> TreeModels => _trees.Placements;
+
+    /// <summary>Bushes and rocks around the camera (feature 018).</summary>
+    public ReadOnlySpan<ModelPlacement> DecorModels => _decor.Placements;
+
+    /// <summary>Uses voxel models for trees and decoration.</summary>
+    public void UseModels(ModelLibrary? library)
+    {
+        _trees.UseModels(library);
+        _decor.UseModels(library);
+    }
+
+    /// <summary>Rebuilds the bushes and rocks around the camera target when needed.</summary>
+    public void UpdateDecor(float density) =>
+        _decor.Update(_session.Construction.Map, _session.Construction.Objects, _camera.Target, _session.SceneryVersion, density);
 
     /// <summary>Rebuilds the trees around the camera target when needed; true when they changed.</summary>
     public bool UpdateTrees() => _trees.Update(_session.Construction.Map, _camera.Target, _session.SceneryVersion);

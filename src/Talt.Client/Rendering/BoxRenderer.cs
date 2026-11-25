@@ -21,8 +21,8 @@ internal sealed unsafe class BoxRenderer : IDisposable
     private readonly Device* _device;
     private readonly Queue* _queue;
     private readonly ShaderModule* _shader;
-    private readonly RenderPipeline* _opaquePipeline;
-    private readonly RenderPipeline* _translucentPipeline;
+    private readonly WorldPipeline _opaquePipeline;
+    private readonly WorldPipeline _translucentPipeline;
     private readonly Buffer* _cubeVertices;
     private readonly Buffer* _cubeIndices;
     private readonly ulong _cubeVertexBytes;
@@ -30,14 +30,17 @@ internal sealed unsafe class BoxRenderer : IDisposable
     private Layer _opaque;
     private Layer _translucent;
 
-    public BoxRenderer(WebGPU wgpu, Device* device, Queue* queue, PipelineLayout* worldLayout, TextureFormat surfaceFormat, TextureFormat depthFormat)
+    public BoxRenderer(WorldPassContext context)
     {
+        ArgumentNullException.ThrowIfNull(context);
+        var wgpu = context.Wgpu;
+        var device = context.Device;
         _wgpu = wgpu;
         _device = device;
-        _queue = queue;
+        _queue = context.Queue;
         _shader = WebGpuShaders.CreateModule(wgpu, device, WebGpuShaders.Load("boxes.wgsl"));
-        _opaquePipeline = CreatePipeline(worldLayout, surfaceFormat, depthFormat, translucent: false);
-        _translucentPipeline = CreatePipeline(worldLayout, surfaceFormat, depthFormat, translucent: true);
+        _opaquePipeline = new WorldPipeline(context, PipelineSpecs.InstancedCube(_shader, (ulong)sizeof(BoxInstance), 3));
+        _translucentPipeline = new WorldPipeline(context, PipelineSpecs.InstancedCube(_shader, (ulong)sizeof(BoxInstance), 3, translucent: true));
 
         var (vertices, indices) = UnitCube.Build();
         _cubeVertices = CreateBuffer(vertices, BufferUsage.Vertex | BufferUsage.CopyDst);
@@ -53,10 +56,13 @@ internal sealed unsafe class BoxRenderer : IDisposable
     public void UpdateTranslucent(ReadOnlySpan<BoxInstance> boxes) => Upload(ref _translucent, boxes);
 
     /// <summary>Opaque boxes; call after the terrain, with the world bind group set.</summary>
-    public void EncodeOpaque(RenderPassEncoder* pass) => Encode(pass, _opaquePipeline, _opaque);
+    public void EncodeOpaque(RenderPassEncoder* pass) => Encode(pass, _opaquePipeline.Main, _opaque);
+
+    /// <summary>Opaque boxes into a shadow cascade (feature 018).</summary>
+    public void EncodeShadow(RenderPassEncoder* pass) => Encode(pass, _opaquePipeline.Shadow, _opaque);
 
     /// <summary>Translucent boxes; call last in the world pass, with the world bind group set.</summary>
-    public void EncodeTranslucent(RenderPassEncoder* pass) => Encode(pass, _translucentPipeline, _translucent);
+    public void EncodeTranslucent(RenderPassEncoder* pass) => Encode(pass, _translucentPipeline.Main, _translucent);
 
     public void Clear()
     {
@@ -70,8 +76,8 @@ internal sealed unsafe class BoxRenderer : IDisposable
         Release(_translucent);
         _wgpu.BufferRelease(_cubeVertices);
         _wgpu.BufferRelease(_cubeIndices);
-        _wgpu.RenderPipelineRelease(_opaquePipeline);
-        _wgpu.RenderPipelineRelease(_translucentPipeline);
+        _opaquePipeline.Dispose();
+        _translucentPipeline.Dispose();
         _wgpu.ShaderModuleRelease(_shader);
     }
 
@@ -114,51 +120,6 @@ internal sealed unsafe class BoxRenderer : IDisposable
         if (layer.Buffer != null)
         {
             _wgpu.BufferRelease(layer.Buffer);
-        }
-    }
-
-    private RenderPipeline* CreatePipeline(PipelineLayout* layout, TextureFormat surfaceFormat, TextureFormat depthFormat, bool translucent)
-    {
-        var cubeAttributes = stackalloc VertexAttribute[2];
-        cubeAttributes[0] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 0, ShaderLocation = 0 };
-        cubeAttributes[1] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 12, ShaderLocation = 1 };
-        var instanceAttributes = stackalloc VertexAttribute[3];
-        instanceAttributes[0] = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 0, ShaderLocation = 2 };
-        instanceAttributes[1] = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 16, ShaderLocation = 3 };
-        instanceAttributes[2] = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 32, ShaderLocation = 4 };
-        var layouts = stackalloc VertexBufferLayout[2];
-        layouts[0] = new VertexBufferLayout { ArrayStride = 24, StepMode = VertexStepMode.Vertex, AttributeCount = 2, Attributes = cubeAttributes };
-        layouts[1] = new VertexBufferLayout { ArrayStride = (ulong)sizeof(BoxInstance), StepMode = VertexStepMode.Instance, AttributeCount = 3, Attributes = instanceAttributes };
-
-        var blend = new BlendState
-        {
-            Color = new BlendComponent { SrcFactor = BlendFactor.SrcAlpha, DstFactor = BlendFactor.OneMinusSrcAlpha, Operation = BlendOperation.Add },
-            Alpha = new BlendComponent { SrcFactor = BlendFactor.One, DstFactor = BlendFactor.OneMinusSrcAlpha, Operation = BlendOperation.Add },
-        };
-        var colorTarget = new ColorTargetState { Format = surfaceFormat, Blend = translucent ? &blend : null, WriteMask = ColorWriteMask.All };
-        var keep = new StencilFaceState { Compare = CompareFunction.Always, FailOp = StencilOperation.Keep, DepthFailOp = StencilOperation.Keep, PassOp = StencilOperation.Keep };
-        var depth = new DepthStencilState
-        {
-            Format = depthFormat,
-            DepthWriteEnabled = !translucent,
-            DepthCompare = translucent ? CompareFunction.LessEqual : CompareFunction.Less,
-            StencilFront = keep,
-            StencilBack = keep,
-        };
-        fixed (byte* vertexEntry = "vs_main"u8)
-        fixed (byte* fragmentEntry = "fs_main"u8)
-        {
-            var fragment = new FragmentState { Module = _shader, EntryPoint = fragmentEntry, TargetCount = 1, Targets = &colorTarget };
-            var descriptor = new RenderPipelineDescriptor
-            {
-                Layout = layout,
-                Vertex = new VertexState { Module = _shader, EntryPoint = vertexEntry, BufferCount = 2, Buffers = layouts },
-                Primitive = new PrimitiveState { Topology = PrimitiveTopology.TriangleList, StripIndexFormat = IndexFormat.Undefined, FrontFace = FrontFace.Ccw, CullMode = CullMode.Back },
-                DepthStencil = &depth,
-                Multisample = new MultisampleState { Count = 1, Mask = uint.MaxValue, AlphaToCoverageEnabled = false },
-                Fragment = &fragment,
-            };
-            return _wgpu.DeviceCreateRenderPipeline(_device, &descriptor);
         }
     }
 

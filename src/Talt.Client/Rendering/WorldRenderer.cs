@@ -42,6 +42,7 @@ internal sealed unsafe class WorldRenderer : IDisposable
 
     private readonly List<Candidate> _candidates = [];
     private readonly List<DrawItem> _draws = [];
+    private readonly List<DrawItem>[] _shadowDraws = [[], [], []];
     private readonly List<Region> _regionsWithResults = [];
     private readonly List<nint> _releaseAfterSubmit = [];
     private readonly List<PendingEdit> _edits = [];
@@ -186,17 +187,66 @@ internal sealed unsafe class WorldRenderer : IDisposable
         _statistics.JobsInFlight = _scheduler.InFlight;
     }
 
-    /// <summary>Records the draws prepared by <see cref="Prepare"/>. The voxel pipeline must be set.</summary>
-    public void Encode(RenderPassEncoder* pass)
+    /// <summary>Terrain triangles drawn into the shadow cascades in the last frame.</summary>
+    public long ShadowTriangles { get; private set; }
+
+    /// <summary>
+    /// Selects the regions drawn into shadow cascade <paramref name="cascade"/> (feature 018, research R1):
+    /// those inside the cascade's light volume, not only the camera's view, so off-screen hills still
+    /// shade the visible ground. Uses each region's displayed level when it has one, otherwise the
+    /// coarsest built level (far casters need no detail). Call after <see cref="Prepare"/>.
+    /// </summary>
+    public void PrepareShadow(int cascade, Matrix4x4 lightViewProjection)
     {
-        if (_draws.Count == 0)
+        var list = _shadowDraws[cascade];
+        list.Clear();
+        if (cascade == 0)
+        {
+            ShadowTriangles = 0;
+        }
+
+        var frustum = new Frustum(lightViewProjection);
+        foreach (var region in _regions)
+        {
+            if (!frustum.Intersects(region.BoxMin, region.BoxMax))
+            {
+                continue;
+            }
+
+            var lod = region.Shown ? region.DisplayedLod : region.CoarsestBuiltLod();
+            if (lod < 0)
+            {
+                continue;
+            }
+
+            var level = region.Lods[lod];
+            if (level.Quads == 0 || !frustum.Intersects(level.Min, level.Max))
+            {
+                continue;
+            }
+
+            list.Add(new DrawItem((nint)level.Buffer, level.Quads, region.Slot));
+            EnsureIndexCapacity(level.Quads);
+            ShadowTriangles += level.Quads * 2L;
+        }
+    }
+
+    /// <summary>Records the shadow draws of a cascade; the voxel shadow pipeline must be set.</summary>
+    public void EncodeShadow(RenderPassEncoder* pass, int cascade) => EncodeList(pass, _shadowDraws[cascade]);
+
+    /// <summary>Records the draws prepared by <see cref="Prepare"/>. The voxel pipeline must be set.</summary>
+    public void Encode(RenderPassEncoder* pass) => EncodeList(pass, _draws);
+
+    private void EncodeList(RenderPassEncoder* pass, List<DrawItem> draws)
+    {
+        if (draws.Count == 0)
         {
             return;
         }
 
         _wgpu.RenderPassEncoderSetVertexBuffer(pass, 1, _originBuffer, 0, (ulong)(_regions.Length * sizeof(Vector4)));
         _wgpu.RenderPassEncoderSetIndexBuffer(pass, _indexBuffer, IndexFormat.Uint32, 0, (ulong)_indexQuadCapacity * 6 * sizeof(uint));
-        foreach (var draw in _draws)
+        foreach (var draw in draws)
         {
             _wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, (Buffer*)draw.Buffer, 0, (ulong)draw.Quads * BytesPerQuad);
             _wgpu.RenderPassEncoderDrawIndexed(pass, (uint)draw.Quads * 6, 1, 0, 0, (uint)draw.Slot);
@@ -812,6 +862,20 @@ internal sealed unsafe class WorldRenderer : IDisposable
             }
 
             return true;
+        }
+
+        /// <summary>The coarsest built level, or −1 when nothing is built.</summary>
+        public int CoarsestBuiltLod()
+        {
+            for (var lod = LodCount - 1; lod >= 0; lod--)
+            {
+                if (Lods[lod].Available)
+                {
+                    return lod;
+                }
+            }
+
+            return -1;
         }
 
         /// <summary>

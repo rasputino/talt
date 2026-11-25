@@ -18,6 +18,11 @@ using Talt.Core.Maps;
 //   --exit-after-fingerprint     close the window right after that fingerprint is printed (smoke test)
 //   --stats                      show render statistics from the start (same as pressing F3)
 //   --zoom <distance>            initial camera distance ("max" for the farthest zoom)
+//   --camera <x,z>               initial camera target tile (default: map centre)
+//   --graphics <preset>          graphics preset for this run only: low, medium or high (not saved)
+//   --day-night                  turn the day/night cycle on for this run
+//   --time-of-day <0-1>          start the day/night cycle at this phase (0.5 noon, 0.9 night)
+//   --measure-effects [seconds]  measure the frame cost of each graphics effect, print a table and exit
 //   --no-audio                   start with the silent backend (CI and no-device machines)
 //   --road-grid <spacing>        debug: lay a full road grid every <spacing> tiles (dense-network FPS check)
 //   --town-names <style>         town name style: mixed (default), english or spanish
@@ -40,6 +45,11 @@ long? printFingerprintAt = null;
 var exitAfterFingerprint = false;
 var showStatistics = false;
 float? zoom = null;
+System.Numerics.Vector2? cameraTarget = null;
+GraphicsPreset? graphicsPreset = null;
+var dayNight = false;
+double? timeOfDay = null;
+double? measureEffects = null;
 var play = false;
 float? uiScale = null;
 var uiTestWindows = 0;
@@ -99,6 +109,45 @@ for (var i = 0; i < args.Length; i++)
         case "--zoom":
             i++;
             zoom = args[i] == "max" ? float.MaxValue : float.Parse(args[i], CultureInfo.InvariantCulture);
+            break;
+        case "--camera":
+        {
+            var parts = args[++i].Split(',');
+            cameraTarget = parts.Length == 2
+                ? new System.Numerics.Vector2(float.Parse(parts[0], CultureInfo.InvariantCulture), float.Parse(parts[1], CultureInfo.InvariantCulture))
+                : throw new ArgumentException("--camera must be x,z in tiles.");
+            break;
+        }
+
+        case "--graphics":
+            graphicsPreset = args[++i] switch
+            {
+                "low" => GraphicsPreset.Low,
+                "medium" => GraphicsPreset.Medium,
+                "high" => GraphicsPreset.High,
+                _ => throw new ArgumentException("--graphics must be low, medium or high."),
+            };
+            break;
+        case "--day-night":
+            dayNight = true;
+            break;
+        case "--time-of-day":
+            timeOfDay = double.Parse(args[++i], CultureInfo.InvariantCulture);
+            if (timeOfDay is < 0 or > 1)
+            {
+                throw new ArgumentException("--time-of-day must be from 0 to 1.");
+            }
+
+            break;
+        case "--measure-effects":
+            measureEffects = i + 1 < args.Length && double.TryParse(args[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+                ? seconds
+                : 4;
+            if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal) && double.TryParse(args[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+            {
+                i++;
+            }
+
             break;
         case "--stats":
             showStatistics = true;
@@ -190,7 +239,7 @@ if (uiScale is { } scale && !PlayerSettings.IsValidScale(scale))
 }
 
 // Any game argument skips the menu (contracts/command-line.md).
-var startGame = play || positional.Count > 0 || mapOptions.Count > 0 || townOptionGiven || recordPath is not null || printFingerprintAt is not null;
+var startGame = measureEffects is not null || play || positional.Count > 0 || mapOptions.Count > 0 || townOptionGiven || recordPath is not null || printFingerprintAt is not null;
 using var window = new GameWindow(new ClientOptions(
     playerSettings,
     LanguageOverride: language,
@@ -200,6 +249,11 @@ using var window = new GameWindow(new ClientOptions(
     Session: new SessionOptions(recordPath, printFingerprintAt, exitAfterFingerprint),
     ShowStatistics: showStatistics,
     InitialZoom: zoom,
+    InitialCameraTarget: cameraTarget,
+    GraphicsOverride: graphicsPreset,
+    DayNightOverride: dayNight,
+    TimeOfDayStart: timeOfDay,
+    MeasureEffectsSeconds: measureEffects,
     UiTestWindows: uiTestWindows,
     NoAudio: noAudio));
 window.Run();

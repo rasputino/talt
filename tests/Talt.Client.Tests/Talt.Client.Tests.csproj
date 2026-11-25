@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- The GPU shader compilation test (feature 018) calls WebGPU directly. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>false</IsPackable>
     <!-- xUnit test method names use underscores. -->
     <NoWarn>$(NoWarn);CA1707;CA1861</NoWarn>

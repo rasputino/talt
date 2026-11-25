@@ -274,6 +274,14 @@ public class ToolControllerTests
             tools.UpdatePreview(state);
         }
 
+        // Warm long enough for tiered compilation to settle: with more tests running in parallel (feature 018)
+        // the switch to optimized code sometimes fell inside the measured loop and counted as allocation.
+        for (var i = 0; i < 300; i++)
+        {
+            tools.Hover((x + 24 - (i % 2), z + 19));
+            tools.UpdatePreview(state);
+        }
+
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 1000; i++)
         {

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Talt.ModelGen</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Talt.Client.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Writes the game's original voxel models (feature 018); needs the .vox writer and the content data only. -->
+    <ProjectReference Include="..\..\src\Talt.Core\Talt.Core.csproj" />
+  </ItemGroup>
+
+</Project>

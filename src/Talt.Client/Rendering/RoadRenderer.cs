@@ -32,7 +32,7 @@ internal sealed unsafe class RoadRenderer : IDisposable
     private readonly Device* _device;
     private readonly Queue* _queue;
     private readonly ShaderModule* _shader;
-    private readonly RenderPipeline* _pipeline;
+    private readonly WorldPipeline _pipeline;
     private readonly RoadLayer _roads;
     private readonly RoadMesher _mesher;
     private readonly List<int> _changed = [];
@@ -47,16 +47,18 @@ internal sealed unsafe class RoadRenderer : IDisposable
     private int _drawCount;
     private double _lastReleaseCheck;
 
-    public RoadRenderer(WebGPU wgpu, Device* device, Queue* queue, PipelineLayout* worldLayout, TextureFormat surfaceFormat, TextureFormat depthFormat,
-        RoadLayer roads, MapData map, RoadRules rules)
+    public RoadRenderer(WorldPassContext context, RoadLayer roads, MapData map, RoadRules rules)
     {
+        ArgumentNullException.ThrowIfNull(context);
+        var wgpu = context.Wgpu;
+        var device = context.Device;
         _wgpu = wgpu;
         _device = device;
-        _queue = queue;
+        _queue = context.Queue;
         _roads = roads;
         _mesher = new RoadMesher(roads, map, rules);
         _shader = WebGpuShaders.CreateModule(wgpu, device, WebGpuShaders.Load("roads.wgsl"));
-        _pipeline = CreatePipeline(worldLayout, surfaceFormat, depthFormat);
+        _pipeline = new WorldPipeline(context, PipelineSpecFor(_shader));
         _blocksX = (map.Width + BlockTiles - 1) / BlockTiles;
         var blocksZ = (map.Depth + BlockTiles - 1) / BlockTiles;
         _areasX = (map.Width + AreaTiles - 1) / AreaTiles;
@@ -167,7 +169,7 @@ internal sealed unsafe class RoadRenderer : IDisposable
             return;
         }
 
-        _wgpu.RenderPassEncoderSetPipeline(pass, _pipeline);
+        _wgpu.RenderPassEncoderSetPipeline(pass, _pipeline.Main);
         for (var i = 0; i < _drawCount; i++)
         {
             var index = _drawList[i];
@@ -175,6 +177,24 @@ internal sealed unsafe class RoadRenderer : IDisposable
             _wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, mesh.Buffer, 0, (ulong)(mesh.Vertices * sizeof(RoadVertex)));
             _wgpu.RenderPassEncoderDraw(pass, (uint)mesh.Vertices, 1, 0, 0);
             Draws++;
+        }
+    }
+
+    /// <summary>Draws the roads into a shadow cascade (bridges and embankments cast shadows; feature 018).</summary>
+    public void EncodeShadow(RenderPassEncoder* pass)
+    {
+        if (_drawCount == 0)
+        {
+            return;
+        }
+
+        _wgpu.RenderPassEncoderSetPipeline(pass, _pipeline.Shadow);
+        for (var i = 0; i < _drawCount; i++)
+        {
+            var index = _drawList[i];
+            var mesh = index < _blocks.Length ? _blocks[index] : _areas[index - _blocks.Length];
+            _wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, mesh.Buffer, 0, (ulong)(mesh.Vertices * sizeof(RoadVertex)));
+            _wgpu.RenderPassEncoderDraw(pass, (uint)mesh.Vertices, 1, 0, 0);
         }
     }
 
@@ -190,7 +210,7 @@ internal sealed unsafe class RoadRenderer : IDisposable
             Release(ref mesh);
         }
 
-        _wgpu.RenderPipelineRelease(_pipeline);
+        _pipeline.Dispose();
         _wgpu.ShaderModuleRelease(_shader);
     }
 
@@ -371,41 +391,23 @@ internal sealed unsafe class RoadRenderer : IDisposable
         return max + 3f;
     }
 
-    private RenderPipeline* CreatePipeline(PipelineLayout* layout, TextureFormat surfaceFormat, TextureFormat depthFormat)
+    private static PipelineSpec PipelineSpecFor(ShaderModule* shader) => new()
     {
-        var attributes = stackalloc VertexAttribute[3];
-        attributes[0] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 0, ShaderLocation = 0 };
-        attributes[1] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 12, ShaderLocation = 1 };
-        attributes[2] = new VertexAttribute { Format = VertexFormat.Unorm8x4, Offset = 24, ShaderLocation = 2 };
-        var vertexLayout = new VertexBufferLayout { ArrayStride = (ulong)sizeof(RoadVertex), StepMode = VertexStepMode.Vertex, AttributeCount = 3, Attributes = attributes };
-        var colorTarget = new ColorTargetState { Format = surfaceFormat, Blend = null, WriteMask = ColorWriteMask.All };
-        var keep = new StencilFaceState { Compare = CompareFunction.Always, FailOp = StencilOperation.Keep, DepthFailOp = StencilOperation.Keep, PassOp = StencilOperation.Keep };
-        var depth = new DepthStencilState
-        {
-            Format = depthFormat,
-            DepthWriteEnabled = true,
-            DepthCompare = CompareFunction.LessEqual,
-            StencilFront = keep,
-            StencilBack = keep,
-            DepthBias = -2,
-            DepthBiasSlopeScale = -1f,
-        };
-        fixed (byte* vertexEntry = "vs_main"u8)
-        fixed (byte* fragmentEntry = "fs_main"u8)
-        {
-            var fragment = new FragmentState { Module = _shader, EntryPoint = fragmentEntry, TargetCount = 1, Targets = &colorTarget };
-            var descriptor = new RenderPipelineDescriptor
-            {
-                Layout = layout,
-                Vertex = new VertexState { Module = _shader, EntryPoint = vertexEntry, BufferCount = 1, Buffers = &vertexLayout },
-                Primitive = new PrimitiveState { Topology = PrimitiveTopology.TriangleList, StripIndexFormat = IndexFormat.Undefined, FrontFace = FrontFace.Ccw, CullMode = CullMode.None },
-                DepthStencil = &depth,
-                Multisample = new MultisampleState { Count = 1, Mask = uint.MaxValue, AlphaToCoverageEnabled = false },
-                Fragment = &fragment,
-            };
-            return _wgpu.DeviceCreateRenderPipeline(_device, &descriptor);
-        }
-    }
+        Shader = shader,
+        Buffers =
+        [
+            new VertexBufferSpec((ulong)sizeof(RoadVertex), VertexStepMode.Vertex,
+            [
+                new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 0, ShaderLocation = 0 },
+                new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 12, ShaderLocation = 1 },
+                new VertexAttribute { Format = VertexFormat.Unorm8x4, Offset = 24, ShaderLocation = 2 },
+            ]),
+        ],
+        Cull = CullMode.None,
+        DepthCompare = CompareFunction.LessEqual,
+        DepthBias = -2,
+        DepthBiasSlopeScale = -1f,
+    };
 
     private struct Mesh
     {

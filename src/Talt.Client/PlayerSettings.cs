@@ -11,7 +11,7 @@ namespace Talt.Client;
 /// </summary>
 internal sealed class PlayerSettings
 {
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
     public const int MinimumWindowWidth = 800;
     public const int MinimumWindowHeight = 600;
 
@@ -20,9 +20,10 @@ internal sealed class PlayerSettings
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
-    /// <summary>Format version of the file (1 = feature 001; 3 = feature 019 audio).</summary>
+    /// <summary>Format version of the file (1 = feature 001; 3 = feature 019 audio; 4 = feature 018 graphics).</summary>
     public int Version { get; set; } = CurrentVersion;
 
     /// <summary>"en" or "es"; null until chosen (the system language is used).</summary>
@@ -59,6 +60,9 @@ internal sealed class PlayerSettings
 
     /// <summary>Mutes all output while preserving the four volumes.</summary>
     public bool Muted { get; set; }
+
+    /// <summary>Graphics preset and effects (feature 018, contracts/graphics-settings.md).</summary>
+    public GraphicsSettings Graphics { get; set; } = GraphicsSettings.For(GraphicsPreset.Medium);
 
     /// <summary>Key binding overrides: action id → key names per slot ("" = empty slot).</summary>
     public Dictionary<string, string[]> KeyBindings { get; set; } = new(StringComparer.Ordinal);
@@ -215,6 +219,9 @@ internal sealed class PlayerSettings
                 return false;
             case "keybindings":
                 return TryReadBindings(value);
+            case "graphics":
+                Graphics = GraphicsSettings.Read(value, LoadProblems);
+                return true;
             default:
                 return false; // Unknown property: reported and dropped on the next save.
         }

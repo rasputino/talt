@@ -26,8 +26,13 @@ internal sealed record ClientOptions(
     SessionOptions? Session = null,
     bool ShowStatistics = false,
     float? InitialZoom = null,
+    Vector2? InitialCameraTarget = null,
     int UiTestWindows = 0,
-    bool NoAudio = false);
+    bool NoAudio = false,
+    GraphicsPreset? GraphicsOverride = null,
+    bool DayNightOverride = false,
+    double? TimeOfDayStart = null,
+    double? MeasureEffectsSeconds = null);
 
 /// <summary>
 /// Owns the window, the renderer, the interface and the current screen (main menu, new game, game).
@@ -43,6 +48,18 @@ internal sealed class GameWindow : IDisposable, IScreenHost
     private readonly OrbitCamera _camera = new();
     private readonly ClientOptions _options;
     private readonly Stopwatch _statsTimer = new();
+    private readonly Stopwatch _realTime = Stopwatch.StartNew();
+    private readonly TimeOfDay _timeOfDay = new();
+    private GraphicsSettings? _graphicsOverride;
+    private ModelLibrary? _models;
+    private ModelBatch? _modelBatch;
+    private double _modelBatchMs;
+    private EffectCostProbe? _probe;
+    private double _prepareMsSum;
+    private double _encodeMsSum;
+    private double _waitMsSum;
+    private double _batchMsSum;
+    private int _timingFrames;
     private readonly FrameTimeTracker _frameTimes = new();
     private readonly UiDrawList _drawList = new();
     private readonly DefaultNewGameOptionsSource _newGameSource = new();
@@ -75,6 +92,11 @@ internal sealed class GameWindow : IDisposable, IScreenHost
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         Settings = options.Settings;
+        _graphicsOverride = options.GraphicsOverride is { } preset ? GraphicsSettings.For(preset) : null;
+        if (options.TimeOfDayStart is { } phase)
+        {
+            _timeOfDay.Phase = phase;
+        }
         _language = options.LanguageOverride ?? Settings.Language ?? Strings.DetectLanguage();
         ShowStatistics = options.ShowStatistics;
         _isKeyDown = IsKeyDown;
@@ -177,6 +199,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
 
         _window.VSync = Settings.VSync;
         _renderer?.SetVerticalSync(Settings.VSync);
+        _graphicsOverride = null; // A change in the settings screen replaces --graphics for this run.
         _audio?.ApplySettings(Settings);
         if (_screen is InGameScreen game)
         {
@@ -187,6 +210,9 @@ internal sealed class GameWindow : IDisposable, IScreenHost
     }
 
     public void Quit() => _window.Close();
+
+    /// <summary>Graphics settings in use: the saved ones, or the preset given with --graphics for this run.</summary>
+    public GraphicsSettings ActiveGraphics => _probe is { Finished: false } probe ? probe.Current : _graphicsOverride ?? Settings.Graphics;
 
     private void SaveSettings()
     {
@@ -220,6 +246,10 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         _audio = AudioSystem.TryCreate(Settings, AudioSystem.DefaultAssetRoot, Console.Error.WriteLine, _options.NoAudio);
         _ui.Activated = _audio.PlayInterfaceClick;
         _renderer.AttachUi(atlas);
+        _models = ModelLibrary.LoadShipped();
+        _renderer.AttachModels(_models);
+        _modelBatch = new ModelBatch(_models.VariantCount);
+        Console.WriteLine($"Models: {_models.KeyCount} keys, {_models.VariantCount} variants, {_models.Triangles:N0} triangles, loaded and meshed in {_models.LoadMilliseconds:F0} ms");
         UpdateViewport();
 
         _router = new InputRouter(_ui, _bindings, new WorldInputProxy(this), OnAction);
@@ -309,16 +339,28 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         var map = game.Heightmap;
         _camera.FitMap(Math.Max(map.Width, map.Depth));
         _camera.Distance = _options.InitialZoom ?? 350f;
-        var center = new Vector2(map.Width / 2f, map.Depth / 2f);
+        var center = _options.InitialCameraTarget ?? new Vector2(map.Width / 2f, map.Depth / 2f);
         _camera.Target = new Vector3(center.X, map.Get(center.X, center.Y), center.Y);
 
         _renderer?.SetWorld(game.World);
+        _renderer?.SetMap(game.Map);
         _renderer?.SetRoads(_session.Construction.Roads, game.Map, _session.Construction.RoadRules);
         if (_session.Simulation.Towns is { } towns)
         {
             _renderer?.SetTowns(towns, game.Map);
         }
+        _session.UseModels(_models);
+        if (_options.MeasureEffectsSeconds is { } seconds && _probe is null)
+        {
+            // Measured without vertical sync; the saved setting is not changed.
+            _probe = new EffectCostProbe(ActiveGraphics, seconds);
+            _window.VSync = false;
+            _renderer?.SetVerticalSync(false);
+            Console.WriteLine($"Measuring effect costs: {seconds:F0} s per configuration...");
+        }
+
         var screen = new InGameScreen(this, _session, _camera, _isKeyDown);
+        screen.UseModels(_models);
         SetScreen(screen);
         screen.ApplySettings(Settings);
         if (_options.UiTestWindows > 0 && !_uiTestWindowsOpened)
@@ -415,6 +457,45 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         }
     }
 
+    /// <summary>
+    /// Fills the frame's model batch (feature 018): vehicles, town buildings, industries, trees and decoration,
+    /// culled and sorted by <see cref="ModelBatch"/>, then uploads it.
+    /// </summary>
+    private void BuildModelBatch(InGameScreen game)
+    {
+        if (_renderer is null || _session is null || _modelBatch is null)
+        {
+            return;
+        }
+
+        var start = Stopwatch.GetTimestamp();
+        var parameters = GraphicsPresets.Default.Resolve(ActiveGraphics);
+        game.UpdateDecor(parameters.SceneryDensity);
+        var batch = _modelBatch;
+        batch.Begin(_camera.ViewProjection(_renderer.AspectRatio), _camera.Position,
+            parameters.ModelLevel1Distance, parameters.ModelLevel2Distance, parameters.ModelLevel3Distance, _camera.Distance * 2.5f * 1.5f);
+        _renderer.PrepareTowns(_camera);
+        if (_probe is not { Finished: false, ModelsEnabled: false })
+        {
+            _session.AppendVehicleModels(batch);
+            _session.AppendIndustryModels(batch);
+            _renderer.AppendTownModels(batch);
+            foreach (var tree in game.TreeModels)
+            {
+                batch.Add(tree.Model, tree.Position, tree.Yaw, Vector3.One, tree.Variation);
+            }
+
+            foreach (var decor in game.DecorModels)
+            {
+                batch.Add(decor.Model, decor.Position, decor.Yaw, Vector3.One, decor.Variation);
+            }
+        }
+
+        batch.End();
+        _renderer.UpdateModels(batch);
+        _modelBatchMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+    }
+
     private void UpdateAudio(double deltaSeconds)
     {
         var forward = _camera.Target - _camera.Position;
@@ -457,7 +538,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         if (_session is not null)
         {
             _session.BuildInstances(); // Once per drawn frame, so uploads never outpace submissions.
-            _renderer.UpdateVehicles(_session.Instances);
+            _renderer.UpdateVehicles(_session.HasVehicleModels ? default : _session.Instances);
             _renderer.UpdateIndustries(_session.IndustryInstances);
         }
 
@@ -477,6 +558,8 @@ internal sealed class GameWindow : IDisposable, IScreenHost
             {
                 _renderer.UpdateTrees(game.TreeBoxes);
             }
+
+            BuildModelBatch(game);
         }
 
         _ui.Layout();
@@ -486,10 +569,21 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         // Managed allocations of the draw path (constitution II: none expected in steady state).
         var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         var theme = _ui.Theme.Background;
+        var graphics = ActiveGraphics;
+        _renderer.SetGraphics(GraphicsPresets.Default.Resolve(graphics));
+        _timeOfDay.Advance(deltaSeconds, _session?.Runner.IsPaused ?? true);
+        _renderer.SetLight(graphics.DayNight || _options.DayNightOverride ? _timeOfDay.Light : LightState.Day);
+        _renderer.SetTime(_realTime.Elapsed.TotalSeconds);
         _renderer.Draw(_camera, _drawList, SrgbToLinear(theme));
         _renderAllocatedBytes += GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         _renderAllocationFrames++;
         _uiMsSum += _uiCpuMs + _renderer.LastUiMilliseconds;
+        var timings = _renderer.LastDrawTimings;
+        _prepareMsSum += timings.Prepare;
+        _encodeMsSum += timings.Encode;
+        _waitMsSum += timings.WaitGpu;
+        _batchMsSum += _modelBatchMs;
+        _timingFrames++;
         _uiMsFrames++;
 
         var now = Stopwatch.GetTimestamp();
@@ -497,6 +591,12 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         {
             var frameMs = Stopwatch.GetElapsedTime(_lastFrameTimestamp, now).TotalMilliseconds;
             _frameTimes.Record(frameMs);
+            if (_probe is not null && _session is not null && _probe.Record(deltaSeconds, frameMs))
+            {
+                var map = _session.Game.Map;
+                Console.WriteLine(_probe.Report($"{map.Width} x {map.Depth} map, camera distance {_camera.Distance:F0}, {_renderer.AdapterDescription}"));
+                _window.Close();
+            }
             if (ShowStatistics && frameMs > LongFrameMilliseconds)
             {
                 var d = _renderer.LastDrawTimings;
@@ -556,9 +656,32 @@ internal sealed class GameWindow : IDisposable, IScreenHost
             s.Format("stats.regions", ("lod0", r.RegionsLod0), ("lod1", r.RegionsLod1), ("lod2", r.RegionsLod2), ("lod3", r.RegionsLod3)),
             s.Format("stats.memory", ("mb", r.WorldGpuBytes / (1024 * 1024)), ("released", r.Lod0Released)),
             s.Format("stats.jobs", ("count", r.PendingJobs + r.JobsInFlight)),
-            s.Format("stats.allocated", ("bytes", (long)_allocatedBytesPerFrame)));
+            s.Format("stats.allocated", ("bytes", (long)_allocatedBytesPerFrame)),
+            GraphicsStatistics(s));
+        _prepareMsSum = _encodeMsSum = _waitMsSum = _batchMsSum = 0;
+        _timingFrames = 0;
         _window.Title = statistics;
         Console.WriteLine(statistics);
+    }
+
+    /// <summary>Graphics part of the statistics (feature 018, FR-019).</summary>
+    private string GraphicsStatistics(Strings s)
+    {
+        var frames = Math.Max(1, _timingFrames);
+        var graphics = ActiveGraphics;
+        var shadow = _renderer!.ShadowStatistics;
+        var models = _renderer.ModelStatistics;
+        var levels = _modelBatch?.PerLevel ?? default;
+        return string.Join(" — ",
+            s.Format("stats.graphics",
+                ("preset", s.Get("settings.graphics.preset." + graphics.Preset.ToString().ToLowerInvariant())),
+                ("cascades", shadow.Cascades), ("size", shadow.Size), ("shadowTriangles", shadow.Triangles), ("samples", _renderer.SampleCount)),
+            s.Format("stats.models",
+                ("draws", models.Draws), ("instances", models.Instances),
+                ("levels", $"{levels.Level0}/{levels.Level1}/{levels.Level2}/{levels.Level3}"),
+                ("triangles", models.Triangles), ("ms", Math.Round(_batchMsSum / frames, 2))),
+            s.Format("stats.cpu",
+                ("prepare", Math.Round(_prepareMsSum / frames, 2)), ("encode", Math.Round(_encodeMsSum / frames, 2)), ("wait", Math.Round(_waitMsSum / frames, 2))));
     }
 
     private void UpdateViewport()

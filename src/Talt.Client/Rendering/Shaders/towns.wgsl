@@ -1,14 +1,7 @@
 // Town buildings (feature 008, research R12): one stretched unit cube per box, instanced. Wall boxes draw their
 // windows procedurally from the world position (one row per storey); roof boxes are plain. Final art in 018.
 
-struct Uniforms {
-    view_proj: mat4x4<f32>,
-    light_dir: vec4<f32>,
-    camera_pos: vec4<f32>,
-    sky_color: vec4<f32>,
-};
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
+// #include "lighting.wgsl"
 
 struct VertexIn {
     // Per vertex: unit cube centred on X/Z, from 0 to 1 on Y.
@@ -75,11 +68,16 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
         color = mix(color, glass, mask);
     }
 
-    let diffuse = max(dot(in.normal, -u.light_dir.xyz), 0.0);
-    let sky = 0.5 + 0.5 * in.normal.y;
-    let lit = color * (0.30 + 0.25 * sky + 0.65 * diffuse);
+    // Lit windows at night (day/night cycle): about 60 % of windows, chosen per building and window.
+    var glow = vec3<f32>(0.0);
+    if (vertical && u.sun_dir.w > 0.0) {
+        let along = select(in.local.y, in.local.x, abs(in.normal.z) > 0.5);
+        let height = in.world_position.y - in.params.z;
+        let mask = window_mask(along, height, in.params.y, in.params.x, in.params.w);
+        let cell = vec2<f32>(floor(along * 3.0), floor(height / max(in.params.y, 0.01)));
+        let lit = fract(sin(dot(cell + in.color.w * 17.0, vec2<f32>(12.9898, 78.233))) * 43758.5453) < 0.6;
+        glow = select(vec3<f32>(0.0), vec3<f32>(1.0, 0.72, 0.38) * 3.0 * mask * u.sun_dir.w, lit);
+    }
 
-    let distance = length(in.world_position - u.camera_pos.xyz);
-    let fog = clamp((distance - u.camera_pos.w * 0.5) / u.camera_pos.w, 0.0, 1.0);
-    return vec4<f32>(mix(lit, u.sky_color.rgb, fog * fog), 1.0);
+    return vec4<f32>(tone_map(apply_fog(shade(color, in.normal, in.world_position, 1.0) + glow, in.world_position)), 1.0);
 }

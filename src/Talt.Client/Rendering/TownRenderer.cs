@@ -29,7 +29,7 @@ internal sealed unsafe class TownRenderer : IDisposable
     private readonly Device* _device;
     private readonly Queue* _queue;
     private readonly ShaderModule* _shader;
-    private readonly RenderPipeline* _pipeline;
+    private readonly WorldPipeline _pipeline;
     private readonly Buffer* _cubeVertices;
     private readonly Buffer* _cubeIndices;
     private readonly ulong _cubeVertexBytes;
@@ -43,22 +43,27 @@ internal sealed unsafe class TownRenderer : IDisposable
     private readonly List<TownInstance> _walls = [];
     private readonly List<TownInstance> _roofs = [];
     private readonly (int Area, int Count)[] _drawList;
+    private readonly int[] _visibleAreas;
+    private int _visibleCount;
+    private ModelEntry?[] _typeModels = [];
     private readonly float _maxGround;
     private int[] _areaStart;
     private int[] _areaSlots = [];
     private bool _indexDirty = true;
     private int _drawCount;
 
-    public TownRenderer(WebGPU wgpu, Device* device, Queue* queue, PipelineLayout* worldLayout, TextureFormat surfaceFormat, TextureFormat depthFormat,
-        TownRegistry towns, MapData map)
+    public TownRenderer(WorldPassContext context, TownRegistry towns, MapData map)
     {
+        ArgumentNullException.ThrowIfNull(context);
+        var wgpu = context.Wgpu;
+        var device = context.Device;
         _wgpu = wgpu;
         _device = device;
-        _queue = queue;
+        _queue = context.Queue;
         _towns = towns;
         _map = map;
         _shader = WebGpuShaders.CreateModule(wgpu, device, WebGpuShaders.Load("towns.wgsl"));
-        _pipeline = CreatePipeline(worldLayout, surfaceFormat, depthFormat);
+        _pipeline = new WorldPipeline(context, PipelineSpecs.InstancedCube(_shader, (ulong)sizeof(TownInstance), 3));
         var (vertices, indices) = UnitCube.Build();
         _cubeVertices = CreateBuffer(vertices, BufferUsage.Vertex | BufferUsage.CopyDst);
         _cubeIndices = CreateBuffer(indices, BufferUsage.Index | BufferUsage.CopyDst);
@@ -70,6 +75,7 @@ internal sealed unsafe class TownRenderer : IDisposable
         _areaBuildingCount = new int[_areas.Length];
         _areaStart = new int[_areas.Length + 1];
         _drawList = new (int, int)[_areas.Length];
+        _visibleAreas = new int[_areas.Length];
         var maxGround = 0;
         foreach (var h in map.Heights)
         {
@@ -117,6 +123,7 @@ internal sealed unsafe class TownRenderer : IDisposable
         var frustum = new Frustum(viewProjection);
         var start = Stopwatch.GetTimestamp();
         _drawCount = 0;
+        _visibleCount = 0;
         Instances = 0;
         for (var area = 0; area < _areas.Length; area++)
         {
@@ -135,6 +142,7 @@ internal sealed unsafe class TownRenderer : IDisposable
                 continue;
             }
 
+            _visibleAreas[_visibleCount++] = area;
             ref var entry = ref _areas[area];
             if (entry.BuiltVersion != entry.Version && (!OverBudget(start) || entry.Buffer == null))
             {
@@ -155,6 +163,53 @@ internal sealed unsafe class TownRenderer : IDisposable
         }
     }
 
+    /// <summary>
+    /// Uses voxel models for the building types that have one (feature 018, key <c>town-building:&lt;id&gt;</c>);
+    /// the others keep their boxes. Call before the first <see cref="Prepare"/>.
+    /// </summary>
+    public void UseModels(ModelLibrary? library)
+    {
+        var types = _towns.Buildings.Rules.Buildings;
+        _typeModels = new ModelEntry?[types.Count];
+        for (var t = 0; t < types.Count; t++)
+        {
+            _typeModels[t] = library is not null && library.TryGet("town-building:" + types[t].Id, out var entry) ? entry : null;
+        }
+
+        foreach (ref var area in _areas.AsSpan())
+        {
+            area.Version++; // Rebuild boxes without the modelled types.
+        }
+    }
+
+    /// <summary>Buildings with models in the areas visible this frame, added to the frame's model batch.</summary>
+    public void AppendModels(ModelBatch batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        var buildings = _towns.Buildings;
+        for (var v = 0; v < _visibleCount; v++)
+        {
+            var area = _visibleAreas[v];
+            for (var i = _areaStart[area]; i < _areaStart[area + 1]; i++)
+            {
+                var slot = _areaSlots[i];
+                var typeIndex = buildings.TypeAt(slot);
+                if (typeIndex >= _typeModels.Length || _typeModels[typeIndex] is not { } entry)
+                {
+                    continue;
+                }
+
+                var type = buildings.TypeDefinitionAt(slot);
+                var id = buildings.IdAt(slot);
+                var hash = unchecked((uint)id * 2246822519u) >> 8;
+                // Square footprints may face any side; others turn by half turns so the footprint stays.
+                var turns = type.Width == type.Depth ? (int)(hash % 4) : (int)(hash % 2) * 2;
+                var position = new Vector3(buildings.XAt(slot) + (type.Width / 2f), buildings.BaseHeightAt(slot), buildings.ZAt(slot) + (type.Depth / 2f));
+                batch.Add(entry.Variant(id), position, turns * MathF.PI / 2f, Vector3.One, (hash & 0xffff) / 65535f);
+            }
+        }
+    }
+
     /// <summary>Draws the buildings; call in the world pass with the world bind group set.</summary>
     public void Encode(RenderPassEncoder* pass)
     {
@@ -164,7 +219,21 @@ internal sealed unsafe class TownRenderer : IDisposable
             return;
         }
 
-        _wgpu.RenderPassEncoderSetPipeline(pass, _pipeline);
+        EncodeWith(pass, _pipeline.Main, countDraws: true);
+    }
+
+    /// <summary>Draws the buildings into a shadow cascade (feature 018).</summary>
+    public void EncodeShadow(RenderPassEncoder* pass)
+    {
+        if (_drawCount > 0)
+        {
+            EncodeWith(pass, _pipeline.Shadow, countDraws: false);
+        }
+    }
+
+    private void EncodeWith(RenderPassEncoder* pass, RenderPipeline* pipeline, bool countDraws)
+    {
+        _wgpu.RenderPassEncoderSetPipeline(pass, pipeline);
         _wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, _cubeVertices, 0, _cubeVertexBytes);
         _wgpu.RenderPassEncoderSetIndexBuffer(pass, _cubeIndices, IndexFormat.Uint16, 0, _cubeIndexCount * sizeof(ushort));
         for (var i = 0; i < _drawCount; i++)
@@ -173,7 +242,7 @@ internal sealed unsafe class TownRenderer : IDisposable
             ref var entry = ref _areas[area];
             _wgpu.RenderPassEncoderSetVertexBuffer(pass, 1, entry.Buffer, 0, (ulong)(count * sizeof(TownInstance)));
             _wgpu.RenderPassEncoderDrawIndexed(pass, _cubeIndexCount, (uint)count, 0, 0, 0);
-            Draws++;
+            Draws += countDraws ? 1 : 0;
         }
     }
 
@@ -191,7 +260,7 @@ internal sealed unsafe class TownRenderer : IDisposable
 
         _wgpu.BufferRelease(_cubeVertices);
         _wgpu.BufferRelease(_cubeIndices);
-        _wgpu.RenderPipelineRelease(_pipeline);
+        _pipeline.Dispose();
         _wgpu.ShaderModuleRelease(_shader);
     }
 
@@ -237,6 +306,12 @@ internal sealed unsafe class TownRenderer : IDisposable
         for (var i = _areaStart[area]; i < _areaStart[area + 1]; i++)
         {
             var slot = _areaSlots[i];
+            var typeIndex = buildings.TypeAt(slot);
+            if (typeIndex < _typeModels.Length && _typeModels[typeIndex] is not null)
+            {
+                continue; // Drawn as a model.
+            }
+
             TownInstances.Append(buildings.TypeDefinitionAt(slot), buildings.XAt(slot), buildings.ZAt(slot), buildings.BaseHeightAt(slot), buildings.IdAt(slot), _walls, _roofs);
         }
 
@@ -301,45 +376,6 @@ internal sealed unsafe class TownRenderer : IDisposable
         }
 
         return buffer;
-    }
-
-    private RenderPipeline* CreatePipeline(PipelineLayout* layout, TextureFormat surfaceFormat, TextureFormat depthFormat)
-    {
-        var cubeAttributes = stackalloc VertexAttribute[2];
-        cubeAttributes[0] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 0, ShaderLocation = 0 };
-        cubeAttributes[1] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 12, ShaderLocation = 1 };
-        var instanceAttributes = stackalloc VertexAttribute[3];
-        instanceAttributes[0] = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 0, ShaderLocation = 2 };
-        instanceAttributes[1] = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 16, ShaderLocation = 3 };
-        instanceAttributes[2] = new VertexAttribute { Format = VertexFormat.Float32x4, Offset = 32, ShaderLocation = 4 };
-        var layouts = stackalloc VertexBufferLayout[2];
-        layouts[0] = new VertexBufferLayout { ArrayStride = 24, StepMode = VertexStepMode.Vertex, AttributeCount = 2, Attributes = cubeAttributes };
-        layouts[1] = new VertexBufferLayout { ArrayStride = (ulong)sizeof(TownInstance), StepMode = VertexStepMode.Instance, AttributeCount = 3, Attributes = instanceAttributes };
-        var colorTarget = new ColorTargetState { Format = surfaceFormat, Blend = null, WriteMask = ColorWriteMask.All };
-        var keep = new StencilFaceState { Compare = CompareFunction.Always, FailOp = StencilOperation.Keep, DepthFailOp = StencilOperation.Keep, PassOp = StencilOperation.Keep };
-        var depth = new DepthStencilState
-        {
-            Format = depthFormat,
-            DepthWriteEnabled = true,
-            DepthCompare = CompareFunction.Less,
-            StencilFront = keep,
-            StencilBack = keep,
-        };
-        fixed (byte* vertexEntry = "vs_main"u8)
-        fixed (byte* fragmentEntry = "fs_main"u8)
-        {
-            var fragment = new FragmentState { Module = _shader, EntryPoint = fragmentEntry, TargetCount = 1, Targets = &colorTarget };
-            var descriptor = new RenderPipelineDescriptor
-            {
-                Layout = layout,
-                Vertex = new VertexState { Module = _shader, EntryPoint = vertexEntry, BufferCount = 2, Buffers = layouts },
-                Primitive = new PrimitiveState { Topology = PrimitiveTopology.TriangleList, StripIndexFormat = IndexFormat.Undefined, FrontFace = FrontFace.Ccw, CullMode = CullMode.Back },
-                DepthStencil = &depth,
-                Multisample = new MultisampleState { Count = 1, Mask = uint.MaxValue, AlphaToCoverageEnabled = false },
-                Fragment = &fragment,
-            };
-            return _wgpu.DeviceCreateRenderPipeline(_device, &descriptor);
-        }
     }
 
     private struct Area

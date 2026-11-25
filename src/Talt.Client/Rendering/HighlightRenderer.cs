@@ -23,47 +23,36 @@ internal sealed unsafe class HighlightRenderer : IDisposable
     private readonly WebGPU _wgpu;
     private readonly Queue* _queue;
     private readonly ShaderModule* _shader;
-    private readonly RenderPipeline* _pipeline;
+    private readonly WorldPipeline _pipeline;
     private readonly Buffer* _vertexBuffer;
     private readonly LineVertex[] _vertices = new LineVertex[MaxBoxes * VerticesPerBox];
     private int _vertexCount;
 
-    public HighlightRenderer(WebGPU wgpu, Device* device, Queue* queue, PipelineLayout* worldLayout, TextureFormat surfaceFormat, TextureFormat depthFormat)
+    public HighlightRenderer(WorldPassContext context)
     {
+        ArgumentNullException.ThrowIfNull(context);
+        var wgpu = context.Wgpu;
+        var device = context.Device;
         _wgpu = wgpu;
-        _queue = queue;
+        _queue = context.Queue;
         _shader = WebGpuShaders.CreateModule(wgpu, device, WebGpuShaders.Load("highlight.wgsl"));
-
-        var attributes = stackalloc VertexAttribute[2];
-        attributes[0] = new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 0, ShaderLocation = 0 };
-        attributes[1] = new VertexAttribute { Format = VertexFormat.Unorm8x4, Offset = 12, ShaderLocation = 1 };
-        var layout = new VertexBufferLayout { ArrayStride = (ulong)sizeof(LineVertex), StepMode = VertexStepMode.Vertex, AttributeCount = 2, Attributes = attributes };
-
-        var colorTarget = new ColorTargetState { Format = surfaceFormat, Blend = null, WriteMask = ColorWriteMask.All };
-        var keep = new StencilFaceState { Compare = CompareFunction.Always, FailOp = StencilOperation.Keep, DepthFailOp = StencilOperation.Keep, PassOp = StencilOperation.Keep };
-        var depth = new DepthStencilState
+        _pipeline = new WorldPipeline(context, new PipelineSpec
         {
-            Format = depthFormat,
-            DepthWriteEnabled = false,
+            Shader = _shader,
+            Buffers =
+            [
+                new VertexBufferSpec((ulong)sizeof(LineVertex), VertexStepMode.Vertex,
+                [
+                    new VertexAttribute { Format = VertexFormat.Float32x3, Offset = 0, ShaderLocation = 0 },
+                    new VertexAttribute { Format = VertexFormat.Unorm8x4, Offset = 12, ShaderLocation = 1 },
+                ]),
+            ],
+            Topology = PrimitiveTopology.LineList,
+            Cull = CullMode.None,
+            Translucent = true, // No depth writes; the colour is opaque (alpha 1).
             DepthCompare = CompareFunction.LessEqual,
-            StencilFront = keep,
-            StencilBack = keep,
-        };
-        fixed (byte* vertexEntry = "vs_main"u8)
-        fixed (byte* fragmentEntry = "fs_main"u8)
-        {
-            var fragment = new FragmentState { Module = _shader, EntryPoint = fragmentEntry, TargetCount = 1, Targets = &colorTarget };
-            var descriptor = new RenderPipelineDescriptor
-            {
-                Layout = worldLayout,
-                Vertex = new VertexState { Module = _shader, EntryPoint = vertexEntry, BufferCount = 1, Buffers = &layout },
-                Primitive = new PrimitiveState { Topology = PrimitiveTopology.LineList, StripIndexFormat = IndexFormat.Undefined, FrontFace = FrontFace.Ccw, CullMode = CullMode.None },
-                DepthStencil = &depth,
-                Multisample = new MultisampleState { Count = 1, Mask = uint.MaxValue, AlphaToCoverageEnabled = false },
-                Fragment = &fragment,
-            };
-            _pipeline = wgpu.DeviceCreateRenderPipeline(device, &descriptor);
-        }
+            CastsShadow = false,
+        });
 
         var bufferDescriptor = new BufferDescriptor { Usage = BufferUsage.Vertex | BufferUsage.CopyDst, Size = (ulong)(_vertices.Length * sizeof(LineVertex)) };
         _vertexBuffer = wgpu.DeviceCreateBuffer(device, &bufferDescriptor);
@@ -96,7 +85,7 @@ internal sealed unsafe class HighlightRenderer : IDisposable
             return;
         }
 
-        _wgpu.RenderPassEncoderSetPipeline(pass, _pipeline);
+        _wgpu.RenderPassEncoderSetPipeline(pass, _pipeline.Main);
         _wgpu.RenderPassEncoderSetVertexBuffer(pass, 0, _vertexBuffer, 0, (ulong)(_vertexCount * sizeof(LineVertex)));
         _wgpu.RenderPassEncoderDraw(pass, (uint)_vertexCount, 1, 0, 0);
     }
@@ -104,7 +93,7 @@ internal sealed unsafe class HighlightRenderer : IDisposable
     public void Dispose()
     {
         _wgpu.BufferRelease(_vertexBuffer);
-        _wgpu.RenderPipelineRelease(_pipeline);
+        _pipeline.Dispose();
         _wgpu.ShaderModuleRelease(_shader);
     }
 
