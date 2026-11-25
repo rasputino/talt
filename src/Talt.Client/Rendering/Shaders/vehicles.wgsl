@@ -1,13 +1,6 @@
 // Vehicles: one unit cube per instance, stretched along the direction of travel.
 
-struct Uniforms {
-    view_proj: mat4x4<f32>,
-    light_dir: vec4<f32>,
-    camera_pos: vec4<f32>,
-    sky_color: vec4<f32>,
-};
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
+// #include "lighting.wgsl"
 
 struct VertexIn {
     // Per vertex: unit cube centered on X/Z, from 0 to 1 on Y.
@@ -46,11 +39,5 @@ fn vs_main(in: VertexIn) -> VertexOut {
 
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
-    let diffuse = max(dot(in.normal, -u.light_dir.xyz), 0.0);
-    let sky = 0.5 + 0.5 * in.normal.y;
-    let lit = in.color * (0.30 + 0.25 * sky + 0.65 * diffuse);
-
-    let distance = length(in.world_position - u.camera_pos.xyz);
-    let fog = clamp((distance - u.camera_pos.w * 0.5) / u.camera_pos.w, 0.0, 1.0);
-    return vec4<f32>(mix(lit, u.sky_color.rgb, fog * fog), 1.0);
+    return vec4<f32>(finish(in.color, in.normal, in.world_position, 1.0), 1.0);
 }

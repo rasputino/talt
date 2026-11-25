@@ -15,7 +15,7 @@ public class AudioSettingsTests
         var window = SettingsWindow.Create(host);
         var sliders = UiTestKit.Walk(window).OfType<Slider>().ToArray();
         Assert.Equal(4, sliders.Length);
-        var mute = UiTestKit.Walk(window).OfType<Checkbox>().First();
+        var mute = UiTestKit.Walk(window).OfType<Checkbox>().First(c => c.Text.Key == "settings.mute");
         Assert.Equal("Mute all sound", mute.Text.Resolve(ui));
     }
 
@@ -36,7 +36,7 @@ public class AudioSettingsTests
     {
         var ui = UiTestKit.CreateContext("en");
         var host = new FakeHost(ui);
-        var mute = UiTestKit.Walk(SettingsWindow.Create(host)).OfType<Checkbox>().First();
+        var mute = UiTestKit.Walk(SettingsWindow.Create(host)).OfType<Checkbox>().First(c => c.Text.Key == "settings.mute");
         mute.OnChanged(true);
         Assert.True(host.Settings.Muted);
         Assert.Contains("apply", host.Calls);

@@ -50,7 +50,8 @@ Talt.slnx
 │                           ChunkMeshScheduler, Frustum, LodSelector, RenderStatistics, OrbitCamera,
 │                           UnitCube, IndustryInstance, Shaders/*.wgsl
 ├── tools/
-│   └── Talt.Headless/      Console runner: run and replay simulations without a window
+│   ├── Talt.Headless/      Console runner: run and replay simulations without a window
+│   └── Talt.ModelGen/      Writes the original .vox models and models.json (feature 018)
 ├── tests/
 │   ├── Talt.Core.Tests/    xUnit tests for Talt.Core (determinism, calendar, runner, commands...)
 │   ├── Talt.Client.Tests/  Strings and localization coverage, money, layout, draw list, input
@@ -718,11 +719,117 @@ default statistical job):
 - **Silk.NET** creates the window (GLFW) and provides the WebGPU bindings.
 - **WebGPU** through wgpu-native, which uses Vulkan, Metal or DirectX 12 depending on the platform.
   On the development machine (Windows, AMD) it runs on Vulkan.
-- `WebGpuRenderer` owns the device, the terrain and vehicle pipelines and one uniform buffer
-  (view-projection, light, camera, sky colour, material palette) shared by both, and runs the frame.
+- `WebGpuRenderer` owns the device, the pipelines, the uniform buffer (camera, sun, ambient light, fog,
+  shadow cascades, material palette) and runs the frame; feature 018 changed the frame (see
+  "Visual quality" below).
 - `voxel.wgsl`: unpacks `PackedVertex`, adds the region origin (per-instance attribute), applies
-  palette colour × per-voxel variation × interpolated AO, then directional light plus sky light and
-  distance fog (unchanged look).
+  palette colour × per-voxel variation × interpolated AO, the shared lighting of `lighting.wgsl`, and
+  the animated water of feature 018.
+
+### Visual quality (feature 018)
+
+Specs in `specs/018-visual-quality/` (research R1–R13). Nothing here touches the simulation: goldens
+and recorded sessions are unchanged.
+
+- **Frame.** (1) CPU: terrain regions, roads and town areas are culled; the frame's `ModelBatch` is
+  filled (vehicles, town buildings, industries, trees, bushes and rocks), culled, levelled and sorted;
+  the shadow cascades are fitted. (2) One depth-only pass per cascade into a `Depth32Float` array
+  texture: terrain (regions chosen against the cascade's light volume, so off-screen hills shade the
+  screen), roads, town boxes, placeholders and models (not in the third cascade, where their shadows are
+  a few texels). (3) The world pass into a 4× multisampled target when anti-aliasing is on, resolved into
+  the surface. (4) The interface, unchanged.
+- **Bind groups and pipelines.** Group 0: `Uniforms` (camera or cascade matrix; the shadow pass reuses
+  every vertex shader unchanged with a per-cascade buffer). Group 1 (`FrameResources`, fragment only):
+  shadow map array with a comparison sampler, water texture with a linear sampler, model palettes. The
+  world layout has groups 0 and 1, the shadow layout group 0 only. Each renderer keeps a `WorldPipeline`
+  (pipelines per MSAA sample count, created on first use, plus a depth-only shadow variant with
+  slope-scaled bias) built from a managed `PipelineSpec`; renderers receive a `WorldPassContext`.
+- **Lighting** (`lighting.wgsl`, inserted by the `// #include` line that `WebGpuShaders.ExpandIncludes`
+  expands): sun colour × shadow, sky/ground hemispheric ambient × AO strength, fog, then Narkowicz's
+  ACES fit with exposure; the sRGB surface encodes gamma. The clear colour is the tone-mapped sky
+  (`Lighting.ToneMap`). The default sun shines over the default camera's left shoulder, so the two
+  visible walls differ and shadows fall where they show.
+- **Shadows** (`ShadowCascades`, `ShadowRenderer`): 1–3 cascades by preset, practical splits
+  (λ = 0.75) up to the shadow distance (capped by the fog), orthographic light projection around each
+  slice's bounding sphere, centre snapped to whole texels (no shimmering), 1/4/9 hardware-filtered taps,
+  normal-offset lookups, fade over the last tenth.
+- **Water**: water top faces get two scrolling value-noise normals (real-time clock, also when paused),
+  Fresnel towards the sky, a sun highlight and a colour from depth; at the shore the shallow edge takes
+  the wet colour of the nearest land tile and a thin, faint foam line breaks a little further out. Data
+  from `WaterTexture` (RGBA8, per tile up to 4096 per side: distance to land by a two-pass chamfer
+  transform that also carries the nearest land tile's material, water depth; rebuilt around terraformed
+  tiles).
+- **Voxel models.** `Talt.Core.Meshing.Models`: `VoxReader`/`VoxWriter` (MagicaVoxel `.vox`, written
+  from the format description, contracts/vox-format.md; Z-up file axes become Y-up), `ModelMesher`
+  (greedy quads merged by colour and corner AO, ground below the model darkens wall feet, levels 0–3 at
+  1, 2, 4 and 8 voxels per cell). Client: `ModelLibrary` reads `Rendering/Data/models.json` and the
+  embedded `models/*.vox`, builds one vertex array (12-byte `ModelVertex`: half-voxel position relative
+  to the base centre, face, AO, palette index and row) and a palette texture whose alpha marks paint
+  (instance colour) and glow (lit windows at night). `ModelBatch` culls (frustum enlarged by each
+  object's shadow reach, fog), picks the level by distance (`modelDetail` distances) and counting-sorts
+  instances into (variant, level) buckets; `ModelRenderer` draws each bucket with one indexed instanced
+  call (base vertex = level start, first instance = bucket start); shadows use one level coarser. 8 model
+  voxels per tile.
+- **Model keys** (contracts/model-pipeline.md): `vehicle` (variant by vehicle id, paint = vehicle
+  colour), `town-building:<id>` (variant by building id, half or quarter turns), `industry:<id>`,
+  `tree:broadleaf|conifer|birch`, `bush`, `rock`; keys without an entry keep their box placeholders.
+  **Stations and depots (feature 010)** get models by adding `.vox` files and `station:<id>` /
+  `depot:<id>` entries, then calling `ModelBatch.Add(entry.Variant(id), position, yaw, tint, variation)`
+  from their instance source; no renderer, shader or pipeline change. The first 57 models (vehicles,
+  14 building types × 2, 11 industries, trees, bushes, rocks) are original and generated by
+  `tools/Talt.ModelGen` (deterministic; regenerate after data changes; editable in MagicaVoxel).
+- **Decoration** (`DecorScatter`): at most one bush or rock per free tile from a hash of tile and map
+  seed (never on water, beaches, roads, buildings, industries or under trees), ring-gathered around the
+  camera, density by preset; presentation only.
+- **Day/night** (`TimeOfDay`, off by default): 12 real minutes per cycle, advances only while the game
+  runs, keyframed sun/ambient/sky/exposure, the moon at night, windows glow by night factor.
+- **Settings** (`GraphicsSettings`, saved as `graphics` in the player settings, version 4): preset
+  Low/Medium/High/Custom plus shadows, shadow quality, anti-aliasing, water effects, scenery density,
+  model detail, ambient occlusion and day/night; numbers in `Rendering/Data/graphics-presets.json`.
+  `--graphics <preset>` for one run, `--measure-effects [s]` for the A/B cost table, `--day-night`,
+  `--time-of-day <0-1>`, `--camera x,z`.
+
+### Visual quality numbers (feature 018, Windows, AMD Radeon integrated GPU, Vulkan, 1600 × 900)
+
+Measured with `--measure-effects 3` (vertical sync off, camera still, 3 000 synthetic vehicles; each
+configuration turns one effect off from the full preset; "cost" = full preset minus that row, or the
+row minus full preset for "day/night on"). Run-to-run noise is about ±0.5 ms.
+
+| Scenario | Full preset avg / p99 (ms) | FPS |
+|---|---|---|
+| High, 2048 map, camera distance 40 (town) | 7.97 / 9.52 | 126 |
+| High, 2048 map, camera distance 350 (default) | 13.93 / 15.24 | 72 |
+| High, 2048 map, camera distance 1200 | 10.96 / 12.63 | 91 |
+| Medium, 4096 map, camera distance 60 | 6.39 / 7.50 | 156 |
+| Medium, 4096 map, camera distance 350 (default) | 14.16 / 15.41 | 71 |
+| Medium, 4096 map, camera distance 3000 | 13.38 / 15.04 | 75 |
+
+Both budgets hold at every zoom measured (SC-001, SC-002): High keeps 60 FPS on 2048, Medium on 4096.
+
+Effect costs, Medium on a 4096 map at the default camera distance (350):
+
+| Effect | Cost (ms) |
+|---|---|
+| Shadows (2 cascades × 2048, 4 taps) | 4.42 |
+| Anti-aliasing (MSAA 4×) | 6.52 |
+| Water effects | 0.86 |
+| Bushes and rocks | 1.43 |
+| Ambient occlusion | 0.86 (noise level) |
+| Model detail medium vs low | 0.86 |
+| All models (vs not drawn) | 8.36 |
+| Day/night on | ≈ 0 (−1.02, noise) |
+
+Effect costs, High on a 2048 map at camera distance 70 (town view, before the level-3 and cascade
+changes; shadows 3 × 2048 9 taps 5.92, MSAA 2.23, water 0.32, decoration 0.63, AO 0.09, model detail
+1.79, models 4.14, day/night 0.62). At the default distance the first High version took 19.6 ms; adding
+model level 3 (one cell per tile) and coarser shadow levels brought it to 15.2 ms, and skipping models in
+the third cascade and a 420-tile shadow distance to 13.9 ms.
+
+CPU (BenchmarkDotNet, `ModelBenchmarks`, short job): loading and meshing all 57 models 27.5 ms (20 MB
+allocated once at start; the client logs about 80 ms including file reads, SC-005 < 1 s); batching
+60 000 instances 1.35 ms, 0 B allocated; scattering decoration around the camera on a 1024 map
+0.32 ms, 0 B. In game the model batch takes about 2.4 ms per frame at the default zoom on a 2048 map
+(26 000 instances); the frame still allocates 0 B.
 
 ### World rendering (feature 003)
 

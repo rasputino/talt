@@ -16,6 +16,9 @@ internal sealed class TreeInstances
     public const int RebuildStep = 16;
 
     private BoxInstance[] _boxes = [];
+    private ModelPlacement[] _placements = [];
+    private int _placementCount;
+    private readonly ModelEntry?[] _kindModels = new ModelEntry?[8];
     private int _count;
     private int _builtX = int.MinValue;
     private int _builtZ = int.MinValue;
@@ -31,7 +34,19 @@ internal sealed class TreeInstances
 
     public int MaxTrees { get; }
 
-    public int TreeCount => _count / 2;
+    public int TreeCount => (_count / 2) + _placementCount;
+
+    /// <summary>Trees drawn as voxel models (feature 018), added to each frame's model batch.</summary>
+    public ReadOnlySpan<ModelPlacement> Placements => _placements.AsSpan(0, _placementCount);
+
+    /// <summary>Uses voxel models for the tree kinds that have one (keys <c>tree:broadleaf|conifer|birch</c>).</summary>
+    public void UseModels(ModelLibrary? library)
+    {
+        _kindModels[Scenery.KindBroadleaf] = Find(library, "tree:broadleaf");
+        _kindModels[Scenery.KindConifer] = Find(library, "tree:conifer");
+        _kindModels[Scenery.KindBirch] = Find(library, "tree:birch");
+        _builtVersion = -1; // Rebuild with the models.
+    }
 
     public ReadOnlySpan<BoxInstance> Boxes => _boxes.AsSpan(0, _count);
 
@@ -60,15 +75,21 @@ internal sealed class TreeInstances
             _boxes = new BoxInstance[MaxTrees * 2];
         }
 
-        _count = 0;
-        var scenery = map.SceneryData;
-        for (var ring = 0; ring <= Radius && _count < MaxTrees * 2; ring++)
+        if (_placements.Length < MaxTrees)
         {
-            for (var dz = -ring; dz <= ring && _count < MaxTrees * 2; dz++)
+            _placements = new ModelPlacement[MaxTrees];
+        }
+
+        _count = 0;
+        _placementCount = 0;
+        var scenery = map.SceneryData;
+        for (var ring = 0; ring <= Radius && (_count / 2) + _placementCount < MaxTrees; ring++)
+        {
+            for (var dz = -ring; dz <= ring && (_count / 2) + _placementCount < MaxTrees; dz++)
             {
                 // Whole rows at the ring's top and bottom, only the two ends in between.
                 var step = dz == -ring || dz == ring ? 1 : Math.Max(1, 2 * ring);
-                for (var dx = -ring; dx <= ring && _count < MaxTrees * 2; dx += step)
+                for (var dx = -ring; dx <= ring && (_count / 2) + _placementCount < MaxTrees; dx += step)
                 {
                     var x = cx + dx;
                     var z = cz + dz;
@@ -88,8 +109,23 @@ internal sealed class TreeInstances
         }
     }
 
+    private static ModelEntry? Find(ModelLibrary? library, string key) =>
+        library is not null && library.TryGet(key, out var entry) ? entry : null;
+
     private void AddTree(int x, int z, int ground, int kind, int variant)
     {
+        if ((uint)kind < (uint)_kindModels.Length && _kindModels[kind] is { } model)
+        {
+            // Variant (0–31): model variant, a small offset in the tile and a turn.
+            var offset = new Vector2((((variant >> 3) & 3) - 1.5f) * 0.1f, ((variant & 3) - 1.5f) * 0.1f);
+            _placements[_placementCount++] = new ModelPlacement(
+                model.Variant(variant + (x * 7) + (z * 13)),
+                new Vector3(x + 0.5f + offset.X, ground, z + 0.5f + offset.Y),
+                (variant & 3) * MathF.PI / 2f,
+                variant / 31f);
+            return;
+        }
+
         // Variant (0–31) gives a little size and position variety; shapes are original.
         var scale = 0.85f + ((variant & 7) * 0.05f);
         var jitterX = (((variant >> 3) & 3) - 1.5f) * 0.08f;

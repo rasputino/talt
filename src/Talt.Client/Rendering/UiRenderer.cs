@@ -300,11 +300,47 @@ internal static unsafe class WebGpuShaders
         }
     }
 
-    /// <summary>Embedded shader source by file name.</summary>
-    public static string Load(string fileName)
+    /// <summary>Embedded shader source by file name, with <c>// #include "file.wgsl"</c> lines expanded.</summary>
+    public static string Load(string fileName) => ExpandIncludes(LoadRaw(fileName), LoadRaw);
+
+    /// <summary>
+    /// Replaces each line <c>// #include "name.wgsl"</c> with that file's text (one level: included files
+    /// may not include others), so every world shader shares lighting.wgsl (feature 018, research R2).
+    /// </summary>
+    internal static string ExpandIncludes(string source, Func<string, string> load)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(load);
+        const string Directive = "// #include \"";
+        const char NewLine = (char)10;
+        var builder = new System.Text.StringBuilder(source.Length);
+        foreach (var line in source.Split(NewLine))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith(Directive, StringComparison.Ordinal) && trimmed.EndsWith('"'))
+            {
+                var name = trimmed[Directive.Length..^1];
+                var included = load(name);
+                if (included.Contains(Directive, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException($"Shader include '{name}' may not include other files.");
+                }
+
+                builder.Append(included).Append(NewLine);
+            }
+            else
+            {
+                builder.Append(line).Append(NewLine);
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private static string LoadRaw(string fileName)
     {
         var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-        var resourceName = assembly.GetManifestResourceNames().Single(name => name.EndsWith(fileName, StringComparison.Ordinal));
+        var resourceName = assembly.GetManifestResourceNames().Single(name => name.EndsWith("." + fileName, StringComparison.Ordinal) || name == fileName);
         using var stream = assembly.GetManifestResourceStream(resourceName)!;
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();

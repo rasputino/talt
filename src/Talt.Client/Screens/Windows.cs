@@ -392,6 +392,8 @@ internal static class SettingsWindow
             Tooltip = TextRef.Of("settings.scale.tooltip"),
         });
 
+        GraphicsSection(form, host);
+
         form.Add(new Label(TextRef.Of("settings.audio"), TextSize.Title) { Color = TextColor.Accent, Margin = new Thickness(0, 8, 0, 0) });
         VolumeRow(form, "settings.masterVolume", "settings.masterVolume.tooltip", () => settings.MasterVolume, value =>
         {
@@ -445,8 +447,109 @@ internal static class SettingsWindow
             Tooltip = TextRef.Of("settings.fastForward.tooltip"),
         });
         form.Add(new Button(TextRef.Of("settings.keyBindings"), host.OpenKeyBindings) { HorizontalAlignment = Alignment.Start, Margin = new Thickness(0, 6, 0, 0) });
-        window.Content = form;
+
+        // The graphics section (feature 018) made the window taller than small screens: it scrolls.
+        window.Content = new ScrollArea(form) { MaxHeight = 620 };
         return window;
+    }
+
+    /// <summary>
+    /// Graphics quality (feature 018, contracts/graphics-settings.md): a preset (Custom appears when effects
+    /// differ from every preset) and one control per effect. Changes apply at once and are saved.
+    /// </summary>
+    private static void GraphicsSection(StackPanel form, IScreenHost host)
+    {
+        var settings = host.Settings;
+        form.Add(new Label(TextRef.Of("settings.graphics"), TextSize.Title) { Color = TextColor.Accent, Margin = new Thickness(0, 8, 0, 0) });
+        GraphicsPreset[] presets = [GraphicsPreset.Low, GraphicsPreset.Medium, GraphicsPreset.High, GraphicsPreset.Custom];
+        Row(form, "settings.graphics.preset", new Dropdown(
+            presets.Select(p => new DropdownChoice(TextRef.Of("settings.graphics.preset." + Lower(p)), p)).ToList(),
+            () => Array.IndexOf(presets, settings.Graphics.Preset),
+            index =>
+            {
+                if (presets[index] != GraphicsPreset.Custom)
+                {
+                    settings.Graphics.ApplyPreset(presets[index]);
+                    host.ApplySettings();
+                }
+            })
+        {
+            Tooltip = TextRef.Of("settings.graphics.preset.tooltip"),
+        });
+
+        void Changed()
+        {
+            settings.Graphics.UpdatePreset();
+            host.ApplySettings();
+        }
+
+        form.Add(new Checkbox(TextRef.Of("settings.graphics.shadows"), () => settings.Graphics.Shadows, value =>
+        {
+            settings.Graphics.Shadows = value;
+            Changed();
+        })
+        {
+            Tooltip = TextRef.Of("settings.graphics.shadows.tooltip"),
+        });
+        EnumRow(form, "settings.graphics.shadowQuality", "settings.graphics.quality", () => settings.Graphics.ShadowQuality, v =>
+        {
+            settings.Graphics.ShadowQuality = v;
+            Changed();
+        });
+        EnumRow(form, "settings.graphics.antiAliasing", "settings.graphics.antiAliasing", () => settings.Graphics.AntiAliasing, v =>
+        {
+            settings.Graphics.AntiAliasing = v;
+            Changed();
+        });
+        form.Add(new Checkbox(TextRef.Of("settings.graphics.water"), () => settings.Graphics.WaterEffects, value =>
+        {
+            settings.Graphics.WaterEffects = value;
+            Changed();
+        })
+        {
+            Tooltip = TextRef.Of("settings.graphics.water.tooltip"),
+        });
+        EnumRow(form, "settings.graphics.scenery", "settings.graphics.density", () => settings.Graphics.SceneryDensity, v =>
+        {
+            settings.Graphics.SceneryDensity = v;
+            Changed();
+        });
+        EnumRow(form, "settings.graphics.modelDetail", "settings.graphics.quality", () => settings.Graphics.ModelDetail, v =>
+        {
+            settings.Graphics.ModelDetail = v;
+            Changed();
+        });
+        EnumRow(form, "settings.graphics.ambientOcclusion", "settings.graphics.ambientOcclusion", () => settings.Graphics.AmbientOcclusion, v =>
+        {
+            settings.Graphics.AmbientOcclusion = v;
+            Changed();
+        });
+        form.Add(new Checkbox(TextRef.Of("settings.graphics.dayNight"), () => settings.Graphics.DayNight, value =>
+        {
+            settings.Graphics.DayNight = value;
+            host.ApplySettings();
+        })
+        {
+            Tooltip = TextRef.Of("settings.graphics.dayNight.tooltip"),
+        });
+    }
+
+    /// <summary>A dropdown with one choice per enum value; texts are <c>valuePrefix.value</c> (lower camel case).</summary>
+    private static void EnumRow<T>(StackPanel form, string labelKey, string valuePrefix, Func<T> get, Action<T> set)
+        where T : struct, Enum
+    {
+        var values = Enum.GetValues<T>();
+        Row(form, labelKey, new Dropdown(
+            values.Select(v => new DropdownChoice(TextRef.Of(valuePrefix + "." + Lower(v)), v)).ToList(),
+            () => Array.IndexOf(values, get()),
+            index => set(values[index])));
+    }
+
+    private static string Lower<T>(T value)
+        where T : struct, Enum
+    {
+        var text = value.ToString();
+        return char.ToLowerInvariant(text[0]) + text[1..];
     }
 
     private static void Row(StackPanel form, string labelKey, Widget editor)

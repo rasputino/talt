@@ -40,7 +40,7 @@ so a map can be shared): `dotnet run --project src/Talt.Client -c Release -- --m
 
 Client options: `--start-year <year>`, `--language en|es` and `--ui-scale <0.75–2>` (for this run),
 `--unlock-fast-forward` / `--lock-fast-forward` (saved in your settings), `--record [file]`,
-`--print-fingerprint-at <tick>`, `--stats` (render statistics from the start), `--zoom <distance|max>`
+`--print-fingerprint-at <tick>`, `--stats` (render statistics from the start), `--graphics low|medium|high` (one run), `--measure-effects [seconds]` (graphics effect costs, then exit), `--day-night`, `--time-of-day <0-1>`, `--camera <x,z>`, `--zoom <distance|max>`
 (initial camera distance), `--ui-test-windows <n>` (opens sample windows to measure the interface),
 `--no-audio` (starts silently, for CI and machines without a sound device), `--road-grid <spacing>`
 (debug: lays a full road grid every `<spacing>` tiles, to check the frame rate with a dense network).

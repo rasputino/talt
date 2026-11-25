@@ -13,5 +13,6 @@
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Talt.Headless/Talt.Headless.csproj" />
+    <Project Path="tools/Talt.ModelGen/Talt.ModelGen.csproj" />
   </Folder>
 </Solution>
