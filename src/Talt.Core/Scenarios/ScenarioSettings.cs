@@ -18,6 +18,7 @@ namespace Talt.Core.Scenarios;
 /// With a map the simulation owns its tile data and can be built on (feature 006, research R1).
 /// </param>
 /// <param name="Towns">Town options of a game with a map (feature 008); null means the defaults.</param>
+/// <param name="Stations">Station options of a game with a map (feature 010); null means the defaults.</param>
 public sealed record ScenarioSettings(
     int Seed = 2026,
     int StartYear = 1950,
@@ -27,8 +28,12 @@ public sealed record ScenarioSettings(
     int VehicleCount = 20_000,
     int? LineCount = null,
     MapSettings? Map = null,
-    Talt.Core.Towns.TownSettings? Towns = null)
+    Talt.Core.Towns.TownSettings? Towns = null,
+    Talt.Core.Stations.StationSettings? Stations = null)
 {
+    /// <summary>The station options in effect (<see cref="Stations"/> or the defaults).</summary>
+    public Talt.Core.Stations.StationSettings EffectiveStations => Stations ?? Talt.Core.Stations.StationSettings.Default;
+
     /// <summary>The town options in effect (<see cref="Towns"/> or the defaults).</summary>
     public Talt.Core.Towns.TownSettings EffectiveTowns => Towns ?? Talt.Core.Towns.TownSettings.Default;
 
@@ -72,6 +77,7 @@ public sealed record ScenarioSettings(
         }
 
         Towns?.Validate();
+        Stations?.Validate();
         if (Map is not null)
         {
             Map.Validate();

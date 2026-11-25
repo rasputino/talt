@@ -838,6 +838,10 @@ daily station update for 5 000 stations.
 
 **Done when:** stations collect, store and accept cargo correctly; windows show ratings; budget met.
 
+**Built (2026-11-24):** `specs/010-stations-cargo/`. The developer added warehouses in three sizes that group
+nearby stations into one virtual station, both stop forms (bay and drive-through), place-suffix names for
+warehouses and renaming (see the clarifications in the spec).
+
 ---
 
 ### 011 — Economy and finance

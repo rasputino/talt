@@ -19,6 +19,9 @@ Talt.slnx
 │   │   ├── Industries/     IndustryFleet (SoA state), placement, economy, delivery, read model (009)
 │   │   ├── Towns/          TownRegistry (founding, month update, growth, streets, ratings), TownBuildings,
 │   │   │                   TownRules, TownNames (+ Data/town-buildings.json, towns.json, town-names.json) (008)
+│   │   ├── Stations/       StationRegistry (pieces, stations, warehouse groups, coverage, supply, ratings,
+│   │   │                   Load/Unload), StationPlanner, station commands, CargoHold, CargoDelivery,
+│   │   │                   StationSeeder, StationRules (+ Data/stations.json) (010)
 │   │   ├── Meshing/        GreedyMesher, LodVolume, PackedVertex, PackedMesh, FaceDirections,
 │   │   │                   MaterialPalette; ChunkMesher/ChunkMesh/VoxelVertex (naive reference)
 │   │   ├── Network/        RoadNetwork (incremental road graph), RoadRouter (A* + route cache);
@@ -482,6 +485,81 @@ The served month allocates only when building storage, the tile → building dic
 grow; the unserved month's 2.8 KB is `Parallel.For` bookkeeping. Towns run only on month boundaries, so the
 tick budget is unchanged. Headless, 1024 × 1024 map, 44 towns, ten years at 60 % service: population
 58 296 → 172 969 with a 0.003 ms average tick.
+
+## Stations and cargo handling (feature 010)
+
+Stations collect cargo from their surroundings, keep it waiting and hand it to vehicles; delivered cargo goes to
+the consumers around them. Spec and design: `specs/010-stations-cargo/` (research R1–R14).
+
+- **State**: `StationRegistry` (namespace `Talt.Core.Stations`) is created by `GameSimulation` for games with a
+  map, after towns, and attached to `ConstructionState.Stations`. Stations (road stations and warehouses share
+  one id space) are structure-of-arrays by slot with stable ids and swap-with-last removal: owner, kind,
+  bounding box, name parts (town, kind, place, number) or a custom name, handled cargo categories, catchment
+  radius and group. Station tiles are in a tile → piece dictionary (type, direction). Groups (research R4) are
+  connected components of warehouses and the road stations with a piece inside their influence square
+  (warehouses link when their squares overlap); without warehouses every station is its own group (fast path,
+  appended on creation). Per group × cargo flat tables hold the served flag, rating (0–1 000), waiting total,
+  FIFO packet list, last pickup day and speed and this/last month's received, picked-up, delivered and lost
+  figures. Waiting cargo is a pool of aggregated packets (amount, origin station, source town, destination
+  — "any" until feature 013 — and pickup day) with a free list; nothing is stored per unit.
+- **Placement** (`StationPlanner`, also used by the tool previews): a *bay* is an empty, flat, dry tile beside a
+  road (first of N, E, S, W at the same height) and becomes `TileObjectKind.Station` with a one-link road piece
+  plus the reverse link on the road, so the routing graph gets a dead-end node vehicles (012) can reach; a
+  *drive-through* stop sits on a straight two-link road tile of the company or of a town that allows stations,
+  and leaves the road untouched (one unchanged `TileChange`). Pieces touching one company station join it (two
+  → `adjacent-two-stations`; bounding box > 12 → `station-too-spread`). Warehouses (2×2, 3×3, 4×4) need flat
+  empty land touching a road. Inside a town zone the town's rating must allow stations (`town-refuses`). The
+  road under a drive-through stop and the link into a bay are protected (`RoadPlanner` refuses with
+  `station-road`; town streets skip station tiles); the clear tool skips stations (`use-station-tool`). Station
+  commands (`buildStation`, `buildWarehouse`, `removeStation`; `renameStation` is a plain command) record their
+  pieces in the registry through `ConstructionCommand.Committed` and clear the undo record.
+- **Coverage** (derived, never hashed; research R5): per station the industries and town buildings with a tile
+  in its catchment (union of the pieces' squares, radius 3 bus / 4 truck), acceptance in eighths (industry 8;
+  buildings: goods/food from `town-buildings.json`, passengers and mail from their production), the received
+  and accepted cargo masks (only handled categories), and a CSR producer table (producer → covering stations).
+  It is rebuilt at the start of a day only when construction, industry openings/closings (`IndustryFleet.Version`,
+  through a 16-tile station grid) or town building changes (`TownBuildings.StationWatch`, only the stations whose
+  catchment holds a changed tile) made it stale.
+- **Daily flow** (research R6, R7, R14): `BeginDay` (coverage, debug served marks) → `IndustryFleet.AdvanceDay(date,
+  sink)` offers each daily amount to the registry (`IProductionSink`) before the industry's stock → town
+  buildings' passengers and mail (spread evenly over the month, exact) → for each producer and cargo the moved
+  amount is `(amount × best rating + carry) / 1000` with the remainder carried per producer, split among the two
+  best serving groups by rating; the waiting cap (4 000) loses the excess and penalises the rating → ratings move
+  toward `base + pickup-days points + last-speed points + waiting points` by at most 10 a day (per group, in
+  parallel above 1 024 groups) → neglected cargo (rating < 350, waiting > 200) is lost → the debug service
+  (`--station-service`) collects its share every five days. Monthly: statistics rotate. No randomness.
+- **Vehicle API** (feature 012) and **payments** (feature 011): `MarkServed`, `Load(station, cargo, max, hold,
+  speedKmh)` (oldest first; counts passengers and mail as transported for their town), `Unload(station, hold,
+  Normal | Transfer)` (accepted cargo to industries via `IndustryFleet.Deliver` and to towns, never at its origin
+  group; one `CargoDelivery` per consumer part to `IDeliveryListener`; the rest stays on board or waits with its
+  origin and pickup day). Conservation is tested over 1 000 days of random operations.
+- **Fingerprint**: hashed after towns, only once a station was ever built, so every earlier golden (map-less and
+  map) is unchanged. Data: `Stations/Data/stations.json` (`StationRules`, validated, fingerprinted).
+- **Client**: a third toolbar column (bus stop, truck stop, warehouse with a size option, remove station); the
+  preview adds the catchment tiles (`PreviewBoxes.AppendArea`) and "Receives … / Accepts …" to the cursor label;
+  placeholder boxes (`StationPlaceholders`) are appended to the industry placeholder instances (no new renderer;
+  feature 018 replaces them); `StationPickLayer` (priority 80) and `StationWindow` (cargo table, catchment toggle
+  through `GameSession.ToggleCatchment`, rename field).
+
+### Station numbers
+
+`StationBenchmarks` (2026-11-25, AMD Ryzen 7 160, 8 cores / 16 threads, default job) on a 4096 × 4096 map with
+5 000 bays seeded beside industries and town roads (`StationSeeder`), every cargo served and the debug service
+at 50 %, after a month of play; the grouped game adds 130 small warehouses (5 130 stations in 4 343 groups):
+
+| Benchmark | Mean | Allocated | Budget |
+|---|---|---|---|
+| `DailyUpdate` (coverage check, industries through the sink, town passengers/mail, ratings, losses) | 0.40 ms | 3.3 KB | < 2 ms (SC-001) |
+| `DailyUpdateWithGroups` | 0.33 ms | 3.2 KB | < 2 ms (SC-001) |
+| `MonthlyUpdate` (statistics rotation) | 35 µs | 0 B | < 2 ms (SC-001) |
+| `CatchmentPreview` (one bus bay, cursor moved to another tile) | 3.9 µs | 0 B | same frame (SC-002) |
+
+The daily allocation is `Parallel.For` bookkeeping of the rating phase (above 1 024 groups); the sequential path
+allocates nothing (`StationAllocationTests`). A first version allocated 417 KB a day: `foreach` over the rating
+tables' `IReadOnlyList` boxed an enumerator per cell; the tables are arrays now. Stations run only on day and
+month boundaries, so the tick budget is unchanged. Headless, 1024 × 1024 map, 200 seeded stations, 60 %
+debug service, 4 000 ticks: 24 144 units supplied, 22 392 collected, 1 752 waiting, none lost; 0.05 ms average
+tick.
 
 ## Determinism
 

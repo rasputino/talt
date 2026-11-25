@@ -43,6 +43,9 @@ internal enum PickKind
 
     /// <summary>A town building or a town label (feature 008); <see cref="PickResult.TownId"/> is the town.</summary>
     Town,
+
+    /// <summary>A station tile (feature 010); <see cref="PickResult.StationId"/> is the station.</summary>
+    Station,
 }
 
 /// <summary>What is under the cursor (data-model.md Pick result).</summary>
@@ -57,7 +60,8 @@ internal readonly record struct PickResult(
     Vector3 BoundsMin,
     Vector3 BoundsMax,
     float Distance,
-    int TownId = -1)
+    int TownId = -1,
+    int StationId = -1)
 {
     public static readonly PickResult None = new(PickKind.None, 0, 0, 0, VoxelMaterial.Air, -1, -1, default, default, float.PositiveInfinity);
 
@@ -67,6 +71,7 @@ internal readonly record struct PickResult(
         PickKind.Vehicle => $"vehicle:{VehicleId}",
         PickKind.Industry => $"industry:{IndustryId}",
         PickKind.Town => $"town:{TownId}",
+        PickKind.Station => $"station:{StationId}",
         PickKind.Road => $"road:{TileX},{TileZ}",
         PickKind.Tile => $"tile:{TileX},{TileZ}",
         _ => "none",
@@ -77,6 +82,7 @@ internal readonly record struct PickResult(
         PickKind.Vehicle => other.Kind == Kind && VehicleId == other.VehicleId,
         PickKind.Industry => other.Kind == Kind && IndustryId == other.IndustryId,
         PickKind.Town => other.Kind == Kind && TownId == other.TownId && BoundsMin == other.BoundsMin,
+        PickKind.Station => other.Kind == Kind && StationId == other.StationId,
         PickKind.None => other.Kind == Kind,
         _ => other.Kind == Kind && TileX == other.TileX && TileZ == other.TileZ,
     };
@@ -101,6 +107,9 @@ internal sealed class PickContext
 
     /// <summary>Towns of the game (feature 008); null for map-less games and tests.</summary>
     public Talt.Core.Towns.TownRegistry? Towns { get; set; }
+
+    /// <summary>Stations of the game (feature 010); null for map-less games and tests.</summary>
+    public Talt.Core.Stations.StationRegistry? Stations { get; set; }
 
     /// <summary>Industries of the game (feature 009).</summary>
     public Talt.Core.Industries.IndustryFleet? Industries { get; set; }
@@ -493,10 +502,11 @@ internal sealed class TownPickLayer : IPickLayer
 /// </summary>
 internal sealed class MapPicker
 {
+    // Layers in priority order: terrain 0, road 50, industry and town 75, station 80, vehicle 100.
     /// <summary>A hit may be this far behind the terrain hit and still count (it stands on it).</summary>
     private const float OcclusionTolerance = 0.75f;
 
-    private readonly List<IPickLayer> _layers = [new TerrainPickLayer(), new RoadPickLayer(), new VehiclePickLayer(), new IndustryPickLayer(), new TownPickLayer()];
+    private readonly List<IPickLayer> _layers = [new TerrainPickLayer(), new RoadPickLayer(), new VehiclePickLayer(), new IndustryPickLayer(), new TownPickLayer(), new StationPickLayer()];
 
     /// <summary>Adds a kind of pickable object (stations, buildings... in later features).</summary>
     public void Register(IPickLayer layer) => _layers.Add(layer ?? throw new ArgumentNullException(nameof(layer)));
@@ -524,5 +534,36 @@ internal sealed class MapPicker
         }
 
         return best;
+    }
+}
+
+/// <summary>
+/// Station tiles (feature 010): the terrain hit's tile when a station piece stands on it. Above roads (a
+/// drive-through stop is a road tile too), below vehicles.
+/// </summary>
+internal sealed class StationPickLayer : IPickLayer
+{
+    public int Priority => 80;
+
+    public bool TryPick(in Ray ray, PickContext context, out PickResult result)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        result = PickResult.None;
+        var terrain = context.Terrain;
+        if (context.Stations is not { Count: > 0 } stations || terrain.Kind == PickKind.None
+            || !stations.TryGetStationAt(terrain.TileX, terrain.TileZ, out var stationId))
+        {
+            return false;
+        }
+
+        var min = new Vector3(terrain.TileX, terrain.Height, terrain.TileZ);
+        result = terrain with
+        {
+            Kind = PickKind.Station,
+            StationId = stationId,
+            BoundsMin = min,
+            BoundsMax = min + new Vector3(1f, 1.3f, 1f),
+        };
+        return true;
     }
 }

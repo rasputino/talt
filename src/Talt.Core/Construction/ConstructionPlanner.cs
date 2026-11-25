@@ -207,6 +207,13 @@ public sealed class ConstructionPlanner
                     continue;
                 }
 
+                if (kind == TileObjectKind.Station)
+                {
+                    // Station bays and warehouses keep their cargo and road links through the station tool (feature 010).
+                    plan.AddProblem(i, ConstructionReasons.UseStationTool, blocking: false);
+                    continue;
+                }
+
                 if (kind == TileObjectKind.TownBuilding && owner.Kind == TileOwnerKind.Town && state.Towns is { } towns
                     && towns.Buildings.TryGetAt(i, out var buildingId))
                 {

@@ -274,6 +274,14 @@ public class ToolControllerTests
             tools.UpdatePreview(state);
         }
 
+        // Warm up the measured pattern too, so tiered compilation settles before measuring (the test was flaky
+        // in full runs: about 1 KB allocated once, never when run alone).
+        for (var i = 0; i < 200; i++)
+        {
+            tools.Hover((x + 24 - (i % 2), z + 19));
+            tools.UpdatePreview(state);
+        }
+
         var before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 1000; i++)
         {

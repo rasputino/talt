@@ -7,6 +7,7 @@ using Talt.Core.Maps;
 using Talt.Core.Network;
 using Talt.Core.Roads;
 using Talt.Core.Scenarios;
+using Talt.Core.Stations;
 using Talt.Core.Towns;
 
 namespace Talt.Core.Simulation;
@@ -64,13 +65,29 @@ public sealed class GameSimulation : IStateHashable
             construction.RebuildNetwork();
             Industries.TileBlocked = tile => construction.Objects.KindAt(tile) != TileObjectKind.None
                 || (construction.Roads.FlagsAt(tile) & RoadFeatures.Passing) != 0;
+            // Feature 010: stations collect cargo from industries and towns and hand it to vehicles.
+            Stations = StationRegistry.Create(construction, content, Industries, Towns, settings.EffectiveStations, Date);
+            construction.AttachStations(Stations);
         }
 
-        Events.OnDayEnded(simulation => Industries.AdvanceDay(simulation.Date));
+        // Stations refresh their coverage before industries produce (industries hand them their share), then
+        // collect town passengers and mail and update ratings (feature 010, research R14).
+        Events.OnDayEnded(simulation =>
+        {
+            var date = simulation.Date;
+            simulation.Stations?.BeginDay(date);
+            simulation.Industries.AdvanceDay(date, simulation.Stations);
+            simulation.Stations?.AdvanceDay(date, simulation._parallelTick);
+        });
         Events.OnMonthEnded(simulation => Industries.AdvanceMonth(simulation.Date));
         if (Towns is not null)
         {
             Events.OnMonthEnded(simulation => simulation.Towns!.AdvanceMonth(simulation.Date, simulation._parallelTick));
+        }
+
+        if (Stations is not null)
+        {
+            Events.OnMonthEnded(simulation => simulation.Stations!.AdvanceMonth(simulation.Date));
         }
     }
 
@@ -88,6 +105,9 @@ public sealed class GameSimulation : IStateHashable
 
     /// <summary>The towns of a game with a map (feature 008); null for map-less scenarios.</summary>
     public TownRegistry? Towns { get; }
+
+    /// <summary>The stations of a game with a map (feature 010); null for map-less scenarios.</summary>
+    public StationRegistry? Stations { get; }
 
     /// <summary>All industries of the world; empty when the game was created without a map.</summary>
     public IndustryFleet Industries { get; }
@@ -212,6 +232,11 @@ public sealed class GameSimulation : IStateHashable
         if (Towns is not null)
         {
             hasher.Append(Towns);
+        }
+
+        if (Stations is not null)
+        {
+            hasher.Append(Stations); // Appends nothing until a station is built (FR-030).
         }
     }
 

@@ -19,6 +19,12 @@ public enum TileObjectKind : byte
     /// <summary>A town building tile (feature 008): owned by the town; the building is in <see cref="Towns.TownBuildings"/>.</summary>
     TownBuilding = 2,
 
+    /// <summary>
+    /// A station bay or warehouse tile (feature 010): owned by the company; the piece is in
+    /// <see cref="Stations.StationRegistry"/>. Drive-through stops stay <see cref="Road"/> tiles.
+    /// </summary>
+    Station = 3,
+
     /// <summary>Reserved for tests of the demolish rules (nothing in the game creates it).</summary>
     Test = 255,
 }

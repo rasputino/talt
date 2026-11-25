@@ -47,13 +47,20 @@ Client options: `--start-year <year>`, `--language en|es` and `--ui-scale <0.75�
 Towns (feature 008): `--town-names mixed|english|spanish` and `--town-size small|normal|large` (also on the
 new-game screen), and `--town-service <0–100>` (debug: counts that percentage of every town's passengers and
 mail as transported each month, so towns grow before stations exist).
+Stations (feature 010): `--station-service <0–100>` (debug: every station's cargo counts as served and that
+percentage of the waiting cargo is collected every five days, so cargo flows before vehicles exist) and
+`--seed-stations <n>` (debug: builds up to n bays beside industries and town roads at the start, as recorded
+commands). The headless runner takes the same two options and prints a station summary.
 
 In game: the top bar shows money, date and speed buttons, the toolbar on the left opens settings and
 the other tools, and clicking the map selects the tile, road, vehicle, industry or town under the cursor
 (industries have their own information window with production, acceptance, recipes and last month's
 figures). Construction tools (toolbar or keys): `PageUp` raise land, `PageDown` lower land, `L` level,
 `X` clear trees and demolish your own objects, `Backspace` undo the last construction for a few
-seconds. Hover to see a green/red preview with the cost, drag over an area, release to build, `Esc` or
+seconds. Station tools (third column): `G` bus stop and `H` truck stop (a drive-through stop on a straight
+road, a bay beside one; the preview shows the catchment and the cargo received and accepted), `K` warehouse
+(`Shift+K` changes its size: small, medium, very large), `Shift+H` removes a station piece; clicking a station
+opens its window with waiting cargo, ratings, last month's figures, the catchment toggle and renaming. Hover to see a green/red preview with the cost, drag over an area, release to build, `Esc` or
 the right button to cancel; building works while paused. Default keys:
 Space pause, `1`/`2`/`3` speed ×1/×3/×8, `F` fast forward (once unlocked), `N` add a vehicle, `Delete`
 remove the last vehicle you added, `Shift+Delete` close all windows, `F10` settings, `F3` render

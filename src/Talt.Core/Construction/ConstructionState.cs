@@ -82,6 +82,12 @@ public sealed class ConstructionState : IStateHashable
     /// <summary>Lets construction ask towns about ratings and report demolitions (feature 008).</summary>
     public void AttachTowns(Towns.TownRegistry towns) => Towns = towns ?? throw new ArgumentNullException(nameof(towns));
 
+    /// <summary>The stations of the game (feature 010); null in tests that build a bare state.</summary>
+    public Stations.StationRegistry? Stations { get; private set; }
+
+    /// <summary>Lets road planning protect station roads and planners find stations (feature 010).</summary>
+    public void AttachStations(Stations.StationRegistry stations) => Stations = stations ?? throw new ArgumentNullException(nameof(stations));
+
     /// <summary>Lets road planning avoid industry footprints (feature 009).</summary>
     public void AttachIndustries(IndustryFleet industries) => Industries = industries ?? throw new ArgumentNullException(nameof(industries));
 

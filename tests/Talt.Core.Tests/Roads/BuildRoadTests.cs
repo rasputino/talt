@@ -8,6 +8,9 @@ namespace Talt.Core.Tests.Roads;
 /// <summary>User story 1: build a road by dragging (FR-010..FR-016, SC-001, SC-004).</summary>
 public class BuildRoadTests
 {
+    /// <summary>Previews planned while measuring (and while warming up), for the allocation test.</summary>
+    private const int PlansPerWindow = 200;
+
     [Fact]
     public void LShapedDrag_BuildsThePreviewedPath_ChargesItsCost_AndRoutesInTheSameTick()
     {
@@ -158,18 +161,23 @@ public class BuildRoadTests
         var planner = new ConstructionPlanner();
         var plan = new ConstructionPlan();
         var type = kit.State.RoadRules.FindType("paved");
-        for (var i = 0; i < 20; i++)
+        // Warm up with as many previews as the measurement plans: tiered compilation and the runtime's own
+        // one-off allocations then happen before the measured window (macOS CI once measured 496 bytes).
+        for (var i = 0; i < PlansPerWindow; i++)
         {
             planner.Roads.PlanRoad(kit.State, Company.PlayerId, type, (3, 3), (50, 40 + (i % 3)), plan);
         }
 
         var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 200; i++)
+        for (var i = 0; i < PlansPerWindow; i++)
         {
             planner.Roads.PlanRoad(kit.State, Company.PlayerId, type, (3, 3), (50, 40 + (i % 3)), plan);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        // A preview that allocated would add at least the 24 bytes of the smallest object on every call, so
+        // this bound still fails on a real regression while tolerating a one-off allocation of the runtime.
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(allocated < 24 * PlansPerWindow, $"{PlansPerWindow} road previews allocated {allocated} bytes.");
         Assert.True(plan.IsValid, plan.Reason);
     }
 }

@@ -30,6 +30,15 @@ public abstract record ConstructionCommand(int CompanyId) : ISimulationCommand
         var state = simulation.Construction!;
         // Apply runs right after a successful Validate in the same tick, so state.Plan is this command's plan.
         state.Commit(state.Plan, state.FindCompany(CompanyId)!, simulation.CurrentTick);
+        Committed(simulation);
+    }
+
+    /// <summary>
+    /// Runs after the plan was committed (feature 010: stations record their pieces, which are not tile data).
+    /// Must be deterministic and change only simulation state.
+    /// </summary>
+    protected virtual void Committed(GameSimulation simulation)
+    {
     }
 
     /// <summary>

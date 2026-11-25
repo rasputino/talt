@@ -6,6 +6,16 @@ using Talt.Core.Simulation;
 namespace Talt.Core.Industries;
 
 /// <summary>
+/// Takes a share of an industry's daily production before it goes to the industry's stock (feature 010:
+/// stations serving the industry, research R6).
+/// </summary>
+public interface IProductionSink
+{
+    /// <summary>Returns how many of <paramref name="amount"/> units produced today it takes (0 to amount).</summary>
+    int TakeProduction(int industryId, int cargoIndex, int amount);
+}
+
+/// <summary>
 /// All industries of a game and the rules that change them (research R3–R6). State is stored in
 /// structure-of-arrays form: scalars in parallel arrays and cargo amounts in flat tables indexed
 /// <c>slot * cargoCount + cargoIndex</c>. Removal swaps the last industry into the free slot, like
@@ -291,7 +301,12 @@ public sealed class IndustryFleet : IStateHashable
     }
 
     /// <summary>Adds one day of production. Called from the simulation's day event.</summary>
-    public void AdvanceDay(GameDate date)
+    /// <param name="date">The date that just began.</param>
+    /// <param name="sink">
+    /// Stations serving the industries (feature 010): each daily amount is offered to the sink first and only the
+    /// rest goes to the industry's stock; what the sink takes counts as shipped. Null keeps feature 009's behaviour.
+    /// </param>
+    public void AdvanceDay(GameDate date, IProductionSink? sink = null)
     {
         if (_count == 0)
         {
@@ -322,6 +337,13 @@ public sealed class IndustryFleet : IStateHashable
 
                 var daily = IndustryEconomy.DailyAmount(monthly, daysInMonth, dayOfMonth);
                 var row = Row(slot, cargos[i]);
+                if (sink is not null && daily > 0)
+                {
+                    var taken = sink.TakeProduction(_id[slot], cargos[i], daily);
+                    _shippedThisMonth[row] += taken;
+                    daily -= taken;
+                }
+
                 var capacity = _stockCapacity[kindIndex][cargos[i]];
                 var free = capacity - _available[row];
                 if (free > 0 && daily > 0)

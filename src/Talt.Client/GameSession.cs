@@ -59,7 +59,7 @@ internal sealed class GameSession
     private float _drawFactor;
     private IndustryInstance[] _industryInstances = [];
     private int _industryCount;
-    private int _industryVersion = -1;
+    private long _industryVersion = -1;
 
     public GameSession(GeneratedGame game, SessionOptions options, bool fastForwardUnlocked)
     {
@@ -118,6 +118,29 @@ internal sealed class GameSession
 
     /// <summary>Industry placeholder boxes as drawn this frame (feature 009).</summary>
     public ReadOnlySpan<IndustryInstance> IndustryInstances => _industryInstances.AsSpan(0, _industryCount);
+
+    /// <summary>Station whose catchment the station window highlights (feature 010), or −1.</summary>
+    public int CatchmentStationId { get; private set; } = -1;
+
+    /// <summary>Incremented whenever <see cref="CatchmentStationId"/> changes.</summary>
+    public int CatchmentVersion { get; private set; }
+
+    /// <summary>Turns the catchment highlight of a station on, or off when it is already on (station window).</summary>
+    public void ToggleCatchment(int stationId)
+    {
+        CatchmentStationId = CatchmentStationId == stationId ? -1 : stationId;
+        CatchmentVersion++;
+    }
+
+    /// <summary>Turns off the highlight of a station (its window closed).</summary>
+    public void ClearCatchment(int stationId)
+    {
+        if (CatchmentStationId == stationId)
+        {
+            CatchmentStationId = -1;
+            CatchmentVersion++;
+        }
+    }
 
     /// <summary>Raised for every processed command with a localized message.</summary>
     public event Action<TextRef>? Message;
@@ -327,18 +350,22 @@ internal sealed class GameSession
 
     /// <summary>
     /// Rebuilds the industry boxes only when the fleet changed (opening, closing or a new game).
-    /// One model box becomes one instance; the shader stretches the unit cube to its extent.
+    /// One model box becomes one instance; the shader stretches the unit cube to its extent. Station
+    /// placeholders (feature 010) are appended to the same instances, so they need no renderer of their own
+    /// until feature 018 replaces them with final models.
     /// </summary>
     private void BuildIndustryInstances()
     {
         var industries = Simulation.Industries;
-        if (industries.Version == _industryVersion)
+        var stations = Simulation.Stations;
+        var version = (uint)industries.Version | ((long)(stations?.Version ?? 0) << 32);
+        if (version == _industryVersion)
         {
             return;
         }
 
-        _industryVersion = industries.Version;
-        var total = 0;
+        _industryVersion = version;
+        var total = stations is null ? 0 : StationPlaceholders.BoxCount(stations);
         for (var slot = 0; slot < industries.Count; slot++)
         {
             total += Simulation.Content.IndustryKind(industries.KindIndexAt(slot)).Model.Count;
@@ -365,6 +392,11 @@ internal sealed class GameSession
                     new Vector4(box.Width, box.Height, box.Depth, 0f),
                     ToColor(box.Color));
             }
+        }
+
+        if (stations is not null)
+        {
+            index = StationPlaceholders.Build(stations, Construction, Game.Map, _industryInstances, index);
         }
 
         _industryCount = index;

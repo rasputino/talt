@@ -25,6 +25,7 @@
     <EmbeddedResource Include="Roads\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Roads.Data.%(Filename)%(Extension)" />
     <!-- Town building types, growth and rating balancing, name parts (feature 008, contracts/data-files.md). -->
     <EmbeddedResource Include="Towns\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Towns.Data.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Stations\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Stations.Data.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

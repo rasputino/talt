@@ -82,7 +82,7 @@ internal sealed class ToolController
             return null;
         }
 
-        return Active.Create(state.Player.Id, start, end);
+        return Active.Command(state, state.Player.Id, start, end);
     }
 
     /// <summary>Cancels the drag, or deselects the tool when not dragging. Returns false when there was nothing to cancel.</summary>
@@ -133,7 +133,7 @@ internal sealed class ToolController
         }
 
         var (start, end) = IsDragging ? Shape(_start, _hover ?? _start) : (_hover!.Value, _hover.Value);
-        var key = new PreviewKey(Active, start, end, state.Version, state.Player.Balance, RoadToolOptions.Version, state.Year);
+        var key = new PreviewKey(Active, start, end, state.Version, state.Player.Balance, RoadToolOptions.Version ^ (StationToolOptions.Version << 16), state.Year);
         if (HasPreview && key == _planned)
         {
             return;

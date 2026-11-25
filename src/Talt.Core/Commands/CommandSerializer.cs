@@ -24,6 +24,10 @@ public static class CommandSerializer
         [SetOneWayCommand.Type] = SetOneWayCommand.Read,
         [BuildMotorwayCommand.Type] = BuildMotorwayCommand.Read,
         [BuildMotorwayConnectorCommand.Type] = BuildMotorwayConnectorCommand.Read,
+        [Stations.BuildStationCommand.Type] = Stations.BuildStationCommand.Read,
+        [Stations.BuildWarehouseCommand.Type] = Stations.BuildWarehouseCommand.Read,
+        [Stations.RemoveStationCommand.Type] = Stations.RemoveStationCommand.Read,
+        [Stations.RenameStationCommand.Type] = Stations.RenameStationCommand.Read,
     };
 
     private static readonly Lock Gate = new();

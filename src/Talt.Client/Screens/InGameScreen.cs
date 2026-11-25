@@ -42,7 +42,11 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     private readonly PreviewBoxes _previewBoxes = new();
     private readonly TreeInstances _trees = new();
     private readonly Panel _cursorLabel;
+    private readonly Talt.Core.Stations.CatchmentPreview _catchment = new();
+    private readonly List<int> _highlightTiles = [];
     private int _uploadedPreviewVersion = -1;
+    private int _boxesVersion;
+    private (int Station, int Version, int Highlight) _highlightKey = (-1, -1, -1);
     private int _highlightCount;
     private PickResult _selected = PickResult.None;
     private PickResult _hoveredAtPress = PickResult.None;
@@ -63,6 +67,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             Industries = session.Simulation.Industries,
             Roads = session.Construction.Roads,
             Towns = session.Simulation.Towns,
+            Stations = session.Simulation.Stations,
         };
         _session.Message += ShowMessage;
         if (session.Simulation.Towns is { Count: > 0 } towns)
@@ -109,12 +114,12 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     /// <summary>Returns true once each time the preview boxes changed (upload them then).</summary>
     public bool TakePreviewChange()
     {
-        if (_uploadedPreviewVersion == _tools.PreviewVersion)
+        if (_uploadedPreviewVersion == _boxesVersion)
         {
             return false;
         }
 
-        _uploadedPreviewVersion = _tools.PreviewVersion;
+        _uploadedPreviewVersion = _boxesVersion;
         return true;
     }
 
@@ -212,7 +217,14 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             case "toolMotorway":
             case "toolMotorwayExit":
             case "toolMotorwayEntry":
+            case "toolBusStop":
+            case "toolTruckStop":
+            case "toolWarehouse":
+            case "toolRemoveStation":
                 ToggleTool(actionId);
+                return true;
+            case "warehouseSize":
+                StationToolOptions.Cycle(_session.Simulation.Stations?.Rules ?? Talt.Core.Stations.StationRules.Default);
                 return true;
             case "roadType":
                 RoadToolOptions.Cycle(_session.Construction);
@@ -682,13 +694,35 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             Padding = new Thickness(4),
         });
         var roadTools = roadToolbar.Add(new StackPanel(Orientation.Vertical) { Spacing = 4 });
+        // Station tools (feature 010) in a third column.
+        var stationToolbar = root.Add(new Panel
+        {
+            Style = PanelStyle.Panel,
+            HorizontalAlignment = Alignment.Start,
+            VerticalAlignment = Alignment.Start,
+            Width = theme.ToolbarWidth,
+            Margin = new Thickness(18 + (2 * theme.ToolbarWidth), theme.TopBarHeight + 8, 0, 0),
+            Padding = new Thickness(4),
+        });
+        var stationTools = stationToolbar.Add(new StackPanel(Orientation.Vertical) { Spacing = 4 });
         foreach (var tool in ConstructionTool.All)
         {
             var button = ToolButton(tool.Id, () => ToggleTool(tool.ActionId), $"tool.{tool.Id}.tooltip", tool.ActionId);
             button.IsSelected = () => _tools.Active == tool;
-            var column = tool.Shape == DragShape.Area || tool == ConstructionTool.Clear ? tools : roadTools;
+            var column = tool.IsStation ? stationTools : tool.Shape == DragShape.Area || tool == ConstructionTool.Clear ? tools : roadTools;
             HudButtons.Add(column.Add(button));
         }
+
+        var stationRules = _session.Simulation.Stations?.Rules ?? Talt.Core.Stations.StationRules.Default;
+        HudButtons.Add(stationTools.Add(new Button(null, () => HandleAction("warehouseSize", false), "warehouseSize")
+        {
+            Style = ButtonStyle.Flat,
+            Tooltip = TextRef.Dynamic(
+                () => StationToolOptions.Version,
+                s => s.Format("tool.warehouseSize.tooltip", ("size", s.Get(stationRules.Warehouses[StationToolOptions.SizeIndex(stationRules)].NameKey)))),
+            ShortcutAction = "warehouseSize",
+            Height = 36,
+        }));
 
         HudButtons.Add(tools.Add(ToolButton("undo", () => HandleAction("undoConstruction", false), "tool.undo.tooltip", "undoConstruction")));
         var typeButton = new Button(null, () => HandleAction("roadType", false), "roadType")
@@ -764,15 +798,39 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         var terrain = _pickContext.Terrain;
         _tools.Hover(overWorld && terrain.Kind != PickKind.None ? (terrain.TileX, terrain.TileZ) : null);
         var state = _session.Construction;
-        if (_tools.UpdatePreview(state))
+        var stations = _session.Simulation.Stations;
+        var highlightKey = (_session.CatchmentStationId, stations?.Version ?? 0, _session.CatchmentVersion);
+        var toolChanged = _tools.UpdatePreview(state);
+        if (toolChanged || (!_tools.HasPreview && highlightKey != _highlightKey))
         {
+            _highlightKey = highlightKey;
+            _boxesVersion++;
+            _catchment.Reset();
             if (_tools.HasPreview)
             {
                 _previewBoxes.Build(_tools.Preview, _tools.PreviewResult.Succeeded, state.Map, _host.Ui.Theme, _tools.Active?.Removes == true);
+                if (stations is not null && _tools.Active is { IsStation: true, Removes: false } tool && _tools.Preview.HasArea)
+                {
+                    // Feature 010 (FR-011): the catchment and the cargo the placement would receive and accept.
+                    var area = _tools.Preview.Area;
+                    var warehouse = tool == ConstructionTool.Warehouse;
+                    var kind = tool == ConstructionTool.BusStop ? Talt.Core.Stations.StationPieceKind.Bus : Talt.Core.Stations.StationPieceKind.Truck;
+                    var type = warehouse
+                        ? StationToolOptions.SizeIndex(stations.Rules)
+                        : Talt.Core.Stations.StationPlanner.ChoosePiece(state, kind, area.X0, area.Z0);
+                    stations.PreviewCatchment(state.Player.Id, warehouse, type, area.X0, area.Z0, _catchment);
+                    _previewBoxes.AppendArea(_catchment.Tiles, state.Map, _host.Ui.Theme);
+                }
             }
             else
             {
                 _previewBoxes.Clear();
+                if (stations is not null && _session.CatchmentStationId >= 0)
+                {
+                    _highlightTiles.Clear();
+                    stations.CatchmentTiles(_session.CatchmentStationId, _highlightTiles);
+                    _previewBoxes.AppendArea(_highlightTiles, state.Map, _host.Ui.Theme);
+                }
             }
         }
 
@@ -809,9 +867,18 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         }
 
         var reason = _tools.PreviewResult.ReasonCode;
-        return _tools.PreviewResult.Succeeded || reason is null
+        var text = _tools.PreviewResult.Succeeded || reason is null
             ? cost
             : s.Format("construction.costAndReason", ("cost", cost), ("reason", s.Get($"construction.reason.{reason}")));
+        if (_tools.Active is { IsStation: true, Removes: false } && _tools.Active != ConstructionTool.Warehouse)
+        {
+            // Feature 010 (US1): what the station would receive and accept.
+            var content = _session.Simulation.Content;
+            text += "\n" + s.Format("station.preview.receives", ("cargos", StationWindow.CargoList(s, content, _catchment.Receives)))
+                + "\n" + s.Format("station.preview.accepts", ("cargos", StationWindow.CargoList(s, content, _catchment.Accepts)));
+        }
+
+        return text;
     }
 
     private Panel BuildPauseMenu()
