@@ -874,8 +874,9 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         {
             // Feature 010 (US1): what the station would receive and accept.
             var content = _session.Simulation.Content;
-            text += "\n" + s.Format("station.preview.receives", ("cargos", StationWindow.CargoList(s, content, _catchment.Receives)))
-                + "\n" + s.Format("station.preview.accepts", ("cargos", StationWindow.CargoList(s, content, _catchment.Accepts)));
+            // One line: the cursor label does not wrap, so '\n' would show as an unknown glyph (hand test 2026-11-25).
+            text += " · " + s.Format("station.preview.receives", ("cargos", StationWindow.CargoList(s, content, _catchment.Receives)))
+                + " · " + s.Format("station.preview.accepts", ("cargos", StationWindow.CargoList(s, content, _catchment.Accepts)));
         }
 
         return text;
