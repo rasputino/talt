@@ -4,6 +4,7 @@ using Talt.Client.Rendering;
 using Talt.Core.Construction;
 using Talt.Core.Maps;
 using Talt.Core.Meshing.Models;
+using Talt.Tests.Support;
 
 namespace Talt.Client.Tests.Rendering;
 
@@ -400,9 +401,6 @@ public class ModelPipelineTests
             batch.End();
         }
 
-        Frame();
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        Frame();
-        Assert.Equal(before, GC.GetAllocatedBytesForCurrentThread());
+        AllocationAssert.NoSteadyStateAllocations(Frame, iterationsPerRound: 2, "2 model batch frames");
     }
 }

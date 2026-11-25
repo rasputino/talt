@@ -2,6 +2,7 @@ using Talt.Core.Construction;
 using Talt.Core.Maps;
 using Talt.Core.Roads;
 using Talt.Core.Tests.Construction;
+using Talt.Tests.Support;
 
 namespace Talt.Core.Tests.Roads;
 
@@ -158,18 +159,12 @@ public class BuildRoadTests
         var planner = new ConstructionPlanner();
         var plan = new ConstructionPlan();
         var type = kit.State.RoadRules.FindType("paved");
-        for (var i = 0; i < 20; i++)
-        {
-            planner.Roads.PlanRoad(kit.State, Company.PlayerId, type, (3, 3), (50, 40 + (i % 3)), plan);
-        }
+        var i = 0;
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 200; i++)
-        {
-            planner.Roads.PlanRoad(kit.State, Company.PlayerId, type, (3, 3), (50, 40 + (i % 3)), plan);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        AllocationAssert.NoSteadyStateAllocations(
+            () => planner.Roads.PlanRoad(kit.State, Company.PlayerId, type, (3, 3), (50, 40 + (i++ % 3)), plan),
+            iterationsPerRound: 200,
+            "200 road previews");
         Assert.True(plan.IsValid, plan.Reason);
     }
 }

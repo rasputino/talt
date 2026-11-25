@@ -6,6 +6,7 @@ using Talt.Client.Ui.Font;
 using Talt.Client.Ui.Widgets;
 using Talt.Client.Ui.Windows;
 using Button = Talt.Client.Ui.Widgets.Button;
+using Talt.Tests.Support;
 
 namespace Talt.Client.Tests.Ui;
 
@@ -153,14 +154,14 @@ public class DrawListTests
             UiTestKit.Frame(ui, list);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 20; i++)
-        {
-            ui.Update(0.016);
-            UiTestKit.Frame(ui, list);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        AllocationAssert.NoSteadyStateAllocations(
+            () =>
+            {
+                ui.Update(0.016);
+                UiTestKit.Frame(ui, list);
+            },
+            iterationsPerRound: 20,
+            "20 interface frames");
         Assert.True(list.QuadCount > 100);
     }
 

@@ -23,4 +23,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Shared steady-state allocation check, kept in one place. -->
+    <Compile Include="..\Talt.Core.Tests\TestSupport\AllocationAssert.cs" Link="TestSupport\AllocationAssert.cs" />
+  </ItemGroup>
+
 </Project>

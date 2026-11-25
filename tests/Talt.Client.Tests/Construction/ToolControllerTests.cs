@@ -4,6 +4,7 @@ using Talt.Client.Localization;
 using Talt.Client.Rendering;
 using Talt.Core.Construction;
 using Talt.Core.Maps;
+using Talt.Tests.Support;
 
 namespace Talt.Client.Tests.Construction;
 
@@ -274,22 +275,15 @@ public class ToolControllerTests
             tools.UpdatePreview(state);
         }
 
-        // Warm long enough for tiered compilation to settle: with more tests running in parallel (feature 018)
-        // the switch to optimized code sometimes fell inside the measured loop and counted as allocation.
-        for (var i = 0; i < 300; i++)
-        {
-            tools.Hover((x + 24 - (i % 2), z + 19));
-            tools.UpdatePreview(state);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++)
-        {
-            tools.Hover((x + 24 - (i % 2), z + 19));
-            tools.UpdatePreview(state);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var step = 0;
+        AllocationAssert.NoSteadyStateAllocations(
+            () =>
+            {
+                tools.Hover((x + 24 - (step++ % 2), z + 19));
+                tools.UpdatePreview(state);
+            },
+            iterationsPerRound: 1000,
+            "1000 tool preview updates");
     }
 
     [Fact]

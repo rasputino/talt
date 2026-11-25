@@ -2,6 +2,7 @@ using System.Numerics;
 using Talt.Client.Audio;
 using Talt.Client.Rendering;
 using Xunit;
+using Talt.Tests.Support;
 
 namespace Talt.Client.Tests.Audio;
 
@@ -19,32 +20,21 @@ public class AudioAllocationTests
             ids[i] = i;
         }
 
-        var scene = new AudioScene
-        {
-            InGame = true,
-            CameraTarget = Vector3.Zero,
-            CameraForward = Vector3.UnitZ,
-            CameraRight = Vector3.UnitX,
-            CameraDistance = 400f,
-            Vehicles = vehicles,
-            VehicleIds = ids,
-            SelectedVehicleId = 999,
-            HoveredVehicleId = 998,
-            DeltaSeconds = 1f / 60f,
-        };
-
-        for (var i = 0; i < 100; i++)
-        {
-            mixer.UpdateVehicles(scene);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 1000; i++)
-        {
-            mixer.UpdateVehicles(scene);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Assert.Equal(0, allocated);
+        // AudioScene is a ref struct, so it cannot be captured by the lambda: build it on each call (on the stack).
+        AllocationAssert.NoSteadyStateAllocations(() => mixer.UpdateVehicles(Scene(vehicles, ids)), iterationsPerRound: 1000, "1000 audio vehicle updates");
     }
+
+    private static AudioScene Scene(VehicleInstance[] vehicles, int[] ids) => new()
+    {
+        InGame = true,
+        CameraTarget = Vector3.Zero,
+        CameraForward = Vector3.UnitZ,
+        CameraRight = Vector3.UnitX,
+        CameraDistance = 400f,
+        Vehicles = vehicles,
+        VehicleIds = ids,
+        SelectedVehicleId = 999,
+        HoveredVehicleId = 998,
+        DeltaSeconds = 1f / 60f,
+    };
 }

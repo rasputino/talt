@@ -1,6 +1,7 @@
 using Talt.Core.Construction;
 using Talt.Core.Maps;
 using Talt.Core.Tests.Maps;
+using Talt.Tests.Support;
 
 namespace Talt.Core.Tests.Construction;
 
@@ -251,17 +252,15 @@ public class TerraformPlannerTests
     public void Planning_AllocatesNothingOnceWarm()
     {
         var state = HillyState();
-        Plan(state, TerraformMode.Level, new TileRect(10, 10, 34, 29), 10, 10);
-        Plan(state, TerraformMode.Raise, new TileRect(10, 10, 34, 29));
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 100; i++)
-        {
-            Plan(state, TerraformMode.Level, new TileRect(10, 10, 34, 29), 10, 10);
-            Plan(state, TerraformMode.Raise, new TileRect(10, 10, 34, 29));
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        AllocationAssert.NoSteadyStateAllocations(
+            () =>
+            {
+                Plan(state, TerraformMode.Level, new TileRect(10, 10, 34, 29), 10, 10);
+                Plan(state, TerraformMode.Raise, new TileRect(10, 10, 34, 29));
+            },
+            iterationsPerRound: 100,
+            "100 level and raise plans");
     }
 
     internal static ConstructionState HillyState()

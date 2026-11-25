@@ -2,6 +2,7 @@ using System.Numerics;
 using Talt.Core.Determinism;
 using Talt.Core.Network;
 using Talt.Core.Simulation;
+using Talt.Tests.Support;
 
 namespace Talt.Core.Tests.Simulation;
 
@@ -204,13 +205,8 @@ public class VehicleFleetTests
     {
         var network = GridNetworkGenerator.Generate(40, 40, spacingTiles: 8, seed: 5);
         var fleet = SyntheticTraffic.Create(network, lineCount: 100, vehicleCount: 50_000, seed: 3);
-        fleet.Tick(parallel: false); // Warm up.
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        fleet.Tick(parallel: false);
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        Assert.Equal(0, allocated);
+        AllocationAssert.NoSteadyStateAllocations(() => fleet.Tick(parallel: false), iterationsPerRound: 2, "2 fleet ticks");
     }
 
     private static ulong Fingerprint(VehicleFleet fleet)

@@ -1,4 +1,5 @@
 using Talt.Core.Construction;
+using Talt.Tests.Support;
 
 namespace Talt.Core.Tests.Construction;
 
@@ -32,18 +33,18 @@ public class TileSetTests
     {
         var set = new TileSet(1024);
         set.Add(5, out _);
-        var before = GC.GetAllocatedBytesForCurrentThread();
 
-        for (var round = 0; round < 100; round++)
-        {
-            set.Clear();
-            for (var t = 0; t < 400; t++)
+        AllocationAssert.NoSteadyStateAllocations(
+            () =>
             {
-                set.Add(t * 3, out _);
-            }
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+                set.Clear();
+                for (var t = 0; t < 400; t++)
+                {
+                    set.Add(t * 3, out _);
+                }
+            },
+            iterationsPerRound: 100,
+            "100 clear-and-fill rounds");
         set.Clear();
         Assert.Equal(0, set.Count);
         Assert.Equal(-1, set.Find(3));
