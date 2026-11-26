@@ -1,0 +1,108 @@
+{
+  // Railways (feature 015, specs/015-railways/contracts/data-files.md). Every value and name is original to TALT.
+  // Money in the internal unit (1 = one US dollar); distances in thousandths of a tile; days are game days (40 ticks).
+  // Speeds use the road vehicles' scale (vehicles.json kmhPerTileSecond). Changing a value changes what recorded
+  // sessions replay to.
+  "trackTypes": [
+    { "id": "normal", "nameKey": "rail.type.normal", "buildCost": 260, "removeCost": 60, "speedKmh": 160,
+      "electrified": false, "color": "#8A7F70" },
+    { "id": "electrified", "nameKey": "rail.type.electrified", "buildCost": 420, "removeCost": 90, "speedKmh": 240,
+      "electrified": true, "color": "#7F7A74" }
+  ],
+  // Turning a tile of normal track into electrified track costs the difference plus this.
+  "convertCostPerTile": 80,
+  "slopeCost": 150,
+  "signals": { "block": 600, "path": 900, "oneWayPath": 950, "removeCost": 100 },
+  "bridge": { "costPerTile": 2600, "maxSpan": 24 },
+  "tunnel": { "costPerTile": 4200, "maxLength": 64 },
+  "depot": { "cost": 9000, "removeCost": 1500, "maintenancePerYear": 900 },
+  // Yearly maintenance of one tile of track, per type (charged with the property maintenance).
+  "maintenancePerTile": { "normal": 40, "electrified": 70 },
+  "station": { "maxPlatforms": 8, "maxLength": 12 },
+  "physics": {
+    // One tile is this many millimetres (with vehicles.json's speed scale 40 km/h = 1 tile/s).
+    "tileMillimetres": 11111,
+    "gravityMilli": 9810,
+    // A ramp (one height step over one tile) climbs this grade, per mille.
+    "rampGradePermille": 25,
+    "rollingResistancePermille": 3,
+    // Forces are multiplied by this so trains reach speed in game time rather than real time.
+    "accelerationScale": 12,
+    "brakingMilliTilesPerSecond2": 1600,
+    // Share of the train speed allowed on a link that turns 45° from the previous one.
+    "curveSpeedPercent": 70,
+    // How far beyond the braking distance a train asks for more track.
+    "lookAheadMilliTiles": 1500
+  },
+  "stops": { "minDwellTicks": 60, "loadIntervalTicks": 10, "pullForwardTicks": 40 },
+  // Route search work per tick for all trains; a train whose search does not fit waits for a later tick. A
+  // train waiting at a path signal replans at most every replanTicks. Tiles owned by another train cost extra.
+  "routing": { "searchNodesPerTick": 60000, "maxSearchNodes": 200000, "replanTicks": 40, "occupiedPenalty": 40000 },
+  "stuck": { "noticeDays": 6 },
+  "maxParts": 24,
+  "maxTrainLengthMilliTiles": 20000,
+  "cargoCategories": {
+    "passengers": ["passengers"],
+    "mail": ["mail"],
+    "bulk": ["coal", "iron-ore", "grain", "wood"],
+    "tanker": ["oil", "fuel"],
+    "box": ["goods", "food", "steel", "lumber", "livestock"]
+  },
+  "rollingStock": [
+    {
+      "id": "loco-ironhorse", "nameKey": "rail.model.loco-ironhorse", "kind": "locomotive", "power": "steam",
+      "powerKw": 750, "tractiveEffortKn": 130, "massTonnes": 95, "lengthMilliTiles": 950, "speedKmh": 100,
+      "price": 42000, "runningCostPerYear": 4200, "lifeYears": 30, "reliabilityPerMille": 760,
+      "firstYear": 1850, "lastYear": 1990, "color": "#2F3A33"
+    },
+    {
+      "id": "loco-meridian", "nameKey": "rail.model.loco-meridian", "kind": "locomotive", "power": "diesel",
+      "powerKw": 1600, "tractiveEffortKn": 260, "massTonnes": 110, "lengthMilliTiles": 1000, "speedKmh": 130,
+      "price": 92000, "runningCostPerYear": 7800, "lifeYears": 28, "reliabilityPerMille": 840,
+      "firstYear": 1945, "lastYear": 2100, "color": "#C8402E"
+    },
+    {
+      "id": "loco-aurora", "nameKey": "rail.model.loco-aurora", "kind": "locomotive", "power": "electric",
+      "powerKw": 4200, "tractiveEffortKn": 300, "massTonnes": 85, "lengthMilliTiles": 1000, "speedKmh": 190,
+      "price": 145000, "runningCostPerYear": 9000, "lifeYears": 30, "reliabilityPerMille": 900,
+      "firstYear": 1960, "lastYear": 2100, "color": "#2E77C8"
+    },
+    {
+      "id": "railcar-swift", "nameKey": "rail.model.railcar-swift", "kind": "locomotive", "power": "diesel",
+      "powerKw": 450, "tractiveEffortKn": 70, "massTonnes": 42, "lengthMilliTiles": 900, "speedKmh": 110,
+      "category": "passengers", "capacity": 60, "loadPerStep": 8,
+      "price": 38000, "runningCostPerYear": 3200, "lifeYears": 25, "reliabilityPerMille": 850,
+      "firstYear": 1930, "lastYear": 2100, "color": "#D8A32B"
+    },
+    {
+      "id": "wagon-coach", "nameKey": "rail.model.wagon-coach", "kind": "wagon", "category": "passengers",
+      "capacity": 45, "massTonnes": 32, "lengthMilliTiles": 800, "speedKmh": 200, "loadPerStep": 8,
+      "price": 9000, "runningCostPerYear": 500, "lifeYears": 30, "reliabilityPerMille": 950,
+      "firstYear": 1850, "lastYear": 2100, "color": "#7A2E2E"
+    },
+    {
+      "id": "wagon-mailvan", "nameKey": "rail.model.wagon-mailvan", "kind": "wagon", "category": "mail",
+      "capacity": 30, "massTonnes": 26, "lengthMilliTiles": 700, "speedKmh": 200, "loadPerStep": 6,
+      "price": 8000, "runningCostPerYear": 450, "lifeYears": 30, "reliabilityPerMille": 950,
+      "firstYear": 1850, "lastYear": 2100, "color": "#B8B04A"
+    },
+    {
+      "id": "wagon-hopper", "nameKey": "rail.model.wagon-hopper", "kind": "wagon", "category": "bulk",
+      "capacity": 40, "massTonnes": 22, "lengthMilliTiles": 650, "speedKmh": 140, "loadPerStep": 8,
+      "price": 7000, "runningCostPerYear": 400, "lifeYears": 30, "reliabilityPerMille": 950,
+      "firstYear": 1850, "lastYear": 2100, "color": "#4A4038"
+    },
+    {
+      "id": "wagon-tank", "nameKey": "rail.model.wagon-tank", "kind": "wagon", "category": "tanker",
+      "capacity": 36, "massTonnes": 24, "lengthMilliTiles": 650, "speedKmh": 140, "loadPerStep": 8,
+      "price": 8000, "runningCostPerYear": 420, "lifeYears": 30, "reliabilityPerMille": 950,
+      "firstYear": 1850, "lastYear": 2100, "color": "#2A2A2A"
+    },
+    {
+      "id": "wagon-boxcar", "nameKey": "rail.model.wagon-boxcar", "kind": "wagon", "category": "box",
+      "capacity": 32, "massTonnes": 24, "lengthMilliTiles": 700, "speedKmh": 160, "loadPerStep": 6,
+      "price": 7500, "runningCostPerYear": 420, "lifeYears": 30, "reliabilityPerMille": 950,
+      "firstYear": 1850, "lastYear": 2100, "color": "#6B4E2E"
+    }
+  ]
+}

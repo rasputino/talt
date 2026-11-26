@@ -162,6 +162,9 @@ public sealed partial class RoadVehicleSystem : IStateHashable, IVehicleOccupanc
 
     public VehicleRules Rules { get; }
 
+    /// <summary>Level crossings closed by trains (feature 015, research R12); null without a train system.</summary>
+    public Rails.ILevelCrossingGuard? Crossings { get; set; }
+
     public DepotRegistry Depots { get; }
 
     public LineRegistry Lines { get; }

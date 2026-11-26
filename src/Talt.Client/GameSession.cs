@@ -5,6 +5,7 @@ using Talt.Client.Construction;
 using Talt.Client.Rendering;
 using Talt.Client.Ui;
 using Talt.Core.Commands;
+using Talt.Core.Rails;
 using Talt.Core.Construction;
 using Talt.Core.Determinism;
 using Talt.Core.Simulation;
@@ -252,6 +253,14 @@ internal sealed class GameSession
             _roadVehicleModels[m] = library is not null && library.TryGet("vehicle:" + vehicleModels![m].Id, out var entry) ? entry : _vehicleModel;
         }
 
+        // Feature 015: a model per locomotive and wagon ("train:<id>"), falling back to the generic vehicle.
+        var stock = Simulation.Trains?.Rules.Models;
+        _trainModels = new ModelEntry?[stock?.Count ?? 0];
+        for (var m = 0; m < _trainModels.Length; m++)
+        {
+            _trainModels[m] = library is not null && library.TryGet("train:" + stock![m].Id, out var entry) ? entry : _vehicleModel;
+        }
+
         var kinds = Simulation.Content.AllIndustryKinds;
         _industryModels = new ModelEntry?[kinds.Count];
         for (var k = 0; k < kinds.Count; k++)
@@ -289,6 +298,76 @@ internal sealed class GameSession
             var position = new Vector3(instance.Position.X, instance.Position.Y, instance.Position.Z);
             var tint = new Vector3(instance.Color.X, instance.Color.Y, instance.Color.Z);
             batch.Add(entry.Variant(id), position, _yaws[v], tint, (unchecked((uint)id * 2654435761u) >> 16) / 65536f);
+        }
+    }
+
+    private TrainPartPose[] _trainPrevious = new TrainPartPose[64];
+    private TrainPartPose[] _trainCurrent = new TrainPartPose[64];
+    private int _trainPreviousCount;
+    private int _trainCurrentCount;
+    private long _trainCapturedAtTick = -1;
+    private ModelEntry?[] _trainModels = [];
+
+    private void CaptureTrainPoses()
+    {
+        _trainCapturedAtTick = Simulation.CurrentTick;
+        if (Simulation.Trains is not { } trains)
+        {
+            _trainCurrentCount = 0;
+            return;
+        }
+
+        var needed = trains.PartsOnTrack();
+        if (needed > _trainCurrent.Length)
+        {
+            _trainCurrent = new TrainPartPose[Math.Max(needed, _trainCurrent.Length * 2)];
+            _trainPrevious = new TrainPartPose[_trainCurrent.Length];
+            _trainPreviousCount = 0;
+        }
+
+        _trainCurrentCount = trains.CopyPoses(_trainCurrent);
+    }
+
+    /// <summary>Adds every locomotive and wagon on track to the frame's model batch (feature 015), interpolated between ticks.</summary>
+    public void AppendTrainModels(ModelBatch batch)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        if (Simulation.Trains is not { } trains)
+        {
+            return;
+        }
+
+        if (_trainCapturedAtTick != Simulation.CurrentTick)
+        {
+            CaptureTrainPoses();
+        }
+
+        var factor = Runner.InterpolationFactor;
+        var same = _trainPreviousCount == _trainCurrentCount;
+        for (var i = 0; i < _trainCurrentCount; i++)
+        {
+            var pose = _trainCurrent[i];
+            if ((uint)pose.Model >= (uint)_trainModels.Length || _trainModels[pose.Model] is not { } entry)
+            {
+                continue;
+            }
+
+            var position = pose.Position;
+            var direction = pose.Direction;
+            if (same && _trainPrevious[i].TrainId == pose.TrainId)
+            {
+                var previous = _trainPrevious[i];
+                if (Vector3.DistanceSquared(previous.Position, position) < 4f)
+                {
+                    position = Vector3.Lerp(previous.Position, position, factor);
+                    direction = Vector2.Lerp(previous.Direction, direction, factor);
+                }
+            }
+
+            var rgb = trains.Rules.Models[pose.Model].Color;
+            var tint = new Vector3(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f);
+            var yaw = MathF.Atan2(direction.X, direction.Y);
+            batch.Add(entry.Variant(pose.TrainId), position, pose.Reversed ? yaw + MathF.PI : yaw, tint, 0f);
         }
     }
 
@@ -368,6 +447,15 @@ internal sealed class GameSession
     /// </summary>
     private void PromoteCurrentToPrevious()
     {
+        // Feature 015: train parts are interpolated the same way.
+        if (_trainCapturedAtTick != Simulation.CurrentTick)
+        {
+            CaptureTrainPoses();
+        }
+
+        Array.Copy(_trainCurrent, _trainPrevious, _trainCurrentCount);
+        _trainPreviousCount = _trainCurrentCount;
+
         if (_currentCapturedAtTick != Simulation.CurrentTick)
         {
             CaptureCurrentPoses();
@@ -380,7 +468,7 @@ internal sealed class GameSession
 
     private void AfterEachTick(GameSimulation simulation)
     {
-        if (Options.CheckOverlaps && simulation.RoadVehicles?.CheckInvariants() is { } problem)
+        if (Options.CheckOverlaps && (simulation.RoadVehicles?.CheckInvariants() ?? simulation.Trains?.CheckInvariants()) is { } problem)
         {
             // Debug (--check-overlaps, FR-032): stop the game where the first invariant broke.
             Console.Error.WriteLine($"Vehicle check failed at tick {simulation.CurrentTick}: {problem}");
@@ -500,14 +588,16 @@ internal sealed class GameSession
     {
         var industries = Simulation.Industries;
         var stations = Simulation.Stations;
-        var version = ((uint)industries.Version | ((long)(stations?.Version ?? 0) << 32)) ^ ((long)(Simulation.RoadVehicles?.Depots.Version ?? 0) << 48);
+        var version = ((uint)industries.Version | ((long)(stations?.Version ?? 0) << 32)) ^ ((long)(Simulation.RoadVehicles?.Depots.Version ?? 0) << 48)
+            ^ ((long)Construction.RailDepots.Version << 40);
         if (version == _industryVersion)
         {
             return;
         }
 
         _industryVersion = version;
-        var total = (stations is null ? 0 : StationPlaceholders.BoxCount(stations)) + DepotPlaceholders.BoxCount(Simulation.RoadVehicles?.Depots!);
+        var total = (stations is null ? 0 : StationPlaceholders.BoxCount(stations)) + DepotPlaceholders.BoxCount(Simulation.RoadVehicles?.Depots!)
+            + DepotPlaceholders.RailBoxCount(Construction.RailDepots);
         for (var slot = 0; slot < industries.Count; slot++)
         {
             var kindIndex = industries.KindIndexAt(slot);
@@ -555,6 +645,8 @@ internal sealed class GameSession
         {
             index = DepotPlaceholders.Build(vehicles.Depots, Game.Map, _industryInstances, index);
         }
+
+        index = DepotPlaceholders.BuildRail(Construction.RailDepots, Game.Map, _industryInstances, index); // Feature 015.
 
         _industryCount = index;
         _industryStaticCount = index;

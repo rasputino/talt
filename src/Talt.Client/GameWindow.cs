@@ -345,6 +345,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         _renderer?.SetWorld(game.World);
         _renderer?.SetMap(game.Map);
         _renderer?.SetRoads(_session.Construction.Roads, game.Map, _session.Construction.RoadRules);
+        _renderer?.SetRails(_session.Construction.Rails, game.Map, _session.Construction.RailRules);
         if (_session.Simulation.Towns is { } towns)
         {
             _renderer?.SetTowns(towns, game.Map);
@@ -478,6 +479,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         if (_probe is not { Finished: false, ModelsEnabled: false })
         {
             _session.AppendVehicleModels(batch);
+            _session.AppendTrainModels(batch);
             _session.AppendIndustryModels(batch);
             _renderer.AppendTownModels(batch);
             foreach (var tree in game.TreeModels)

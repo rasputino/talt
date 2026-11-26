@@ -198,6 +198,11 @@ public sealed partial class RoadPlanner
                 // Feature 010: the road under a drive-through stop and the link into a bay stay while the station stands.
                 plan.AddProblem(tile, ConstructionReasons.StationRoad);
             }
+            else if (oldPiece.Links != _piece[slot].Links && _state.Rails.HasRail(tile))
+            {
+                // Feature 015: a level crossing keeps its straight road while the track crosses it.
+                plan.AddProblem(tile, ConstructionReasons.ObjectInTheWay);
+            }
             else if (oldPiece != _piece[slot] && (_state.Depots?.RoadChangeBlocked(_state, tile, _piece[slot]) ?? false))
             {
                 // Feature 012: the link into a depot stays while the depot stands.
@@ -268,7 +273,7 @@ public sealed partial class RoadPlanner
         }
 
         var cross = Dir8.FromOffset(-Dir8.OffsetX(direction), Dir8.OffsetZ(direction));
-        return !Piece(s1).HasLink(cross);
+        return !Piece(s1).HasLink(cross) && !_state.Rails.PieceAt(s1).HasLink(cross);
     }
 
     /// <summary>

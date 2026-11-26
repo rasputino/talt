@@ -22,6 +22,11 @@
       "id": "truck-stop", "nameKey": "station.piece.truck-stop", "kind": "truck", "form": "driveThrough",
       "cost": 1900, "removeCost": 400, "catchmentRadius": 4, "categories": ["mail", "raw", "processed", "goods"],
       "model": { "base": "#A39A8C", "roof": "#C7782E" }
+    },
+    {
+      "id": "rail-platform", "nameKey": "station.piece.rail-platform", "kind": "rail", "form": "platform",
+      "cost": 1500, "removeCost": 350, "catchmentRadius": 4, "categories": ["passenger", "mail", "raw", "processed", "goods"],
+      "model": { "base": "#B0A898", "roof": "#6E4E8C" }
     }
   ],
   // Warehouses group the company's stations inside their influence radius (clarification Q2).

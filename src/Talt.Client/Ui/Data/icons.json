@@ -863,6 +863,279 @@
         "................",
         "................"
       ]
+    },
+    "rail": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A"},
+      "rows": [
+        "................",
+        "................",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "..s..s..s..s..s.",
+        "..s..s..s..s..s.",
+        "..s..s..s..s..s.",
+        "..s..s..s..s..s.",
+        "..s..s..s..s..s.",
+        "..s..s..s..s..s.",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "................",
+        "................"
+      ]
+    },
+    "railBridge": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A", "b": "#8A8478", "w": "#3A7BC8"},
+      "rows": [
+        "................",
+        "................",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "bbbbbbbbbbbbbbbb",
+        "b..b...bb...b..b",
+        "b.b.....b....b.b",
+        "bb......b.....bb",
+        "b.......b......b",
+        "b.......b......b",
+        "b.......b......b",
+        "wwwwwwwwwwwwwwww",
+        "wwwwwwwwwwwwwwww",
+        "................",
+        "................"
+      ]
+    },
+    "railTunnel": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A", "h": "#5E8A3A", "p": "#8A8478", "k": "#141414"},
+      "rows": [
+        "................",
+        "......hhhh......",
+        "....hhhhhhhh....",
+        "...hhhhhhhhhh...",
+        "..hhhhhhhhhhhh..",
+        "..hhhppppppphh..",
+        ".hhhpkkkkkkphhh.",
+        ".hhpkkkkkkkkphh.",
+        ".hhpkkkkkkkkphh.",
+        ".hhpkrkkkkrkphh.",
+        "hhhpkrkkkkrkphhh",
+        "hhhpkrkkkkrkphhh",
+        "ssssssrssrssssss",
+        "rrrrrrrrrrrrrrrr",
+        "................",
+        "................"
+      ]
+    },
+    "removeRail": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A", "x": "#D9483B"},
+      "rows": [
+        "................",
+        "................",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "..s..x..s..sx.s.",
+        "..s..sx.s..x..s.",
+        "..s..s.xs.xs..s.",
+        "..s..s..xx.s..s.",
+        "..s..s..xx.s..s.",
+        "..s..s.xs.xs..s.",
+        "..s..sx.s..x..s.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "................",
+        "................"
+      ]
+    },
+    "electrify": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A", "y": "#F2D23C", "p": "#4A4A4A"},
+      "rows": [
+        "p..............p",
+        "pppppppppppppppp",
+        "p.s..s..s..s..sp",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s.yy..s..s.",
+        "..s..syys..s..s.",
+        "..s..yyyyy.s..s.",
+        "..s..s.yy..s..s.",
+        "..s..syys..s..s.",
+        "..s..y..s..s..s.",
+        "..s..s..s..s..s.",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "................",
+        "................"
+      ]
+    },
+    "signal": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A", "k": "#2B2F36", "R": "#D9483B", "G": "#4FB34A", "p": "#6E6E6E"},
+      "rows": [
+        "......kkkk......",
+        ".....kRRRRk.....",
+        ".....kRRRRk.....",
+        ".....kRRRRk.....",
+        ".....kkkkkk.....",
+        ".....kGGGGk.....",
+        ".....kGGGGk.....",
+        ".....kGGGGk.....",
+        "......kkkk......",
+        ".......pp.......",
+        ".......pp.......",
+        ".......pp.......",
+        ".......pp.......",
+        ".......pp.......",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s."
+      ]
+    },
+    "signalKind": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A", "k": "#2B2F36", "R": "#D9483B", "G": "#4FB34A", "p": "#6E6E6E", "w": "#FFFFFF"},
+      "rows": [
+        "......kkkk......",
+        ".....kRRRRk.....",
+        ".....kRRRRk.....",
+        ".....kRRRRk.....",
+        ".....kkkkkk.....",
+        ".....kGGGGk.....",
+        ".....kGGGGk.....",
+        ".....kGGGGk.....",
+        "......kkkk......",
+        "..www..pp.......",
+        ".w...w.pp.......",
+        "....w..pp.......",
+        "...w...pp.......",
+        ".......pp.......",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s."
+      ]
+    },
+    "railStation": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A", "o": "#6E4E8C", "c": "#9AA3AC", "p": "#B0A898"},
+      "rows": [
+        "................",
+        "..oooooooooooo..",
+        ".oooooooooooooo.",
+        "..cc........cc..",
+        "..cc........cc..",
+        "..cc........cc..",
+        "pppppppppppppppp",
+        "pppppppppppppppp",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "................",
+        "................"
+      ]
+    },
+    "railStationShape": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A", "o": "#6E4E8C", "c": "#9AA3AC", "p": "#B0A898", "w": "#FFFFFF"},
+      "rows": [
+        "................",
+        "..oooooooooooo..",
+        ".oooooooooooooo.",
+        "..cc........cc..",
+        "..cc........cc..",
+        "..cc........cc..",
+        "pppppppppppppppp",
+        "pppppppppppppppp",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        ".ws..s..s.ws..s.",
+        "wwwwwwwwwwwwww..",
+        ".w........w....."
+      ]
+    },
+    "railDepot": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A", "o": "#5A3F73", "w": "#7D6B5A", "d": "#2B2F36"},
+      "rows": [
+        "................",
+        "................",
+        "...oooooooooo...",
+        "..oooooooooooo..",
+        ".oooooooooooooo.",
+        ".wwwwwwwwwwwwww.",
+        ".ww..........ww.",
+        ".ww.dddddddd.ww.",
+        ".ww.dddddddd.ww.",
+        ".ww.dddddddd.ww.",
+        ".ww.dddddddd.ww.",
+        ".ww.dddddddd.ww.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "................"
+      ]
+    },
+    "removeRailDepot": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A", "o": "#5A3F73", "w": "#7D6B5A", "d": "#2B2F36", "x": "#D9483B"},
+      "rows": [
+        "................",
+        "................",
+        "...oooooooooo...",
+        "..oooooooooooo..",
+        ".oooooooooooooo.",
+        ".wwwwwwwwwwwwww.",
+        ".ww.x......x.ww.",
+        ".ww.dxddddxd.ww.",
+        ".ww.ddxddxdd.ww.",
+        ".ww.dddxxddd.ww.",
+        ".ww.ddxddxdd.ww.",
+        ".ww.dxddddxd.ww.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "................"
+      ]
+    },
+    "railType": {
+      "palette": {"r": "#B8B4AC", "s": "#7A5A3A", "y": "#F2D23C"},
+      "rows": [
+        "................",
+        "................",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "..s..syys..s..s.",
+        "..s..yy.s..s..s.",
+        "..s.yyyyy..s..s.",
+        "..s..syys..s..s.",
+        "..s..yy.s..s..s.",
+        "..s..s..s..s..s.",
+        "..s..s..s..s..s.",
+        "rrrrrrrrrrrrrrrr",
+        "..s..s..s..s..s.",
+        "................",
+        "................"
+      ]
+    },
+    "trains": {
+      "palette": {"k": "#2B2F36", "G": "#9FC4E8", "p": "#C8402E", "y": "#F4EEC8", "r": "#B8B4AC"},
+      "rows": [
+        "................",
+        "................",
+        "................",
+        "......kkkkkkkk..",
+        "......kGGkkGGk..",
+        "..k...kGGkkGGk..",
+        "..k...kkkkkkkk..",
+        ".pppppppppppppp.",
+        ".pppppppppppppp.",
+        ".pppppppppppppp.",
+        ".yppppppppppppp.",
+        "..kk..kk..kk.kk.",
+        "..kk..kk..kk.kk.",
+        "rrrrrrrrrrrrrrrr",
+        "................",
+        "................"
+      ]
     }
   }
 }

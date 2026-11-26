@@ -52,6 +52,9 @@ public sealed class ConstructionPlanner
     /// <summary>The road planner of this consumer (feature 007), sharing its "one per consumer and thread" rule.</summary>
     public Roads.RoadPlanner Roads { get; } = new();
 
+    /// <summary>Plans rail actions (feature 015).</summary>
+    public Rails.RailPlanner Rails { get; } = new();
+
     private MapData _map = null!;
     private ConstructionPlan _plan = null!;
     private int _companyId;
@@ -204,6 +207,13 @@ public sealed class ConstructionPlanner
                     // Roads keep their links consistent only through the road removal tool (feature 007).
                     plan.AddProblem(i, ConstructionReasons.UseRoadRemoval, blocking: false);
                     roadSkipped = true;
+                    continue;
+                }
+
+                if (kind is TileObjectKind.Rail or TileObjectKind.RailDepot || _state.Rails.HasRail(i))
+                {
+                    // Track keeps its links and trains through the rail tools (feature 015).
+                    plan.AddProblem(i, ConstructionReasons.UseRoadRemoval, blocking: false);
                     continue;
                 }
 
@@ -391,6 +401,7 @@ public sealed class ConstructionPlanner
 
         var roads = _state.Roads;
         if ((roads.FlagsAt(tile) & global::Talt.Core.Roads.RoadFeatures.Passing) != 0
+            || (_state.Rails.FlagsAt(tile) & global::Talt.Core.Rails.RailFeatures.Passing) != 0
             || (height > original && UnderDiagonalRoad(tile, height)))
         {
             // A bridge above, a tunnel below, or a diagonal road cutting across this tile's corner (feature 007).
@@ -435,7 +446,7 @@ public sealed class ConstructionPlanner
 
             var a = _map.Index(ax, az);
             var direction = global::Talt.Core.Roads.Dir8.FromOffset(bx - ax, bz - az);
-            if ((roads.LinksAt(a) & (1 << direction)) != 0 && height > _map.Heights[a])
+            if (((roads.LinksAt(a) | _state.Rails.LinksAt(a)) & (1 << direction)) != 0 && height > _map.Heights[a])
             {
                 return true;
             }
