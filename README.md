@@ -56,6 +56,13 @@ over the years) and `--infinite-money` (money never limits you; it can also be t
 finance window and never turned off), all also on the new-game screen, and `--station-service-pays` (debug: the cargo collected by
 `--station-service` is paid as a delivery over 40 tiles, so income shows before vehicles exist). The headless
 runner takes the same options and prints the cash, loan, company value, income and expenses.
+Road vehicles (feature 012): `--seed-vehicles <n>` (debug: bus bays on a 40-tile lattice, a depot beside each, lines
+between neighbouring connected bays and up to n buses, at most eight per line, as recorded commands; turns infinite
+money on) and `--check-overlaps` (debug: checks after every tick that no two vehicles overlap in a lane; the client
+pauses with a message, the headless runner stops with exit code 1). The headless runner also takes `--road-grid
+<spacing>` and prints a vehicle summary and the average tick of the run's second half.
+In game: build a depot (J) beside a road, open it to buy a bus or truck, press "New line" in the vehicle window and
+click your stations in order (Esc ends); the vehicle starts. F4 lists the lines.
 
 In game: the top bar shows money, date and speed buttons, the toolbar on the left opens settings and
 the other tools, and clicking the map selects the tile, road, vehicle, industry or town under the cursor

@@ -17,7 +17,8 @@ namespace Talt.Client;
 internal sealed record SessionOptions(
     string? RecordPath = null,
     long? PrintFingerprintAtTick = null,
-    bool ExitAfterFingerprint = false);
+    bool ExitAfterFingerprint = false,
+    bool CheckOverlaps = false);
 
 /// <summary>
 /// One running game: the simulation and its fixed-step runner, the world, and the vehicle snapshots
@@ -46,6 +47,11 @@ internal sealed class GameSession
     private readonly Action<int> _buildInstancesBatch;
     private readonly SessionRecorder? _recorder;
 
+    private float[] _currentHeights = [];
+    private byte[] _currentFlags = [];
+    private int[] _currentModels = [];
+    private ModelEntry?[] _roadVehicleModels = [];
+    private int _industryStaticCount;
     private VehiclePose[] _previousPoses = [];
     private int[] _previousIds = [];
     private int _previousCount;
@@ -119,8 +125,14 @@ internal sealed class GameSession
     /// <summary>Vehicle id of each entry of <see cref="Instances"/>.</summary>
     public ReadOnlySpan<int> InstanceIds => _instanceIds.AsSpan(0, _drawCount);
 
-    /// <summary>Industry placeholder boxes as drawn this frame (feature 009).</summary>
+    /// <summary>
+    /// Industry placeholder boxes as drawn this frame (feature 009), with station and depot placeholders and the smoke
+    /// or sparks of broken-down vehicles (feature 012) after them.
+    /// </summary>
     public ReadOnlySpan<IndustryInstance> IndustryInstances => _industryInstances.AsSpan(0, _industryCount);
+
+    /// <summary>Road vehicles, depots and lines (feature 012).</summary>
+    public Talt.Core.Vehicles.RoadVehicleSystem? RoadVehicles => Simulation.RoadVehicles;
 
     /// <summary>Station whose catchment the station window highlights (feature 010), or −1.</summary>
     public int CatchmentStationId { get; private set; } = -1;
@@ -219,6 +231,7 @@ internal sealed class GameSession
         }
 
         BuildIndustryInstances();
+        AppendBreakdownEffects();
     }
 
     /// <summary>Whether vehicles are drawn as models (then their placeholder boxes are not uploaded).</summary>
@@ -231,6 +244,14 @@ internal sealed class GameSession
     public void UseModels(ModelLibrary? library)
     {
         _vehicleModel = library is not null && library.TryGet("vehicle", out var vehicle) ? vehicle : null;
+        // Feature 012: a model per road vehicle model ("vehicle:<id>"), falling back to the generic one.
+        var vehicleModels = Simulation.RoadVehicles?.Rules.Models;
+        _roadVehicleModels = new ModelEntry?[vehicleModels?.Count ?? 0];
+        for (var m = 0; m < _roadVehicleModels.Length; m++)
+        {
+            _roadVehicleModels[m] = library is not null && library.TryGet("vehicle:" + vehicleModels![m].Id, out var entry) ? entry : _vehicleModel;
+        }
+
         var kinds = Simulation.Content.AllIndustryKinds;
         _industryModels = new ModelEntry?[kinds.Count];
         for (var k = 0; k < kinds.Count; k++)
@@ -253,10 +274,21 @@ internal sealed class GameSession
         for (var v = 0; v < _drawCount; v++)
         {
             var instance = _instances[v];
+            if (instance.Position.Y < HiddenY + 1)
+            {
+                continue; // In a depot or a tunnel.
+            }
+
             var id = _instanceIds[v];
+            var entry = model;
+            if (_roadVehicleModels.Length > 0 && (uint)_currentModels[v] < (uint)_roadVehicleModels.Length && _roadVehicleModels[_currentModels[v]] is { } own)
+            {
+                entry = own;
+            }
+
             var position = new Vector3(instance.Position.X, instance.Position.Y, instance.Position.Z);
             var tint = new Vector3(instance.Color.X, instance.Color.Y, instance.Color.Z);
-            batch.Add(model.Variant(id), position, _yaws[v], tint, (unchecked((uint)id * 2654435761u) >> 16) / 65536f);
+            batch.Add(entry.Variant(id), position, _yaws[v], tint, (unchecked((uint)id * 2654435761u) >> 16) / 65536f);
         }
     }
 
@@ -348,6 +380,18 @@ internal sealed class GameSession
 
     private void AfterEachTick(GameSimulation simulation)
     {
+        if (Options.CheckOverlaps && simulation.RoadVehicles?.CheckInvariants() is { } problem)
+        {
+            // Debug (--check-overlaps, FR-032): stop the game where the first invariant broke.
+            Console.Error.WriteLine($"Vehicle check failed at tick {simulation.CurrentTick}: {problem}");
+            if (!Runner.IsPaused)
+            {
+                Runner.TogglePause();
+            }
+
+            Message?.Invoke(TextRef.Dynamic(() => 0, _ => problem));
+        }
+
         if (Options.PrintFingerprintAtTick == simulation.CurrentTick)
         {
             Console.WriteLine($"fingerprint at tick {simulation.CurrentTick}: {StateHasher.Format(simulation.ComputeFingerprint())}");
@@ -360,6 +404,22 @@ internal sealed class GameSession
 
     private void CaptureCurrentPoses()
     {
+        if (Simulation.RoadVehicles is { } roadVehicles)
+        {
+            // Feature 012: games with a map draw the road vehicles (the prototype fleet is empty there).
+            EnsureCapacity(roadVehicles.Count);
+            roadVehicles.CopyPoses(_currentPoses, _currentHeights, _currentFlags, parallel: true);
+            roadVehicles.CopyIds(_currentIds);
+            for (var v = 0; v < roadVehicles.Count; v++)
+            {
+                _currentModels[v] = roadVehicles.ModelIndexAt(v);
+            }
+
+            _currentCount = roadVehicles.Count;
+            _currentCapturedAtTick = Simulation.CurrentTick;
+            return;
+        }
+
         var fleet = Simulation.Vehicles;
         EnsureCapacity(fleet.VehicleCount);
         fleet.CopyPoses(_currentPoses, parallel: true);
@@ -391,6 +451,9 @@ internal sealed class GameSession
         Array.Resize(ref _instances, size);
         Array.Resize(ref _instanceIds, size);
         Array.Resize(ref _yaws, size);
+        Array.Resize(ref _currentHeights, size);
+        Array.Resize(ref _currentFlags, size);
+        Array.Resize(ref _currentModels, size);
     }
 
     private void BuildInstancesBatch(int batch)
@@ -399,18 +462,29 @@ internal sealed class GameSession
         var end = Math.Min((batch + 1) * BatchSize, _drawCount);
         for (var v = batch * BatchSize; v < end; v++)
         {
-            // Only interpolate when the slot holds the same vehicle in both snapshots.
-            var pose = v < _previousCount && _previousIds[v] == _currentIds[v]
-                ? PoseInterpolator.Interpolate(_previousPoses[v], _currentPoses[v], _drawFactor)
-                : _currentPoses[v];
+            // Only interpolate when the slot holds the same vehicle in both snapshots and it did not jump (a road
+            // vehicle turning round at a dead end or leaving a depot moves to another lane at once).
+            var road = Simulation.RoadVehicles is not null;
+            var same = v < _previousCount && _previousIds[v] == _currentIds[v]
+                && (!road || Vector2.DistanceSquared(_previousPoses[v].Position, _currentPoses[v].Position) < 1f);
+            var pose = same ? PoseInterpolator.Interpolate(_previousPoses[v], _currentPoses[v], _drawFactor) : _currentPoses[v];
 
             var (position, direction) = pose;
             var right = new Vector2(-direction.Y, direction.X);
             var p = position + right * LaneOffset;
             var alongZ = MathF.Abs(direction.Y) > MathF.Abs(direction.X) ? 1f : 0f;
-            _instances[v] = new VehicleInstance(
-                new Vector4(p.X, map.Get(position.X, position.Y), p.Y, alongZ),
-                VehicleColors[_currentIds[v] % VehicleColors.Length]);
+            float height = map.Get(position.X, position.Y);
+            var color = VehicleColors[_currentIds[v] % VehicleColors.Length];
+            if (road)
+            {
+                var flags = _currentFlags[v];
+                height = (flags & Talt.Core.Vehicles.RoadVehicleSystem.PoseVisible) == 0 ? HiddenY
+                    : (flags & Talt.Core.Vehicles.RoadVehicleSystem.PoseHeight) != 0 ? _currentHeights[v] : height;
+                var rgb = Simulation.RoadVehicles!.Rules.Models[_currentModels[v]].Color;
+                color = new Vector4(((rgb >> 16) & 0xFF) / 255f, ((rgb >> 8) & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f);
+            }
+
+            _instances[v] = new VehicleInstance(new Vector4(p.X, height, p.Y, alongZ), color);
             _instanceIds[v] = _currentIds[v];
             _yaws[v] = MathF.Atan2(direction.X, direction.Y); // Model front (+Z) along the travel direction.
         }
@@ -426,14 +500,14 @@ internal sealed class GameSession
     {
         var industries = Simulation.Industries;
         var stations = Simulation.Stations;
-        var version = (uint)industries.Version | ((long)(stations?.Version ?? 0) << 32);
+        var version = ((uint)industries.Version | ((long)(stations?.Version ?? 0) << 32)) ^ ((long)(Simulation.RoadVehicles?.Depots.Version ?? 0) << 48);
         if (version == _industryVersion)
         {
             return;
         }
 
         _industryVersion = version;
-        var total = stations is null ? 0 : StationPlaceholders.BoxCount(stations);
+        var total = (stations is null ? 0 : StationPlaceholders.BoxCount(stations)) + DepotPlaceholders.BoxCount(Simulation.RoadVehicles?.Depots!);
         for (var slot = 0; slot < industries.Count; slot++)
         {
             var kindIndex = industries.KindIndexAt(slot);
@@ -477,7 +551,60 @@ internal sealed class GameSession
             index = StationPlaceholders.Build(stations, Construction, Game.Map, _industryInstances, index);
         }
 
+        if (Simulation.RoadVehicles is { } vehicles)
+        {
+            index = DepotPlaceholders.Build(vehicles.Depots, Game.Map, _industryInstances, index);
+        }
+
         _industryCount = index;
+        _industryStaticCount = index;
+    }
+
+    /// <summary>Height given to vehicles that are not drawn (inside depots and tunnels).</summary>
+    private const float HiddenY = -1000f;
+
+    /// <summary>
+    /// Small rising boxes behind broken-down vehicles (clarification Q2): grey smoke for combustion models, yellow
+    /// sparks for electric ones. Presentation only, animated by the interface clock.
+    /// </summary>
+    private void AppendBreakdownEffects()
+    {
+        _industryCount = _industryStaticCount;
+        if (Simulation.RoadVehicles is null)
+        {
+            return;
+        }
+
+        var time = (float)(Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency % 3600.0);
+        for (var v = 0; v < _drawCount; v++)
+        {
+            var flags = _currentFlags[v];
+            if ((flags & Talt.Core.Vehicles.RoadVehicleSystem.PoseBrokenDown) == 0 || _instances[v].Position.Y < HiddenY + 1)
+            {
+                continue;
+            }
+
+            var electric = (flags & Talt.Core.Vehicles.RoadVehicleSystem.PoseElectric) != 0;
+            var direction = _currentPoses[v].Direction;
+            var basePosition = _instances[v].Position;
+            for (var puff = 0; puff < 3; puff++)
+            {
+                var phase = ((time * (electric ? 2.5f : 0.8f)) + (puff / 3f) + (_currentIds[v] * 0.37f)) % 1f;
+                var size = electric ? 0.06f : 0.08f + (phase * 0.14f);
+                var rise = (electric ? 0.35f : 0.45f) + (phase * (electric ? 0.25f : 0.9f));
+                var back = electric ? 0f : 0.25f + (phase * 0.2f);
+                var color = electric ? new Vector4(1f, 0.85f, 0.25f, 1f) : new Vector4(0.45f, 0.45f, 0.47f, 1f);
+                if (_industryCount >= _industryInstances.Length)
+                {
+                    Array.Resize(ref _industryInstances, Math.Max(64, _industryInstances.Length * 2));
+                }
+
+                _industryInstances[_industryCount++] = new IndustryInstance(
+                    new Vector4(basePosition.X - (direction.X * back), basePosition.Y + rise, basePosition.Z - (direction.Y * back), 0f),
+                    new Vector4(size, size, size, 0f),
+                    color);
+            }
+        }
     }
 
     private static Vector4 ToColor(uint rgb) =>

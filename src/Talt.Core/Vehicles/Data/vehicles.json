@@ -1,0 +1,92 @@
+{
+  // Road vehicles (feature 012, specs/012-road-vehicles/contracts/data-files.md). Every value and name is original to
+  // TALT. Distances in thousandths of a tile, money in the internal unit (1 = one US dollar), days are game days
+  // (40 ticks). Changing a value changes what recorded sessions replay to.
+  // Speed scale: this many km/h make one tile per second.
+  "kmhPerTileSecond": 40,
+  "physics": {
+    // Braking deceleration shared by every vehicle, thousandths of a tile per second².
+    "brakingMilliTilesPerSecond2": 2500,
+    // Smallest gap between two vehicles in a lane.
+    "minGapMilliTiles": 50,
+    // Half the size of the box at the centre of a junction that only one vehicle may hold.
+    "junctionRadiusMilliTiles": 220,
+    // How far past the centre of a dead end vehicles drive before turning around (two vehicles of the longest model
+    // must fit in a bay tile behind it).
+    "deadEndExtentMilliTiles": 490,
+    // How far a vehicle looks ahead beyond its braking distance and two ticks of travel.
+    "lookAheadMilliTiles": 300,
+    // Share of the model speed allowed on a link followed by a turn of 90° or more, and on a ramp.
+    "curveSpeedPercent": 60,
+    "rampSpeedPercent": 75
+  },
+  "stops": {
+    // Vehicles loading at once in a bay (one behind the other); drive-through stops serve one per direction.
+    "bayPlaces": 2,
+    // Shortest stop, in ticks, and the time of one loading or unloading step.
+    "minDwellTicks": 40,
+    "loadIntervalTicks": 10
+  },
+  // Route search work per tick (nodes expanded by searches the route cache did not answer); vehicles whose search
+  // does not fit wait for a later tick. One search never expands more than this.
+  "routing": { "searchNodesPerTick": 40000 },
+  // A vehicle that wants to move but has not moved for this many days is reported; after twice as long it turns round.
+  "stuck": { "noticeDays": 2 },
+  "reliability": {
+    // Reliability in thousandths, lost every day, and how much faster past the model's life.
+    "decayPerDay": 1,
+    "oldAgeFactor": 3,
+    "minimum": 150,
+    // Daily breakdown chance in millionths = (1000 − reliability) × this.
+    "breakdownChanceScale": 25,
+    // A breakdown lasts at most this many days (unless a depot is reached first); the speed cap alternates between a
+    // half and a quarter of the model speed every pulse.
+    "breakdownDays": 6,
+    "breakdownPulseTicks": 40,
+    "recoverPerMille": 150
+  },
+  "service": { "defaultIntervalDays": 150 },
+  // A vehicle's value falls linearly over its life down to this share of its price.
+  "value": { "minValuePercent": 10 },
+  // Placeholder model colours of depots (until a depot model exists).
+  "depot": { "cost": 3500, "removeCost": 600, "maintenancePerYear": 400, "model": { "base": "#7D6B5A", "roof": "#3F5A73" } },
+  // Which cargo every truck category can carry (one at a time, chosen when bought).
+  "cargoCategories": {
+    "passengers": ["passengers"],
+    "bulk": ["coal", "iron-ore", "grain", "wood"],
+    "tanker": ["oil", "fuel"],
+    "box": ["mail", "goods", "food", "steel", "lumber", "livestock"]
+  },
+  "models": [
+    {
+      "id": "bus-townsman", "nameKey": "vehicle.model.bus-townsman", "kind": "bus", "cargoCategory": "passengers",
+      "capacity": 30, "speedKmh": 56, "accelerationMilli": 1200, "lengthMilliTiles": 450,
+      "price": 14000, "runningCostPerYear": 1500, "lifeYears": 12, "reliabilityPerMille": 850,
+      "firstYear": 1850, "lastYear": 2100, "power": "combustion", "loadPerStep": 5, "color": "#C8402E"
+    },
+    {
+      "id": "bus-voltline", "nameKey": "vehicle.model.bus-voltline", "kind": "bus", "cargoCategory": "passengers",
+      "capacity": 36, "speedKmh": 64, "accelerationMilli": 1500, "lengthMilliTiles": 450,
+      "price": 21000, "runningCostPerYear": 1800, "lifeYears": 15, "reliabilityPerMille": 900,
+      "firstYear": 1930, "lastYear": 2100, "power": "electric", "loadPerStep": 6, "color": "#2E77C8"
+    },
+    {
+      "id": "truck-tipper", "nameKey": "vehicle.model.truck-tipper", "kind": "truck", "cargoCategory": "bulk",
+      "capacity": 20, "speedKmh": 48, "accelerationMilli": 1000, "lengthMilliTiles": 450,
+      "price": 16000, "runningCostPerYear": 1700, "lifeYears": 14, "reliabilityPerMille": 840,
+      "firstYear": 1850, "lastYear": 2100, "power": "combustion", "loadPerStep": 4, "color": "#D8A32B"
+    },
+    {
+      "id": "truck-tanker", "nameKey": "vehicle.model.truck-tanker", "kind": "truck", "cargoCategory": "tanker",
+      "capacity": 20, "speedKmh": 48, "accelerationMilli": 1000, "lengthMilliTiles": 450,
+      "price": 17500, "runningCostPerYear": 1800, "lifeYears": 14, "reliabilityPerMille": 830,
+      "firstYear": 1850, "lastYear": 2100, "power": "combustion", "loadPerStep": 4, "color": "#9AA3AC"
+    },
+    {
+      "id": "truck-box", "nameKey": "vehicle.model.truck-box", "kind": "truck", "cargoCategory": "box",
+      "capacity": 16, "speedKmh": 56, "accelerationMilli": 1100, "lengthMilliTiles": 450,
+      "price": 15000, "runningCostPerYear": 1600, "lifeYears": 13, "reliabilityPerMille": 850,
+      "firstYear": 1850, "lastYear": 2100, "power": "combustion", "loadPerStep": 4, "color": "#4E8F4A"
+    }
+  ]
+}

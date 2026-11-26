@@ -46,6 +46,9 @@ internal enum PickKind
 
     /// <summary>A station tile (feature 010); <see cref="PickResult.StationId"/> is the station.</summary>
     Station,
+
+    /// <summary>A road depot (feature 012); <see cref="PickResult.StationId"/> holds the depot id.</summary>
+    Depot,
 }
 
 /// <summary>What is under the cursor (data-model.md Pick result).</summary>
@@ -72,6 +75,7 @@ internal readonly record struct PickResult(
         PickKind.Industry => $"industry:{IndustryId}",
         PickKind.Town => $"town:{TownId}",
         PickKind.Station => $"station:{StationId}",
+        PickKind.Depot => $"depot:{StationId}",
         PickKind.Road => $"road:{TileX},{TileZ}",
         PickKind.Tile => $"tile:{TileX},{TileZ}",
         _ => "none",
@@ -82,7 +86,7 @@ internal readonly record struct PickResult(
         PickKind.Vehicle => other.Kind == Kind && VehicleId == other.VehicleId,
         PickKind.Industry => other.Kind == Kind && IndustryId == other.IndustryId,
         PickKind.Town => other.Kind == Kind && TownId == other.TownId && BoundsMin == other.BoundsMin,
-        PickKind.Station => other.Kind == Kind && StationId == other.StationId,
+        PickKind.Station or PickKind.Depot => other.Kind == Kind && StationId == other.StationId,
         PickKind.None => other.Kind == Kind,
         _ => other.Kind == Kind && TileX == other.TileX && TileZ == other.TileZ,
     };
@@ -110,6 +114,9 @@ internal sealed class PickContext
 
     /// <summary>Stations of the game (feature 010); null for map-less games and tests.</summary>
     public Talt.Core.Stations.StationRegistry? Stations { get; set; }
+
+    /// <summary>Road depots of the game (feature 012); null for map-less games and tests.</summary>
+    public Talt.Core.Vehicles.DepotRegistry? Depots { get; set; }
 
     /// <summary>Industries of the game (feature 009).</summary>
     public Talt.Core.Industries.IndustryFleet? Industries { get; set; }
@@ -506,7 +513,7 @@ internal sealed class MapPicker
     /// <summary>A hit may be this far behind the terrain hit and still count (it stands on it).</summary>
     private const float OcclusionTolerance = 0.75f;
 
-    private readonly List<IPickLayer> _layers = [new TerrainPickLayer(), new RoadPickLayer(), new VehiclePickLayer(), new IndustryPickLayer(), new TownPickLayer(), new StationPickLayer()];
+    private readonly List<IPickLayer> _layers = [new TerrainPickLayer(), new RoadPickLayer(), new VehiclePickLayer(), new IndustryPickLayer(), new TownPickLayer(), new StationPickLayer(), new DepotPickLayer()];
 
     /// <summary>Adds a kind of pickable object (stations, buildings... in later features).</summary>
     public void Register(IPickLayer layer) => _layers.Add(layer ?? throw new ArgumentNullException(nameof(layer)));
@@ -541,6 +548,34 @@ internal sealed class MapPicker
 /// Station tiles (feature 010): the terrain hit's tile when a station piece stands on it. Above roads (a
 /// drive-through stop is a road tile too), below vehicles.
 /// </summary>
+/// <summary>Road depots (feature 012): the depot tile under the terrain hit.</summary>
+internal sealed class DepotPickLayer : IPickLayer
+{
+    public int Priority => 80;
+
+    public bool TryPick(in Ray ray, PickContext context, out PickResult result)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        result = PickResult.None;
+        var terrain = context.Terrain;
+        if (context.Depots is not { Count: > 0 } depots || terrain.Kind == PickKind.None || context.Roads is not { } roads
+            || !roads.Contains(terrain.TileX, terrain.TileZ) || !depots.TryGetAt(roads.Index(terrain.TileX, terrain.TileZ), out var depotId))
+        {
+            return false;
+        }
+
+        var min = new Vector3(terrain.TileX, terrain.Height, terrain.TileZ);
+        result = terrain with
+        {
+            Kind = PickKind.Depot,
+            StationId = depotId,
+            BoundsMin = min,
+            BoundsMax = min + new Vector3(1f, 1.1f, 1f),
+        };
+        return true;
+    }
+}
+
 internal sealed class StationPickLayer : IPickLayer
 {
     public int Priority => 80;

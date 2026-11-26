@@ -25,6 +25,12 @@ public enum TileObjectKind : byte
     /// </summary>
     Station = 3,
 
+    /// <summary>
+    /// A road depot (feature 012): owned by the company, with a one-link road piece towards its road; the depot is in
+    /// <see cref="Vehicles.DepotRegistry"/>.
+    /// </summary>
+    Depot = 4,
+
     /// <summary>Reserved for tests of the demolish rules (nothing in the game creates it).</summary>
     Test = 255,
 }

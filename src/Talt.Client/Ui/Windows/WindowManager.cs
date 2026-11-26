@@ -13,15 +13,17 @@ internal sealed class WindowManager
     /// <summary>Opening more windows than this closes the oldest unpinned one (edge case).</summary>
     public const int MaxWindows = 64;
 
-    /// <summary>Logical pixels between cascaded windows of the same kind.</summary>
+    /// <summary>Logical pixels between cascaded windows.</summary>
     public const float CascadeOffset = 26f;
+
+    /// <summary>Cascade places tried before the cascade starts again from the top left.</summary>
+    public const int CascadeSteps = 10;
 
     /// <summary>Logical pixels of a window that must stay on screen horizontally.</summary>
     public const float KeepVisible = 48f;
 
     private readonly List<UiWindow> _windows = []; // Back to front.
     private readonly List<UiWindow> _pendingPlacement = [];
-    private readonly Dictionary<string, int> _cascade = new(StringComparer.Ordinal);
 
     public int Count => _windows.Count;
 
@@ -111,8 +113,6 @@ internal sealed class WindowManager
         {
             Close(_windows[i]);
         }
-
-        _cascade.Clear();
     }
 
     public void BringToFront(UiWindow window)
@@ -203,10 +203,38 @@ internal sealed class WindowManager
 
     private void Place(UiContext ui, UiWindow window)
     {
-        var step = _cascade.GetValueOrDefault(window.Kind);
-        _cascade[window.Kind] = (step + 1) % 10;
+        // Every new window, of any kind, takes the first cascade place no open window sits on, so a window opened from
+        // another never lands exactly on top of it and looks like part of it (found in the hand test of feature 012).
         var origin = Origin * ui.Scale;
-        window.Position = origin + new Vector2(step * CascadeOffset * ui.Scale);
+        var offset = CascadeOffset * ui.Scale;
+        for (var step = 0; step < CascadeSteps; step++)
+        {
+            var candidate = origin + new Vector2(step * offset);
+            if (!IsTaken(window, candidate, offset / 2f))
+            {
+                window.Position = candidate;
+                return;
+            }
+        }
+
+        // All places taken: one step below the front window (wrapping to the top left past the last place).
+        var front = _windows.Count > 1 ? _windows[^2] : null;
+        var frontStep = front is null || float.IsNaN(front.Position.X) ? -1 : (int)MathF.Round((front.Position.X - origin.X) / offset);
+        window.Position = origin + new Vector2(((frontStep + 1) % CascadeSteps + CascadeSteps) % CascadeSteps * offset);
+    }
+
+    private bool IsTaken(UiWindow window, Vector2 position, float tolerance)
+    {
+        foreach (var open in _windows)
+        {
+            if (open != window && !float.IsNaN(open.Position.X)
+                && MathF.Abs(open.Position.X - position.X) < tolerance && MathF.Abs(open.Position.Y - position.Y) < tolerance)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private UiWindow? Find(UiWindow window)

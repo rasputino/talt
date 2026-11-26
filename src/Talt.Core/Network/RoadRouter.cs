@@ -54,14 +54,25 @@ public sealed class RoadRouter
     /// <summary>True when the last route came from the cache.</summary>
     public bool LastFromCache { get; private set; }
 
+    /// <summary>True when the last search stopped at its expansion limit (feature 012's search budget) without an answer.</summary>
+    public bool LastHitLimit { get; private set; }
+
     /// <summary>
     /// Finds the shortest route between two node tiles (junctions, dead ends, structure ends...).
     /// </summary>
     /// <param name="steps">Cleared, then filled with the route's edges in travel order.</param>
     /// <param name="length">Total length in units.</param>
     /// <returns>False when a tile is not a node or no route exists.</returns>
-    public bool TryFindRoute(int fromTile, int toTile, List<RouteStep> steps, out long length)
+    public bool TryFindRoute(int fromTile, int toTile, List<RouteStep> steps, out long length) =>
+        TryFindRoute(fromTile, toTile, steps, out length, int.MaxValue);
+
+    /// <summary>
+    /// Like <see cref="TryFindRoute(int, int, List{RouteStep}, out long)"/>, but gives up after expanding
+    /// <paramref name="maxExpanded"/> nodes (<see cref="LastHitLimit"/>; such a result is not cached).
+    /// </summary>
+    public bool TryFindRoute(int fromTile, int toTile, List<RouteStep> steps, out long length, int maxExpanded)
     {
+        LastHitLimit = false;
         ArgumentNullException.ThrowIfNull(steps);
         steps.Clear();
         length = 0;
@@ -101,8 +112,8 @@ public sealed class RoadRouter
             }
         }
 
-        var found = Search(start, goal, steps, out length);
-        if (_useCache)
+        var found = Search(start, goal, steps, out length, maxExpanded);
+        if (_useCache && !LastHitLimit)
         {
             if (_cache.Count >= CacheCapacity)
             {
@@ -116,7 +127,7 @@ public sealed class RoadRouter
         return found;
     }
 
-    private bool Search(int start, int goal, List<RouteStep> steps, out long length)
+    private bool Search(int start, int goal, List<RouteStep> steps, out long length, int maxExpanded)
     {
         length = 0;
         var network = _network;
@@ -144,7 +155,12 @@ public sealed class RoadRouter
                 return true;
             }
 
-            LastExpandedNodes++;
+            if (++LastExpandedNodes > maxExpanded)
+            {
+                LastHitLimit = true;
+                return false;
+            }
+
             var targets = network.OutTargets(node);
             var lengths = network.OutLengths(node);
             for (var e = 0; e < targets.Length; e++)

@@ -85,6 +85,13 @@ public abstract record ConstructionCommand(int CompanyId) : ISimulationCommand
             return Rejected(plan.Reason);
         }
 
+        if (state.Occupancy is { } occupancy && occupancy.Blocks(plan))
+        {
+            // Feature 012 (research R12): never take a road, stop or depot from under a vehicle.
+            plan.Reason = ConstructionReasons.VehicleInTheWay;
+            return Rejected(ConstructionReasons.VehicleInTheWay);
+        }
+
         if (plan.Cost > company.Balance && !company.HasInfiniteMoney)
         {
             plan.Reason = ConstructionReasons.NotEnoughMoney;

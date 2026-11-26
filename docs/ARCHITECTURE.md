@@ -22,6 +22,9 @@ Talt.slnx
 │   │   ├── Stations/       StationRegistry (pieces, stations, warehouse groups, coverage, supply, ratings,
 │   │   │                   Load/Unload), StationPlanner, station commands, CargoHold, CargoDelivery,
 │   │   │                   StationSeeder, StationRules (+ Data/stations.json) (010)
+│   │   ├── Vehicles/       RoadVehicleSystem (lanes, drive step, events, daily), DepotRegistry, LineRegistry,
+│   │   │                   VehicleRules (+ Data/vehicles.json), DepotPlanner, vehicle/line/depot commands,
+│   │   │                   VehicleSeeder (012)
 │   │   ├── Finance/        FinanceSystem (payments, running costs, maintenance, interest, value, bankruptcy,
 │   │   │                   inflation), Ledger, PaymentCalculator, RunningCosts, changeLoan command,
 │   │   │                   FinanceRules (+ Data/finance.json), MoneyEvent feed (011)
@@ -644,6 +647,131 @@ boundaries, so the tick budget is unchanged. Headless, 512 × 512 map, 40 seeded
 --station-service-pays`, 20 000 ticks: 2 542 deliveries paid, income 2 089 504, expenses −91 480 (construction
 and maintenance), the same fingerprint on two runs.
 
+## Road vehicles, depots and lines (feature 012)
+
+Buses and trucks bought in depots run on lines between the company's stations, drive lane by lane on the road tiles
+and earn money through features 010 and 011. Spec and design: `specs/012-road-vehicles/` (research R1–R14).
+
+- **Where it lives.** `Talt.Core.Vehicles`: `RoadVehicleSystem` (partial files per tick phase), `DepotRegistry`,
+  `LineRegistry`, `VehicleRules` (+ `Data/vehicles.json`), `DepotPlanner` and the commands, `VehicleSeeder` (debug).
+  `GameSimulation.RoadVehicles` exists only for games with a map; it ticks after the prototype fleet. The synthetic
+  `VehicleFleet`/`SyntheticTraffic` stay for map-less scenarios only (benchmarks of feature 001, the CI goldens and the
+  windows-reference session), so their fingerprints are unchanged (research R1).
+- **Data** (`vehicles.json`, validated with file, model and field names, fingerprinted): km/h per tile per second (40),
+  braking 2.5 tiles/s², minimum gap 0.05 tile, junction box radius 0.22, dead-end extent 0.49, look-ahead margin 0.3,
+  curve and ramp speed shares, bay places (2), dwell and loading step, route search work per tick (40 000 nodes),
+  stuck notice (2 days), reliability and breakdowns, service interval (150 days), value floor, depot cost, removal and
+  maintenance, the truck cargo categories (bulk, tanker, box) and five starter models (two buses, one of them electric,
+  three trucks, all 0.45 tile long). Vehicle lengths must fit between two adjacent junction boxes (and two in a bay tile).
+- **Lanes and positions** (R2). A lane is a directed road link, key `tile × 8 + direction`; a vehicle has its lane and
+  `S`, the front's distance from the lane tile's centre in units (negative or past the link at dead ends). Two-way
+  roads give two opposite lanes, one-way links and motorway carriageways one. Per lane a doubly linked list keeps the
+  vehicles front first (no overtaking, so the order only changes when vehicles enter or leave); lanes get a dense index
+  on first use (open-addressing `LaneIndexMap`) and keep it. Lists, holders, the lane index and the per-vehicle
+  `LaneCache` (the lane's to-tile, length, road speed cap, link masks, and the same for the lane after it) are derived
+  and never hashed.
+- **The tick** (R7): **(1) drive, parallel** in batches of 1 024: each vehicle reads only the previous tick (the
+  double-buffered `RoadVehicleState`, 56 bytes) and writes its own slot: speed from four candidates (accelerate, hold,
+  brake half, brake fully) under a *hard* rule — the front never passes the previous tick's rear of the vehicle or
+  obstacle ahead minus the gap, which alone guarantees that no two vehicles in a lane overlap, whatever the order of
+  updates — and a *soft* safe-distance rule `v + B(v) ≤ d + B(v_ahead)` with the exact discrete stopping distance `B`
+  (R3); obstacles are the vehicle ahead in the lane or the rear-most of the next lanes along the path, the stop line of a
+  junction it does not hold, its stop place, a dead end's turning point, or a link its route no longer matches. It moves
+  through the lanes it scanned and raises events (lane changed, junction wanted or released, arrived, dead end, route
+  mismatch, breakdown over). Batches record their lane changers and vehicles with work for phase 3 in slot order.
+  **(2) lane lists, sequential**: all leavers are unlinked, then all arrivals linked (sorted insert by `S` and id, so the
+  result does not depend on the order). **(3) events, sequential in slot order**: junction releases and grants, then per
+  active vehicle: breakdown over, depot exit, arrival (unload through `StationRegistry.Unload`, paid by finance, then
+  loading steps through `Load`), departure (next stop, route), dead-end turnaround, urgent routes, stuck notices and
+  turnarounds. Station cargo and money are only touched here. Parallel and sequential ticks are identical by
+  construction (tests compare fingerprints tick by tick).
+- **Junctions** (R4): tiles with three or more links. Only the holder may cross the stop line (0.22 tile + gap before the
+  centre). A vehicle close to the stop line that has room on the lane it will leave by (`r + length + gap` from its
+  start, previous tick) requests the junction with key (waiting since, id); after the drive step each free junction goes
+  to its smallest key (first come, first served, ties to the lower id); the holder releases it when its rear has left
+  the box. Lanes out of a junction are entered only through it, so a holder can always leave and simple junctions cannot
+  deadlock; waiting vehicles keep their key (no starvation). U-turns at junctions are allowed (the router does not track
+  arrival direction), never in the middle of a road.
+- **Stops and depots** (R5): bays and depots are dead ends; vehicles turn round at the dead end's turning point when the
+  other lane has room. A bay has two places (front at the turning point, second behind it with its body inside the bay
+  tile); a drive-through stop's place is the tile centre in either direction. A vehicle at its depot's turning point goes
+  inside (off the lanes). At a stop: unload (rule "unload only" transfers what is not accepted), then load steps of the
+  model's amount every `loadIntervalTicks` after a minimum dwell; "load if available" leaves when nothing more is
+  loaded, "full load" waits, "no loading" only stops.
+- **Routes** (R6): `RoadRouter` (feature 007) from the node ahead of the vehicle (end of its lane's chain) to the goal
+  node; a drive-through stop is reached through either end of its chain (a tail step from that node). Routes are planned
+  at departures and when a route no longer matches the road at a junction, through a system cache keyed by (from node,
+  goal) holding the route arrays, which vehicles reference without copying. Budget: 40 000 expanded nodes per tick
+  (`RoadRouter` got an optional expansion limit), a tenth of it for refreshing routes made stale by a network change
+  (stale routes stay safe because they are checked at every junction), and a union-find of the road graph's weakly
+  connected parts answers "no route" without searching. Vehicles without a route wait and retry every five days.
+- **Ageing, reliability, breakdowns, servicing** (R9): daily ageing and reliability decay (faster past the model's life);
+  the breakdown roll is a stateless hash of (forked game seed, vehicle id, day number), so nothing shared is consumed in
+  parallel. A broken-down vehicle's speed cap alternates between ½ and ¼ of its model speed and it heads for the nearest
+  reachable depot (three nearest by a region index, nearest reachable first); it recovers in the depot (serviced) or
+  after `breakdownDays`. Service due → the nearest depot after the current stop.
+- **Stuck vehicles** (R8): standing still while wanting to move (not queueing for its own stop) for the notice time
+  raises a notice; after twice that the vehicle turns round in place when the other lane has room ahead and behind (the
+  follower must still be able to stop) and plans a new route, which breaks circular jams.
+- **Money** (R11): purchase `−price × cost level` in the vehicle purchase row, refused without cash (not with infinite
+  money); sale `+value` in the same row (value falls linearly to 10 % over the model's life; `RunningCosts.SetValue`
+  updates it monthly for the company value); running costs through feature 011's `RunningCosts`; depot maintenance booked
+  monthly as property maintenance (depots are not counted in the company value: known limit). Each vehicle's profit is
+  the sum of its payments (`FinanceSystem.TotalPaid` around its unloads) minus a daily share of its running cost;
+  `MoneyEvent.VehicleId` lets the client place the income text above the vehicle.
+- **Protection** (R12): `ConstructionState.Occupancy` (the vehicle system) refuses, in `ConstructionCommand.Check`, plans
+  that remove road links, station pieces or depots on a tile under a vehicle (`vehicle-in-the-way`); road planning
+  refuses to cut a depot's link (`depot-road`); the clear tool leaves depots to the depot tool.
+- **Commands** (registered in `CommandSerializer`): `buildDepot`, `removeDepot`, `buyVehicle`, `sellVehicle`,
+  `cloneVehicle`, `startVehicle`, `sendToDepot`, `setVehicleCargo`, `setServiceInterval`, `createLine`, `deleteLine`,
+  `renameLine`, `editLineStops`, `assignLine`. A vehicle given a line while in a depot starts.
+- **Fingerprint**: hashed after finance only once a depot, line or vehicle ever existed: hot state, cold arrays, holds,
+  route steps, lines, depots, rules fingerprint. Every earlier golden (map-less, windows-reference, construction, roads,
+  towns, stations, finance) is unchanged; new golden `RoadVehicleReplayTests`.
+- **Client**: `GameSession` draws the road vehicles from `RoadVehicleSystem.CopyPoses` (position, direction, bridge
+  height, hidden in depots and tunnels, broken-down and electric flags) with the existing snapshot interpolation (no
+  interpolation over a jump of a tile or more), the model `vehicle:<model id>` or the generic `vehicle` model tinted
+  with the model colour (compact models of half a tile, `road-*.vox`, generated by `tools/Talt.ModelGen`); smoke (grey) or sparks (yellow) boxes rise from broken-down vehicles; depots are placeholder
+  boxes (`DepotPlaceholders`). Tools: depot (J) and depot removal (Shift+J) in the stations column; lines window (F4 or
+  its toolbar button). Windows: `VehicleWindow` (state, load, speed, age, reliability, value, profits; start/stop, go
+  to depot, clone, sell in a depot, line choice, "New line", service interval), `DepotWindow` (vehicles inside, models
+  of the year with cargo choice and Buy), `LineWindow` (stops with loading rule, up, remove, add stops, rename, delete,
+  vehicles), `LinesWindow`; `RebuildingPanel` rebuilds lists only when their version changes. Line mode: clicked
+  stations are added in order, Esc ends (a new line is created then). Stuck, no-route and skipped-stop notices become
+  messages; picking: `DepotPickLayer`, vehicle picks open the vehicle window. Debug: `--seed-vehicles <n>` and
+  `--check-overlaps` in client and headless (`--road-grid` in headless too; a road grid is not a command, so such runs do
+  not replay), headless prints a vehicle summary and `second-half-avg-tick-ms`.
+
+### Road vehicle numbers
+
+BenchmarkDotNet (2026-11-25, AMD Ryzen 7 160, 8 cores / 16 threads; `RoadVehicleBenchmarks`, `RouteBenchmarks`): the
+generated 4096 × 4096 map `T2-4096x4096-s7-r50-h28-w25-l7` with the debug road grid every 16 tiles, 8 422 bus bays with a
+depot each, 7 722 lines between neighbouring connected bays, vehicles seeded by `VehicleSeeder` (at most eight per line)
+and driven 2 400 ticks first. Each invocation is one full `GameSimulation.Tick` (vehicles plus every other system and the
+day events every 40th tick).
+
+| Benchmark | Vehicles | Mean | Allocated | Budget |
+|---|---|---|---|---|
+| `Tick` (parallel) | 10 000 | 0.55 ms | 5.0 KB | — |
+| `Tick` (parallel) | 50 000 | **3.35 ms** | 6.7 KB | ≤ 4 ms (SC-001) |
+| `Tick` (parallel) | 61 776 (the "100 000" row: the seeder's cap of eight per line) | 4.64 ms | 7.2 KB | — |
+| `TickSequential` | 10 000 / 50 000 / 61 776 | 1.66 / 15.1 / 18.5 ms | 1.3–2.1 KB | — |
+| `LongRoute` (A*, no cache, ≥ 1 000 tiles) | — | 2.61 ms | 0 B | < 2 ms (SC-006): **not met** on this map |
+| `DepartureRoute` (A*, no cache, 30–60 tiles) | — | 0.010 ms | 0 B | — |
+
+The tick's allocation is `Parallel.For` bookkeeping and the occasional new cached route; driving, junctions, queues and
+loading allocate nothing (`RoadVehicleReplayTests.SteadyTicks_AllocateNothing`). Long uncached routes take 2.6 ms here
+(1.07 ms on feature 007's flat grid) because water gaps in the grid force detours; vehicles rarely need them (routes
+between stops are cached, and searches are budgeted at 40 000 nodes per tick, so a long search never stalls a tick).
+
+How the 50 000-vehicle tick got there (headless, same scenario, steady second half): 41 ms in the first working version →
+the junction release scanned the holder dictionary (O(holders) per release), unreachable lines searched their whole road
+component every month, and vehicles waiting for a route retried every tick → union-find "no route", a node budget with a
+small share for stale routes, staggered retries, a region index for the nearest depot, an open-addressing lane index,
+lane caches for the vehicle's lane and the next one, and per-batch lists of active vehicles for the sequential phases.
+Parallel and sequential runs give the same fingerprints throughout. Earlier goldens: all unchanged; new
+`RoadVehicleReplayTests` golden `91E0F1189491671C`.
+
 ## Determinism
 
 The same settings and the same commands produce the same state at every tick, on every platform.
@@ -761,6 +889,9 @@ It prints stable `key: value` lines (`date`, `fingerprint`, `avg-tick-ms`, ...).
 1 determinism failure, 2 invalid arguments or file, 3 unexpected error.
 
 ## Vehicle simulation
+
+Since feature 012 this prototype fleet runs only in map-less scenarios (benchmarks, the CI goldens); the player's
+vehicles are the road vehicles above.
 
 `VehicleFleet` simulates vehicles running on **lines**. A line is a closed loop of edges with two
 stops: the start of the route and the start of the way back. Vehicles accelerate, cruise, brake so
@@ -1064,6 +1195,8 @@ live in `src/Talt.Client/Input/Data/actions.json`):
 | PageUp / PageDown / L / X | Construction tools: raise, lower, level, clear (feature 006) |
 | Backspace | Undo the last construction (within 10 s of game time) |
 | R / B / T / Shift+R / O | Road tools: road, bridge, tunnel, remove road, one-way (feature 007) |
+| G / H / K / Shift+H / Shift+K | Station tools: bus stop, truck stop, warehouse, remove station, warehouse size (feature 010) |
+| J / Shift+J / F4 | Depot, remove depot, lines window (feature 012); Esc ends the line-building mode |
 | M / , / . / Y | Motorway, motorway exit, motorway entry, next road type (feature 007) |
 | Left drag with a tool | Preview and build over the rectangle; release builds, Esc or right button cancels |
 | Esc | Close the front window; then clear the selection; then open / close the pause menu |

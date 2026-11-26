@@ -1,6 +1,7 @@
 using Talt.Core.Construction;
 using Talt.Core.Roads;
 using Talt.Core.Stations;
+using Talt.Core.Vehicles;
 
 namespace Talt.Client.Construction;
 
@@ -53,6 +54,9 @@ internal sealed record ConstructionTool(
 
     /// <summary>A station tool (feature 010): drawn in the stations column, previews its catchment.</summary>
     public bool IsStation { get; init; }
+
+    /// <summary>A depot tool (feature 012): drawn in the stations column, no catchment.</summary>
+    public bool IsDepot { get; init; }
 
     /// <summary>The command for a drag, from <see cref="CreateFor"/> or <see cref="Create"/>.</summary>
     public ConstructionCommand Command(ConstructionState state, int company, (int X, int Z) start, (int X, int Z) end) =>
@@ -127,9 +131,29 @@ internal sealed record ConstructionTool(
         IsStation = true,
     };
 
-    /// <summary>The construction tools in toolbar order: terrain (feature 006), roads (feature 007), stations (feature 010).</summary>
+    /// <summary>Road depot (feature 012): a free tile beside a road, facing it.</summary>
+    public static ConstructionTool Depot { get; } = new("depot", "toolDepot", DragShape.Tile,
+        static (_, state, company, a, _, plan) => DepotPlanner.PlanDepot(state, company, VehicleRules.Default, a.X, a.Z, plan),
+        static (company, a, _) => new BuildDepotCommand(company, a.X, a.Z))
+    {
+        IsDepot = true,
+    };
+
+    public static ConstructionTool RemoveDepot { get; } = new("removeDepot", "toolRemoveDepot", DragShape.Tile,
+        static (_, state, company, a, _, plan) => DepotPlanner.PlanRemoval(state, company, VehicleRules.Default, a.X, a.Z, plan),
+        static (company, a, _) => new RemoveDepotCommand(company, a.X, a.Z))
+    {
+        Removes = true,
+        IsDepot = true,
+    };
+
+    /// <summary>
+    /// The construction tools in toolbar order: terrain (feature 006), roads (feature 007), stations (feature 010),
+    /// depots (feature 012).
+    /// </summary>
     public static IReadOnlyList<ConstructionTool> All { get; } =
-        [Raise, Lower, Level, Clear, Road, Bridge, Tunnel, RemoveRoad, OneWay, Motorway, MotorwayExit, MotorwayEntry, BusStop, TruckStop, Warehouse, RemoveStation];
+        [Raise, Lower, Level, Clear, Road, Bridge, Tunnel, RemoveRoad, OneWay, Motorway, MotorwayExit, MotorwayEntry, BusStop, TruckStop, Warehouse, RemoveStation,
+            Depot, RemoveDepot];
 
     private static StationRules RulesOf(ConstructionState state) => state.Stations?.Rules ?? StationRules.Default;
 

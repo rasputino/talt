@@ -19,7 +19,7 @@ namespace Talt.Client;
 /// </summary>
 internal sealed record NewGameOptions(int ChunksPerSide = 16, int VehicleCount = 20_000, int Seed = 2026, int StartYear = 1950, MapSettings? Map = null, int? RoadGridSpacing = null,
     Talt.Core.Towns.TownSettings? Towns = null, Talt.Core.Stations.StationSettings? Stations = null, int SeedStations = 0,
-    Talt.Core.Finance.FinanceSettings? Finance = null)
+    Talt.Core.Finance.FinanceSettings? Finance = null, int SeedVehicles = 0)
 {
     public int MapSizeTiles => Map is null ? ChunksPerSide * Chunk.Size : Math.Min(Map.Width, Map.Depth);
 
@@ -82,6 +82,18 @@ internal static class GameSetup
             }
 
             report?.Invoke($"Seeded {commands.Count} station commands.");
+        }
+
+        if (options.SeedVehicles > 0)
+        {
+            // Debug (--seed-vehicles, feature 012): bays, depots, lines and buses as commands of the first tick.
+            var commands = Talt.Core.Vehicles.VehicleSeeder.Plan(simulation, options.SeedVehicles);
+            foreach (var command in commands)
+            {
+                simulation.Submit(command);
+            }
+
+            report?.Invoke($"Seeded {commands.Count} vehicle commands.");
         }
 
         report?.Invoke($"Created simulation ({construction.Roads.RoadTileCount:N0} road tiles, {construction.Network.NodeCount:N0} road junctions, {simulation.Industries.Count:N0} industries, {simulation.Towns?.Count ?? 0:N0} towns with {simulation.Towns?.Buildings.Count ?? 0:N0} buildings) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");

@@ -19,7 +19,10 @@ internal sealed record HeadlessOptions(
     string? RecordPath,
     string? SessionPath,
     int CheckpointEvery,
-    int SeedStations = 0);
+    int SeedStations = 0,
+    int SeedVehicles = 0,
+    int? RoadGrid = null,
+    bool CheckOverlaps = false);
 
 /// <summary>Parses the headless runner's arguments without side effects (unit-testable).</summary>
 internal static class HeadlessArguments
@@ -31,6 +34,7 @@ internal static class HeadlessArguments
                             [--record <session.json>] [--town-names mixed|english|spanish]
                             [--town-size small|normal|large] [--town-service <0-100>]
                             [--station-service <0-100>] [--seed-stations <n>]
+                            [--road-grid <spacing>] [--seed-vehicles <n>] [--check-overlaps]
                             [--sandbox] [--inflation] [--infinite-money] [--station-service-pays]
           Talt.Headless replay <session.json> [--ticks <int>] [--checkpoint-every <int>] [--sequential]
         """;
@@ -72,6 +76,9 @@ internal static class HeadlessArguments
         var towns = Talt.Core.Towns.TownSettings.Default;
         var stationService = 0;
         var seedStations = 0;
+        var seedVehicles = 0;
+        int? roadGrid = null;
+        var checkOverlaps = false;
         var finance = Talt.Core.Finance.FinanceSettings.Default;
 
         try
@@ -109,6 +116,9 @@ internal static class HeadlessArguments
                     case "--town-service": towns = towns with { DebugServicePercent = ParseInt(args, ref i) }; break;
                     case "--station-service": stationService = ParseInt(args, ref i); break;
                     case "--seed-stations": seedStations = ParseInt(args, ref i); break;
+                    case "--seed-vehicles": seedVehicles = ParseInt(args, ref i); break;
+                    case "--road-grid": roadGrid = ParseInt(args, ref i); break;
+                    case "--check-overlaps": checkOverlaps = true; break;
                     case "--sandbox": finance = finance with { Sandbox = true }; break;
                     case "--inflation": finance = finance with { Inflation = true }; break;
                     case "--infinite-money": finance = finance with { InfiniteMoney = true }; break;
@@ -182,13 +192,19 @@ internal static class HeadlessArguments
             return false;
         }
 
-        if (seedStations < 0)
+        if (seedStations < 0 || seedVehicles < 0)
         {
-            error = "--seed-stations cannot be negative.";
+            error = seedStations < 0 ? "--seed-stations cannot be negative." : "--seed-vehicles cannot be negative.";
             return false;
         }
 
-        options = new HeadlessOptions(command.Value, settings, ticks, sequential, record, session, checkpointEvery, seedStations);
+        if (roadGrid is < 2)
+        {
+            error = "--road-grid must be at least 2.";
+            return false;
+        }
+
+        options = new HeadlessOptions(command.Value, settings, ticks, sequential, record, session, checkpointEvery, seedStations, seedVehicles, roadGrid, checkOverlaps);
         return true;
     }
 

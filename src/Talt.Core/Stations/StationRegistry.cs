@@ -147,6 +147,9 @@ public sealed partial class StationRegistry : IStateHashable, IProductionSink
     /// <summary>Number of stations (road stations and warehouses); valid slots are <c>0..Count-1</c>.</summary>
     public int Count => _count;
 
+    /// <summary>The id the next station will get (debug seeders predict the ids of their commands).</summary>
+    public int NextStationId => _nextId;
+
     /// <summary>Number of station tiles.</summary>
     public int PieceCount => _pieces.Count;
 

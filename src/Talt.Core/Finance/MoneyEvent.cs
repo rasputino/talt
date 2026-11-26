@@ -16,8 +16,11 @@ public enum MoneyEventKind : byte
     GameOver = 3,
 }
 
-/// <summary>One event for the client (data-model.md MoneyEvent); (X, Z) is a tile, or −1 when it has no place.</summary>
-public readonly record struct MoneyEvent(int CompanyId, long Amount, int X, int Z, MoneyEventKind Kind);
+/// <summary>
+/// One event for the client (data-model.md MoneyEvent); (X, Z) is a tile, or −1 when it has no place. <paramref name="VehicleId"/>
+/// is the road vehicle whose unloading was paid (feature 012), or −1, so the floating text can follow the vehicle.
+/// </summary>
+public readonly record struct MoneyEvent(int CompanyId, long Amount, int X, int Z, MoneyEventKind Kind, int VehicleId = -1);
 
 /// <summary>
 /// Fixed-size feed of money events for the client (research R13). Not simulation state: written by the

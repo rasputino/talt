@@ -30,6 +30,8 @@ using Talt.Core.Maps;
 //   --town-service <0-100>       debug: percent of every town's passengers and mail counted as transported (towns grow)
 //   --station-service <0-100>    debug: every station's cargo is served and that percent of waiting cargo is collected
 //   --seed-stations <n>          debug: build up to n stations beside industries and town roads at the start
+//   --seed-vehicles <n>          debug: bus bays, depots, lines and up to n buses on them (turns infinite money on; feature 012)
+//   --check-overlaps             debug: check after every tick that no two road vehicles overlap (stops the game on failure)
 //   --sandbox                    the company never goes bankrupt (feature 011)
 //   --inflation                  prices and payments rise over the years (feature 011)
 //   --infinite-money             the company has infinite money from the start (cannot be turned off; feature 011)
@@ -65,6 +67,8 @@ var townSettings = Talt.Core.Towns.TownSettings.Default;
 var townOptionGiven = false;
 Talt.Core.Stations.StationSettings? stationSettings = null;
 var seedStations = 0;
+var seedVehicles = 0;
+var checkOverlaps = false;
 var financeSettings = Talt.Core.Finance.FinanceSettings.Default;
 var mapOptions = new List<(string Name, string Value)>();
 
@@ -106,6 +110,13 @@ for (var i = 0; i < args.Length; i++)
         case "--seed-stations":
             seedStations = int.Parse(args[++i], CultureInfo.InvariantCulture);
             townOptionGiven = true;
+            break;
+        case "--seed-vehicles":
+            seedVehicles = int.Parse(args[++i], CultureInfo.InvariantCulture);
+            townOptionGiven = true;
+            break;
+        case "--check-overlaps":
+            checkOverlaps = true;
             break;
         case "--sandbox":
             financeSettings = financeSettings with { Sandbox = true };
@@ -280,8 +291,8 @@ using var window = new GameWindow(new ClientOptions(
     UiScaleOverride: uiScale,
     StartGame: startGame ? new NewGameOptions(chunksPerSide, vehicleCount, seed, startYear, mapOptions.Count > 0 ? mapSettings : null, roadGrid,
         townSettings == Talt.Core.Towns.TownSettings.Default ? null : townSettings, stationSettings, seedStations,
-        financeSettings == Talt.Core.Finance.FinanceSettings.Default ? null : financeSettings) : null,
-    Session: new SessionOptions(recordPath, printFingerprintAt, exitAfterFingerprint),
+        financeSettings == Talt.Core.Finance.FinanceSettings.Default ? null : financeSettings, seedVehicles) : null,
+    Session: new SessionOptions(recordPath, printFingerprintAt, exitAfterFingerprint, checkOverlaps),
     ShowStatistics: showStatistics,
     InitialZoom: zoom,
     InitialCameraTarget: cameraTarget,

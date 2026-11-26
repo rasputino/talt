@@ -19,6 +19,85 @@ internal static class Vehicles
         Van(catalog);
         Bus(catalog);
         Truck(catalog);
+        RoadVehicleModels(catalog);
+    }
+
+    /// <summary>
+    /// Feature 012: compact models of the starter vehicles (vehicles.json), four voxels (half a tile) long like their
+    /// simulated length, three wide to fit one lane, keyed <c>vehicle:&lt;model id&gt;</c>.
+    /// </summary>
+    private static void RoadVehicleModels(ModelCatalog catalog)
+    {
+        // Townsman bus: a box with a window band and a light roof.
+        var bus = new VoxelCanvas(3, 4, 4);
+        var paint = bus.Reserve(0xC8C8C8);
+        SmallWheels(bus);
+        bus.Box(0, 1, 0, 3, 3, 4, paint);
+        bus.Box(0, 3, 0, 3, 4, 4, bus.Color(0xE4E4DE));
+        bus.Paint(0, 2, 0, 1, 3, 4, bus.Color(Glass));
+        bus.Paint(2, 2, 0, 3, 3, 4, bus.Color(Glass));
+        bus.Paint(0, 2, 3, 3, 3, 4, bus.Color(Glass));
+        bus.Set(1, 1, 3, bus.Color(HeadLight));
+        catalog.Add("vehicle:bus-townsman", "road-bus.vox", bus, paint: [paint]);
+
+        // Voltline electric bus: the same body with the trolley poles on the roof.
+        var volt = new VoxelCanvas(3, 6, 4);
+        paint = volt.Reserve(0xC8C8C8);
+        SmallWheels(volt);
+        volt.Box(0, 1, 0, 3, 3, 4, paint);
+        volt.Box(0, 3, 0, 3, 4, 4, volt.Color(0xDCE3EA));
+        volt.Paint(0, 2, 0, 1, 3, 4, volt.Color(Glass));
+        volt.Paint(2, 2, 0, 3, 3, 4, volt.Color(Glass));
+        volt.Paint(0, 2, 3, 3, 3, 4, volt.Color(Glass));
+        var pole = volt.Color(0x3A3D42);
+        volt.Set(0, 4, 1, pole);
+        volt.Set(2, 4, 1, pole);
+        volt.Set(0, 5, 0, pole);
+        volt.Set(2, 5, 0, pole);
+        volt.Set(1, 1, 3, volt.Color(HeadLight));
+        catalog.Add("vehicle:bus-voltline", "road-bus-electric.vox", volt, paint: [paint]);
+
+        // Tipper: a painted cab at the front and an open steel bin.
+        var tipper = new VoxelCanvas(3, 4, 4);
+        paint = tipper.Reserve(0xC8C8C8);
+        SmallWheels(tipper);
+        tipper.Box(0, 1, 3, 3, 3, 4, paint);
+        tipper.Paint(0, 2, 3, 3, 3, 4, tipper.Color(Glass));
+        var steel = tipper.Color(0x6E7277);
+        tipper.Box(0, 1, 0, 3, 3, 3, steel);
+        tipper.Clear(1, 2, 0, 2, 3, 3);
+        tipper.Box(1, 2, 0, 2, 3, 3, tipper.Color(0x5A4632)); // The load (earth-coloured) inside the bin.
+        catalog.Add("vehicle:truck-tipper", "road-tipper.vox", tipper, paint: [paint]);
+
+        // Tanker: cab and a pale round-topped tank.
+        var tanker = new VoxelCanvas(3, 4, 4);
+        paint = tanker.Reserve(0xC8C8C8);
+        SmallWheels(tanker);
+        tanker.Box(0, 1, 3, 3, 3, 4, paint);
+        tanker.Paint(0, 2, 3, 3, 3, 4, tanker.Color(Glass));
+        var tank = tanker.Color(0xD8DCE0);
+        tanker.Box(0, 1, 0, 3, 3, 3, tank);
+        tanker.Box(1, 3, 0, 2, 4, 3, tank);
+        catalog.Add("vehicle:truck-tanker", "road-tanker.vox", tanker, paint: [paint]);
+
+        // Box truck: cab and a tall cargo box.
+        var box = new VoxelCanvas(3, 4, 4);
+        paint = box.Reserve(0xC8C8C8);
+        SmallWheels(box);
+        box.Box(0, 1, 3, 3, 3, 4, paint);
+        box.Paint(0, 2, 3, 3, 3, 4, box.Color(Glass));
+        box.Box(0, 1, 0, 3, 4, 3, box.Color(0xE6E2D8));
+        catalog.Add("vehicle:truck-box", "road-box.vox", box, paint: [paint]);
+    }
+
+    private static void SmallWheels(VoxelCanvas c)
+    {
+        var tyre = c.Color(Tyre);
+        c.Box(1, 0, 0, c.SizeX - 1, 1, c.SizeZ, c.Color(Chassis));
+        c.Set(0, 0, 0, tyre);
+        c.Set(c.SizeX - 1, 0, 0, tyre);
+        c.Set(0, 0, c.SizeZ - 1, tyre);
+        c.Set(c.SizeX - 1, 0, c.SizeZ - 1, tyre);
     }
 
     private static void Car(ModelCatalog catalog)

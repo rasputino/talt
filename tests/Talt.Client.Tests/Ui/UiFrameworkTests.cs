@@ -23,6 +23,21 @@ public class FontAtlasTests
         }
     }
 
+    [Theory]
+    [InlineData("en")]
+    [InlineData("es")]
+    public void EveryLocalizedText_HasItsGlyphs(string language)
+    {
+        // Hand test of feature 012: "−30 days" showed as "?30" because U+2212 has no glyph in the bundled font.
+        foreach (var (key, value) in Talt.Client.Localization.Strings.LoadTable(language))
+        {
+            foreach (var c in value)
+            {
+                Assert.True(c == (char)10 || UiTestKit.Font.Contains(c), $"{language} '{key}': no glyph for U+{(int)c:X4} '{c}'");
+            }
+        }
+    }
+
     [Fact]
     public void Measure_GrowsWithTextAndSize()
     {
@@ -314,6 +329,24 @@ public class WindowManagerTests
         Assert.Equal(2, ui.Windows.Count);
         Assert.NotEqual(a.Position, b.Position);
         Assert.Same(a, ui.Windows.Front);
+    }
+
+    [Fact]
+    public void DifferentKinds_OpenCascaded_AndAFreedPlaceIsReused()
+    {
+        // Hand test of feature 012: a depot window opened from a vehicle window landed exactly on top of it.
+        var ui = UiTestKit.CreateContext();
+        var a = ui.Windows.Open(Window(kind: "vehicle"));
+        ui.Layout();
+        var b = ui.Windows.Open(Window(kind: "depot"));
+        ui.Layout();
+        Assert.NotEqual(a.Position, b.Position);
+        Assert.True(b.Position.X > a.Position.X && b.Position.Y > a.Position.Y);
+
+        ui.Windows.Close(a);
+        var c = ui.Windows.Open(Window(kind: "line"));
+        ui.Layout();
+        Assert.Equal(a.Position, c.Position);
     }
 
     [Fact]

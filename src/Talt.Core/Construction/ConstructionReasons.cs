@@ -21,6 +21,26 @@ public static class ConstructionReasons
     public const string UndoExpired = "undo-expired";
     public const string ChangedSince = "changed-since";
 
+    // Road vehicles, depots and lines (feature 012, specs/012-road-vehicles/contracts/commands.md).
+    public const string NoDepot = "no-depot";
+    public const string UnknownModel = "unknown-model";
+    public const string ModelNotAvailable = "model-not-available";
+    public const string CargoNotAllowed = "cargo-not-allowed";
+    public const string NoVehicle = "no-vehicle";
+    public const string NotInDepot = "not-in-depot";
+    public const string NoDepotReachable = "no-depot-reachable";
+    public const string HoldNotEmpty = "hold-not-empty";
+    public const string NoLine = "no-line";
+    public const string InvalidIndex = "invalid-index";
+    public const string TooManyStops = "too-many-stops";
+    public const string LastStop = "last-stop";
+    public const string WrongKind = "wrong-kind";
+    public const string VehicleInTheWay = "vehicle-in-the-way";
+    public const string InvalidValue = "invalid-value";
+    public const string DepotRoad = "depot-road";
+    public const string UseDepotTool = "use-depot-tool";
+    public const string TooManyVehicles = "too-many-vehicles";
+
     // Finance (feature 011, specs/011-economy-finance/contracts/commands.md).
     public const string MaxLoan = "max-loan";
     public const string NoLoan = "no-loan";
@@ -114,6 +134,24 @@ public static class ConstructionReasons
         UseStationTool => "Stations are removed with the station removal tool.",
         NameTooLong => "The name is too long.",
         UnknownStationType => "The station type does not exist.",
+        NoDepot => "There is no depot of the company here.",
+        UnknownModel => "The vehicle model does not exist.",
+        ModelNotAvailable => "The vehicle model is not available this year.",
+        CargoNotAllowed => "The vehicle cannot carry this cargo.",
+        NoVehicle => "The vehicle does not exist.",
+        NotInDepot => "The vehicle must be stopped in a depot.",
+        NoDepotReachable => "No depot of the company can be reached.",
+        HoldNotEmpty => "The vehicle must be empty.",
+        NoLine => "The line does not exist.",
+        InvalidIndex => "There is no such stop in the line.",
+        TooManyStops => "The line has too many stops.",
+        LastStop => "A line needs at least one stop.",
+        WrongKind => "The line has no stop this vehicle can use.",
+        VehicleInTheWay => "A vehicle is in the way.",
+        InvalidValue => "The value is out of range.",
+        DepotRoad => "A depot uses this road.",
+        UseDepotTool => "Depots are removed with the depot removal tool.",
+        TooManyVehicles => "The company has too many vehicles.",
         _ => "Refused.",
     };
 
@@ -127,5 +165,8 @@ public static class ConstructionReasons
         UseRoadRemoval, NotACarriageway, TownRefuses,
         NoRoad, NotStraightRoad, NotFlat, AdjacentTwoStations, StationTooSpread, NoStation, StationRoad, UseStationTool,
         NameTooLong, UnknownStationType,
+        NoDepot, UnknownModel, ModelNotAvailable, CargoNotAllowed, NoVehicle, NotInDepot, NoDepotReachable, HoldNotEmpty,
+        NoLine, InvalidIndex, TooManyStops, LastStop, WrongKind, VehicleInTheWay, InvalidValue, DepotRoad, UseDepotTool,
+        TooManyVehicles,
     ];
 }

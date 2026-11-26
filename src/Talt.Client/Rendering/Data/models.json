@@ -123,6 +123,21 @@
       { "file": "van.vox", "paint": [1] },
       { "file": "bus.vox", "paint": [1] },
       { "file": "truck.vox", "paint": [1] }
+    ],
+    "vehicle:bus-townsman": [
+      { "file": "road-bus.vox", "paint": [1] }
+    ],
+    "vehicle:bus-voltline": [
+      { "file": "road-bus-electric.vox", "paint": [1] }
+    ],
+    "vehicle:truck-box": [
+      { "file": "road-box.vox", "paint": [1] }
+    ],
+    "vehicle:truck-tanker": [
+      { "file": "road-tanker.vox", "paint": [1] }
+    ],
+    "vehicle:truck-tipper": [
+      { "file": "road-tipper.vox", "paint": [1] }
     ]
   }
 }

@@ -17,7 +17,7 @@ namespace Talt.Client.Screens;
 /// The game: top bar (money, date, speed controls), toolbar, notifications, pause menu, map picking
 /// with hover and selection highlights, object information windows and camera control (US1, US2).
 /// </summary>
-internal sealed class InGameScreen : IScreen, IWorldInput
+internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
 {
     private const float KeyboardPanSpeed = 1.2f;    // Fraction of the camera distance per second.
     private const float KeyboardRotateSpeed = 1.5f; // Radians per second.
@@ -56,8 +56,15 @@ internal sealed class InGameScreen : IScreen, IWorldInput
     private PickResult _hoveredAtPress = PickResult.None;
     private bool _rotating;
     private bool _panning;
+    private bool _rightCancelledDrag; // The press already cancelled a drag, so its release does not also put the tool away.
     private bool _pausedByMenu;
     private bool _gameOverShown;
+
+    // Line-building mode (feature 012, FR-036): clicked stations go to a line (existing, or new on Esc).
+    private readonly List<int> _lineModeStations = [];
+    private bool _lineMode;
+    private int _lineModeLine = -1;
+    private int _lineModeVehicle = -1;
 
     public InGameScreen(IScreenHost host, GameSession session, OrbitCamera camera, Func<Key, bool> isKeyDown)
     {
@@ -73,6 +80,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             Roads = session.Construction.Roads,
             Towns = session.Simulation.Towns,
             Stations = session.Simulation.Stations,
+            Depots = session.Simulation.RoadVehicles?.Depots,
         };
         _session.Message += ShowMessage;
         if (session.Simulation.Towns is { Count: > 0 } towns)
@@ -184,6 +192,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
 
         FollowTerrain(dt);
         DrainMoneyEvents();
+        DrainVehicleNotices();
         ExpireMessages();
     }
 
@@ -239,11 +248,22 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         switch (actionId)
         {
             case "back":
-                if (!_tools.Cancel())
+                if (_lineMode)
+                {
+                    FinishLineMode();
+                }
+                else if (!_tools.Cancel())
                 {
                     Back();
                 }
 
+                return true;
+            case "toolDepot":
+            case "toolRemoveDepot":
+                ToggleTool(actionId);
+                return true;
+            case "lines":
+                OpenLines();
                 return true;
             case "toolRaise":
             case "toolLower":
@@ -408,6 +428,18 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             return;
         }
 
+        if (pick.Kind == PickKind.Vehicle && _session.RoadVehicles is not null)
+        {
+            OpenVehicle(pick.VehicleId); // Feature 012: road vehicles have their own window.
+            return;
+        }
+
+        if (pick.Kind == PickKind.Depot && _session.RoadVehicles is not null)
+        {
+            OpenDepot(pick.StationId);
+            return;
+        }
+
         var window = ObjectInfoWindow.Create(pick, _session);
         var opened = _host.Ui.Windows.Open(window);
         if (opened == window)
@@ -447,6 +479,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         if (button == MouseButton.Right && _tools.IsDragging)
         {
             _tools.Cancel(); // The right button cancels a drag (FR-012).
+            _rightCancelledDrag = true;
             return;
         }
 
@@ -497,7 +530,11 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         if (button == MouseButton.Left)
         {
             _rotating = false;
-            if (isClick && !IsPauseMenuOpen && _tools.Active is null)
+            if (isClick && !IsPauseMenuOpen && _tools.Active is null && _lineMode)
+            {
+                AddLineModeStop(_hoveredAtPress);
+            }
+            else if (isClick && !IsPauseMenuOpen && _tools.Active is null)
             {
                 Select(_hoveredAtPress); // A click without movement selects (FR-012a); clicking the sky clears.
             }
@@ -505,6 +542,21 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         else if (button == MouseButton.Right)
         {
             _panning = false;
+            var cancelledDrag = _rightCancelledDrag;
+            _rightCancelledDrag = false;
+            if (isClick && !IsPauseMenuOpen && !cancelledDrag)
+            {
+                // A right click without movement (a right drag pans) cancels like Esc: it ends the line-building mode
+                // or puts the tool away, but never opens the pause menu. Asked for in the hand test of feature 012.
+                if (_lineMode)
+                {
+                    FinishLineMode();
+                }
+                else
+                {
+                    _tools.Cancel();
+                }
+            }
         }
     }
 
@@ -760,7 +812,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         {
             var button = ToolButton(tool.Id, () => ToggleTool(tool.ActionId), $"tool.{tool.Id}.tooltip", tool.ActionId);
             button.IsSelected = () => _tools.Active == tool;
-            var column = tool.IsStation ? stationTools : tool.Shape == DragShape.Area || tool == ConstructionTool.Clear ? tools : roadTools;
+            var column = tool.IsStation || tool.IsDepot ? stationTools : tool.Shape == DragShape.Area || tool == ConstructionTool.Clear ? tools : roadTools;
             HudButtons.Add(column.Add(button));
         }
 
@@ -776,6 +828,23 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         }));
 
         HudButtons.Add(tools.Add(ToolButton("undo", () => HandleAction("undoConstruction", false), "tool.undo.tooltip", "undoConstruction")));
+        if (_session.RoadVehicles is not null)
+        {
+            HudButtons.Add(stationTools.Add(ToolButton("lines", OpenLines, "toolbar.lines.tooltip", "lines")));
+        }
+
+        // The line-building hint (feature 012) above the notifications.
+        root.Add(new Panel
+        {
+            Style = PanelStyle.Panel,
+            HorizontalAlignment = Alignment.Center,
+            VerticalAlignment = Alignment.Start,
+            Margin = new Thickness(0, theme.TopBarHeight + 8, 0, 0),
+            Padding = new Thickness(10, 4),
+            VisibleWhen = () => _lineMode,
+        }).Add(new Label(TextRef.Dynamic(() => _lineModeStations.Count + (_lineModeLine << 16), s => _lineModeLine >= 0
+            ? s.Format("lineMode.add", ("line", VehicleTexts.LineName(s, _session.RoadVehicles!.Lines, _lineModeLine)))
+            : s.Format("lineMode.new", ("count", _lineModeStations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))))));
         var typeButton = new Button(null, () => HandleAction("roadType", false), "roadType")
         {
             Style = ButtonStyle.Flat,
@@ -946,6 +1015,156 @@ internal sealed class InGameScreen : IScreen, IWorldInput
         return overlay;
     }
 
+    GameSession IVehicleUi.Session => _session;
+
+    string IVehicleUi.Money(long amount, Strings s) => _host.Money.Format(amount, _host.Currency, s.Culture);
+
+    /// <summary>Opens (or focuses) a road vehicle's window (feature 012).</summary>
+    public void OpenVehicle(int vehicleId)
+    {
+        if (_session.RoadVehicles is null)
+        {
+            return;
+        }
+
+        var window = VehicleWindow.Create(this, vehicleId);
+        var opened = _host.Ui.Windows.Open(window);
+        if (opened == window)
+        {
+            window.Closed += _ =>
+            {
+                if (_selected.Kind == PickKind.Vehicle && _selected.VehicleId == vehicleId)
+                {
+                    _selected = PickResult.None;
+                }
+            };
+        }
+    }
+
+    /// <summary>Opens (or focuses) a depot's window (feature 012).</summary>
+    public void OpenDepot(int depotId)
+    {
+        if (_session.RoadVehicles is not null)
+        {
+            _host.Ui.Windows.Open(DepotWindow.Create(this, depotId));
+        }
+    }
+
+    /// <summary>Opens (or focuses) a line's window (feature 012).</summary>
+    public void OpenLine(int lineId)
+    {
+        if (_session.RoadVehicles is not null)
+        {
+            _host.Ui.Windows.Open(LineWindow.Create(this, lineId));
+        }
+    }
+
+    /// <summary>Opens the list of lines (feature 012, key F4).</summary>
+    public void OpenLines()
+    {
+        if (_session.RoadVehicles is not null)
+        {
+            _host.Ui.Windows.Open(LinesWindow.Create(this));
+        }
+    }
+
+    /// <summary>True while clicking stations adds them to a line (feature 012).</summary>
+    internal bool IsLineMode => _lineMode;
+
+    /// <summary>Starts the line-building mode (FR-036): stations clicked on the map are added in order; Esc ends it.</summary>
+    public void StartLineMode(int lineId, int vehicleId)
+    {
+        _tools.Select(null);
+        _lineMode = true;
+        _lineModeLine = lineId;
+        _lineModeVehicle = vehicleId;
+        _lineModeStations.Clear();
+        var stations = _session.Simulation.Stations;
+        var owned = false;
+        for (var slot = 0; stations is not null && slot < stations.Count && !owned; slot++)
+        {
+            owned = stations.OwnerAt(slot) == _session.Construction.Player.Id && stations.KindAt(slot) != Talt.Core.Stations.StationKind.Warehouse;
+        }
+
+        if (!owned)
+        {
+            ShowMessage(TextRef.Of("lineMode.noStations")); // Found in the hand test: the hint alone did not say stops must exist.
+        }
+    }
+
+    /// <summary>A click in line mode: a station of the company is appended (to the line at once, or to the new one).</summary>
+    internal void AddLineModeStop(PickResult pick)
+    {
+        var stations = _session.Simulation.Stations;
+        if (pick.Kind != PickKind.Station || stations is null || stations.SlotOf(pick.StationId) < 0
+            || stations.OwnerAt(stations.SlotOf(pick.StationId)) != _session.Construction.Player.Id)
+        {
+            ShowMessage(TextRef.Of("lineMode.notStation"));
+            return;
+        }
+
+        if (_lineModeLine >= 0)
+        {
+            var lines = _session.RoadVehicles!.Lines;
+            _session.Submit(new Talt.Core.Vehicles.EditLineStopsCommand(_session.Construction.Player.Id, _lineModeLine,
+                Talt.Core.Vehicles.LineStopEdit.Add, lines.Exists(_lineModeLine) ? lines.StopCount(_lineModeLine) : 0, pick.StationId));
+            return;
+        }
+
+        if (_lineModeStations.Count == 0 || _lineModeStations[^1] != pick.StationId)
+        {
+            _lineModeStations.Add(pick.StationId);
+            var number = _lineModeStations.Count;
+            var id = pick.StationId;
+            ShowMessage(TextRef.Dynamic(() => 0, s => s.Format("lineMode.added",
+                ("number", number.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("station", VehicleTexts.StationName(s, _session, id)))));
+        }
+    }
+
+    /// <summary>Esc in line mode: a new line is created from the clicked stations (and the vehicle assigned).</summary>
+    internal void FinishLineMode()
+    {
+        _lineMode = false;
+        if (_lineModeLine < 0 && _lineModeStations.Count > 0)
+        {
+            _session.Submit(new Talt.Core.Vehicles.CreateLineCommand(_session.Construction.Player.Id, [.. _lineModeStations], _lineModeVehicle));
+        }
+        else if (_lineModeLine < 0)
+        {
+            ShowMessage(TextRef.Of("lineMode.tooFew"));
+        }
+
+        _lineModeStations.Clear();
+    }
+
+    /// <summary>Stuck vehicles, missing routes and skipped stops of the player's vehicles become messages (FR-013, FR-022).</summary>
+    private void DrainVehicleNotices()
+    {
+        if (_session.RoadVehicles is not { } vehicles)
+        {
+            return;
+        }
+
+        var player = _session.Construction.Player.Id;
+        var shown = 0;
+        while (vehicles.Notices.TryDequeue(out var notice))
+        {
+            if (notice.CompanyId != player || notice.Kind is Talt.Core.Vehicles.VehicleNoticeKind.Serviced or Talt.Core.Vehicles.VehicleNoticeKind.BrokenDown
+                || shown >= 2)
+            {
+                continue; // Breakdowns and services show on the vehicle itself; at most two messages a frame.
+            }
+
+            shown++;
+            var n = notice;
+            ShowMessage(TextRef.Dynamic(() => 0, s => s.Format($"vehicle.notice.{n.Kind.ToString().ToLowerInvariant()}",
+                ("vehicle", VehicleTexts.VehicleName(s, vehicles, n.VehicleId)),
+                ("station", n.StationId >= 0 ? VehicleTexts.StationName(s, _session, n.StationId) : string.Empty),
+                ("x", n.X.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                ("z", n.Z.ToString(System.Globalization.CultureInfo.InvariantCulture)))));
+        }
+    }
+
     /// <summary>Opens (or focuses) the finance window (feature 011, US4).</summary>
     public void OpenFinance()
     {
@@ -1019,8 +1238,13 @@ internal sealed class InGameScreen : IScreen, IWorldInput
             switch (e.Kind)
             {
                 case Talt.Core.Finance.MoneyEventKind.Income when e.X >= 0:
-                    _moneyTexts.Add(e.X, e.Z, "+" + _host.Money.Format(e.Amount, _host.Currency, _host.Ui.Strings.Culture), positive: true, (float)_host.Ui.Time);
+                {
+                    // Feature 012 (FR-015): above the vehicle that delivered, when it is drawn.
+                    var (x, z) = VehicleTileOr(e.VehicleId, e.X, e.Z);
+                    _moneyTexts.Add(x, z, "+" + _host.Money.Format(e.Amount, _host.Currency, _host.Ui.Strings.Culture), positive: true, (float)_host.Ui.Time);
                     break;
+                }
+
                 case Talt.Core.Finance.MoneyEventKind.Expense when e.X >= 0:
                     _moneyTexts.Add(e.X, e.Z, _host.Money.Format(-Math.Abs(e.Amount), _host.Currency, _host.Ui.Strings.Culture), positive: false, (float)_host.Ui.Time);
                     break;
@@ -1038,6 +1262,26 @@ internal sealed class InGameScreen : IScreen, IWorldInput
                     break;
             }
         }
+    }
+
+    private (int X, int Z) VehicleTileOr(int vehicleId, int x, int z)
+    {
+        if (vehicleId < 0)
+        {
+            return (x, z);
+        }
+
+        var ids = _session.InstanceIds;
+        var instances = _session.Instances;
+        for (var v = 0; v < ids.Length; v++)
+        {
+            if (ids[v] == vehicleId && instances[v].Position.Y > -100)
+            {
+                return ((int)instances[v].Position.X, (int)instances[v].Position.Z);
+            }
+        }
+
+        return (x, z);
     }
 
     /// <summary>Pauses the game and shows the game-over screen (FR-020); it stays until the player leaves the game.</summary>
