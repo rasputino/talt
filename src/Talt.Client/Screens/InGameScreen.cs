@@ -56,6 +56,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
     private PickResult _hoveredAtPress = PickResult.None;
     private bool _rotating;
     private bool _panning;
+    private bool _rightCancelledDrag; // The press already cancelled a drag, so its release does not also put the tool away.
     private bool _pausedByMenu;
     private bool _gameOverShown;
 
@@ -478,6 +479,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
         if (button == MouseButton.Right && _tools.IsDragging)
         {
             _tools.Cancel(); // The right button cancels a drag (FR-012).
+            _rightCancelledDrag = true;
             return;
         }
 
@@ -540,6 +542,21 @@ internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
         else if (button == MouseButton.Right)
         {
             _panning = false;
+            var cancelledDrag = _rightCancelledDrag;
+            _rightCancelledDrag = false;
+            if (isClick && !IsPauseMenuOpen && !cancelledDrag)
+            {
+                // A right click without movement (a right drag pans) cancels like Esc: it ends the line-building mode
+                // or puts the tool away, but never opens the pause menu. Asked for in the hand test of feature 012.
+                if (_lineMode)
+                {
+                    FinishLineMode();
+                }
+                else
+                {
+                    _tools.Cancel();
+                }
+            }
         }
     }
 

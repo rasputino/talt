@@ -332,6 +332,24 @@ public class WindowManagerTests
     }
 
     [Fact]
+    public void DifferentKinds_OpenCascaded_AndAFreedPlaceIsReused()
+    {
+        // Hand test of feature 012: a depot window opened from a vehicle window landed exactly on top of it.
+        var ui = UiTestKit.CreateContext();
+        var a = ui.Windows.Open(Window(kind: "vehicle"));
+        ui.Layout();
+        var b = ui.Windows.Open(Window(kind: "depot"));
+        ui.Layout();
+        Assert.NotEqual(a.Position, b.Position);
+        Assert.True(b.Position.X > a.Position.X && b.Position.Y > a.Position.Y);
+
+        ui.Windows.Close(a);
+        var c = ui.Windows.Open(Window(kind: "line"));
+        ui.Layout();
+        Assert.Equal(a.Position, c.Position);
+    }
+
+    [Fact]
     public void CloseAll_KeepsPinnedWindows()
     {
         var ui = UiTestKit.CreateContext();
