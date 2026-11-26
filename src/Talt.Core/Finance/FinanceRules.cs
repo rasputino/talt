@@ -55,6 +55,12 @@ public sealed class FinanceRules
     /// <summary>Yearly maintenance per station piece, by piece type index.</summary>
     public IReadOnlyList<long> PieceMaintenance { get; private init; } = [];
 
+    /// <summary>
+    /// Which station pieces are rail platforms (feature 015): their maintenance is left out of <see cref="Fingerprint"/> and
+    /// hashed by the train system once rail exists, so games without rail keep their fingerprints (research R15).
+    /// </summary>
+    public IReadOnlyList<bool> RailPieces { get; private init; } = [];
+
     /// <summary>Yearly maintenance per warehouse, by warehouse type index.</summary>
     public IReadOnlyList<long> WarehouseMaintenance { get; private init; } = [];
 
@@ -168,6 +174,7 @@ public sealed class FinanceRules
             MinDistance = j.Int(root, "minDistance", "", 1, 100_000),
             RoadMaintenance = Table(j, maintenance, "roads", roadIds),
             PieceMaintenance = Table(j, maintenance, "stationPieces", pieceIds),
+            RailPieces = [.. stations.Pieces.Select(p => p.Kind == StationPieceKind.Rail)],
             WarehouseMaintenance = Table(j, maintenance, "warehouses", warehouseIds),
             PropertyValuePercent = j.Int(root, "propertyValuePercent", "", 0, 100),
             WarningMonths = warning,
@@ -226,10 +233,20 @@ public sealed class FinanceRules
         h.Append(MinDistance);
         foreach (var table in new[] { RoadMaintenance, PieceMaintenance, WarehouseMaintenance })
         {
-            h.Append(table.Count);
-            foreach (var value in table)
+            var pieces = ReferenceEquals(table, PieceMaintenance);
+            var count = 0;
+            for (var i = 0; i < table.Count; i++)
             {
-                h.Append(value);
+                count += pieces && i < RailPieces.Count && RailPieces[i] ? 0 : 1;
+            }
+
+            h.Append(count);
+            for (var i = 0; i < table.Count; i++)
+            {
+                if (!(pieces && i < RailPieces.Count && RailPieces[i]))
+                {
+                    h.Append(table[i]);
+                }
             }
         }
 

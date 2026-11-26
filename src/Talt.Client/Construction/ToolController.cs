@@ -133,7 +133,7 @@ internal sealed class ToolController
         }
 
         var (start, end) = IsDragging ? Shape(_start, _hover ?? _start) : (_hover!.Value, _hover.Value);
-        var key = new PreviewKey(Active, start, end, state.Version, state.Player.Balance ^ state.CostLevel, RoadToolOptions.Version ^ (StationToolOptions.Version << 16), state.Year);
+        var key = new PreviewKey(Active, start, end, state.Version, state.Player.Balance ^ state.CostLevel, RoadToolOptions.Version ^ (StationToolOptions.Version << 16) ^ (RailToolOptions.Version << 8), state.Year);
         if (HasPreview && key == _planned)
         {
             return;

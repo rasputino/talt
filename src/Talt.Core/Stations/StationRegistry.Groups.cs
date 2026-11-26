@@ -310,7 +310,7 @@ public sealed partial class StationRegistry
                     foreach (var stationId in list)
                     {
                         var s = SlotOf(stationId);
-                        if (s < 0 || _owner[s] != _owner[w] || _kind[s] != (byte)StationKind.Road)
+                        if (s < 0 || _owner[s] != _owner[w] || _kind[s] == (byte)StationKind.Warehouse)
                         {
                             continue;
                         }

@@ -33,8 +33,7 @@ internal sealed unsafe class RoadRenderer : IDisposable
     private readonly Queue* _queue;
     private readonly ShaderModule* _shader;
     private readonly WorldPipeline _pipeline;
-    private readonly RoadLayer _roads;
-    private readonly RoadMesher _mesher;
+    private readonly ITileLayerSource _source;
     private readonly List<int> _changed = [];
     private readonly int _blocksX;
     private readonly int _areasX;
@@ -48,6 +47,12 @@ internal sealed unsafe class RoadRenderer : IDisposable
     private double _lastReleaseCheck;
 
     public RoadRenderer(WorldPassContext context, RoadLayer roads, MapData map, RoadRules rules)
+        : this(context, new RoadLayerSource(roads, new RoadMesher(roads, map, rules)), map)
+    {
+    }
+
+    /// <summary>Draws any tile layer meshed as road vertices (feature 015: rail track uses the same blocks and areas).</summary>
+    public RoadRenderer(WorldPassContext context, ITileLayerSource source, MapData map)
     {
         ArgumentNullException.ThrowIfNull(context);
         var wgpu = context.Wgpu;
@@ -55,8 +60,7 @@ internal sealed unsafe class RoadRenderer : IDisposable
         _wgpu = wgpu;
         _device = device;
         _queue = context.Queue;
-        _roads = roads;
-        _mesher = new RoadMesher(roads, map, rules);
+        _source = source ?? throw new ArgumentNullException(nameof(source));
         _shader = WebGpuShaders.CreateModule(wgpu, device, WebGpuShaders.Load("roads.wgsl"));
         _pipeline = new WorldPipeline(context, PipelineSpecFor(_shader));
         _blocksX = (map.Width + BlockTiles - 1) / BlockTiles;
@@ -69,9 +73,9 @@ internal sealed unsafe class RoadRenderer : IDisposable
         _areaRoads = new int[_areas.Length];
         _drawList = new int[_blocks.Length + _areas.Length];
         _maxHeight = ConstructionHeight(map);
-        for (var tile = 0; tile < roads.Width * roads.Depth; tile++)
+        for (var tile = 0; tile < source.Width * source.Depth; tile++)
         {
-            if (roads.HasRoad(tile) || (roads.FlagsAt(tile) & RoadFeatures.Passing) != 0)
+            if (source.HasContent(tile))
             {
                 _blockRoads[BlockOf(tile)]++;
             }
@@ -96,7 +100,7 @@ internal sealed unsafe class RoadRenderer : IDisposable
     public void Prepare(Matrix4x4 viewProjection, Vector3 cameraPosition, float fogDistance)
     {
         _changed.Clear();
-        if (_roads.TryTakeChangedTiles(_changed))
+        if (_source.TryTakeChangedTiles(_changed))
         {
             foreach (var tile in _changed)
             {
@@ -145,7 +149,7 @@ internal sealed unsafe class RoadRenderer : IDisposable
 
                 if (!OverBudget(start))
                 {
-                    _mesher.BuildSimplified(ax, az, ax + AreaTiles, az + AreaTiles);
+                    _source.BuildSimplified(ax, az, ax + AreaTiles, az + AreaTiles);
                     Upload(ref mesh);
                 }
             }
@@ -244,7 +248,7 @@ internal sealed unsafe class RoadRenderer : IDisposable
                     }
                     else
                     {
-                        _mesher.BuildDetail(bx * BlockTiles, bz * BlockTiles, (bx + 1) * BlockTiles, (bz + 1) * BlockTiles);
+                        _source.BuildDetail(bx * BlockTiles, bz * BlockTiles, (bx + 1) * BlockTiles, (bz + 1) * BlockTiles);
                         Upload(ref mesh);
                     }
                 }
@@ -273,11 +277,11 @@ internal sealed unsafe class RoadRenderer : IDisposable
 
     private void Upload(ref Mesh mesh)
     {
-        var vertices = _mesher.Vertices;
+        var vertices = _source.Vertices;
         mesh.BuiltVersion = mesh.Version;
         mesh.Built = true;
-        mesh.Min = _mesher.Min;
-        mesh.Max = _mesher.Max;
+        mesh.Min = _source.Min;
+        mesh.Max = _source.Max;
         mesh.Vertices = vertices.Length;
         var bytes = (ulong)(vertices.Length * sizeof(RoadVertex));
         if (mesh.Buffer == null || mesh.Capacity < bytes)
@@ -342,12 +346,12 @@ internal sealed unsafe class RoadRenderer : IDisposable
             var bx = (block % _blocksX) * BlockTiles;
             var bz = (block / _blocksX) * BlockTiles;
             var count = 0;
-            for (var z = bz; z < Math.Min(bz + BlockTiles, _roads.Depth); z++)
+            for (var z = bz; z < Math.Min(bz + BlockTiles, _source.Depth); z++)
             {
-                for (var x = bx; x < Math.Min(bx + BlockTiles, _roads.Width); x++)
+                for (var x = bx; x < Math.Min(bx + BlockTiles, _source.Width); x++)
                 {
-                    var t = x + (z * _roads.Width);
-                    if (_roads.HasRoad(t) || (_roads.FlagsAt(t) & RoadFeatures.Passing) != 0)
+                    var t = x + (z * _source.Width);
+                    if (_source.HasContent(t))
                     {
                         count++;
                     }
@@ -368,7 +372,7 @@ internal sealed unsafe class RoadRenderer : IDisposable
         }
     }
 
-    private int BlockOf(int tile) => ((tile % _roads.Width) / BlockTiles) + ((tile / _roads.Width / BlockTiles) * _blocksX);
+    private int BlockOf(int tile) => ((tile % _source.Width) / BlockTiles) + ((tile / _source.Width / BlockTiles) * _blocksX);
 
     private int AreaOfBlock(int block) => ((block % _blocksX) / BlocksPerArea) + ((block / _blocksX / BlocksPerArea) * _areasX);
 
@@ -421,4 +425,48 @@ internal sealed unsafe class RoadRenderer : IDisposable
         public Vector3 Max;
         public double LastUsed;
     }
+}
+
+/// <summary>A tile layer the road renderer can draw: which tiles have something, changed tiles, and a mesher.</summary>
+internal interface ITileLayerSource
+{
+    int Width { get; }
+
+    int Depth { get; }
+
+    ReadOnlySpan<RoadVertex> Vertices { get; }
+
+    Vector3 Min { get; }
+
+    Vector3 Max { get; }
+
+    bool HasContent(int tile);
+
+    bool TryTakeChangedTiles(List<int> into);
+
+    void BuildDetail(int x0, int z0, int x1, int z1);
+
+    void BuildSimplified(int x0, int z0, int x1, int z1);
+}
+
+/// <summary>The road layer and its mesher as a renderer source (feature 007).</summary>
+internal sealed class RoadLayerSource(RoadLayer roads, RoadMesher mesher) : ITileLayerSource
+{
+    public int Width => roads.Width;
+
+    public int Depth => roads.Depth;
+
+    public ReadOnlySpan<RoadVertex> Vertices => mesher.Vertices;
+
+    public Vector3 Min => mesher.Min;
+
+    public Vector3 Max => mesher.Max;
+
+    public bool HasContent(int tile) => roads.HasRoad(tile) || (roads.FlagsAt(tile) & RoadFeatures.Passing) != 0;
+
+    public bool TryTakeChangedTiles(List<int> into) => roads.TryTakeChangedTiles(into);
+
+    public void BuildDetail(int x0, int z0, int x1, int z1) => mesher.BuildDetail(x0, z0, x1, z1);
+
+    public void BuildSimplified(int x0, int z0, int x1, int z1) => mesher.BuildSimplified(x0, z0, x1, z1);
 }

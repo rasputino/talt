@@ -44,7 +44,8 @@ public static class StationPlanner
         string? reason = stations.HasPiece(tile) ? ConstructionReasons.ObjectInTheWay : null;
         if (reason is null)
         {
-            reason = type.Form == StationPieceForm.Bay
+            reason = type.Form == StationPieceForm.Platform ? ConstructionReasons.UnknownStationType // Rail stations: buildRailStation.
+                : type.Form == StationPieceForm.Bay
                 ? PlanBay(state, companyId, type, tile, x, z, plan)
                 : PlanDriveThrough(state, companyId, type, tile, plan);
         }
@@ -186,6 +187,13 @@ public static class StationPlanner
         }
 
         var type = stations.Rules.Pieces[pieceType];
+        if (type.Form == StationPieceForm.Platform)
+        {
+            // Feature 015: the platform's track goes with it and the neighbours lose their links.
+            state.Planner.Rails.PlanPlatformRemoval(state, companyId, tile, type.RemoveCost, plan);
+            return;
+        }
+
         plan.Cost = type.RemoveCost;
         var height = map.Heights[tile];
         if (type.Form == StationPieceForm.DriveThrough)

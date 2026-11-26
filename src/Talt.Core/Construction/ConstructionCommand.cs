@@ -92,6 +92,13 @@ public abstract record ConstructionCommand(int CompanyId) : ISimulationCommand
             return Rejected(ConstructionReasons.VehicleInTheWay);
         }
 
+        if (state.RailOccupancy is { } trains && trains.Blocks(plan))
+        {
+            // Feature 015: never take track, a signal, a platform or a depot from under a train.
+            plan.Reason = ConstructionReasons.TrainInTheWay;
+            return Rejected(ConstructionReasons.TrainInTheWay);
+        }
+
         if (plan.Cost > company.Balance && !company.HasInfiniteMoney)
         {
             plan.Reason = ConstructionReasons.NotEnoughMoney;

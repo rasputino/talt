@@ -1,4 +1,5 @@
 using Talt.Core.Construction;
+using Talt.Core.Rails;
 using Talt.Core.Roads;
 using Talt.Core.Stations;
 using Talt.Core.Vehicles;
@@ -57,6 +58,9 @@ internal sealed record ConstructionTool(
 
     /// <summary>A depot tool (feature 012): drawn in the stations column, no catchment.</summary>
     public bool IsDepot { get; init; }
+
+    /// <summary>A rail tool (feature 015): drawn in the rail column.</summary>
+    public bool IsRail { get; init; }
 
     /// <summary>The command for a drag, from <see cref="CreateFor"/> or <see cref="Create"/>.</summary>
     public ConstructionCommand Command(ConstructionState state, int company, (int X, int Z) start, (int X, int Z) end) =>
@@ -147,13 +151,97 @@ internal sealed record ConstructionTool(
         IsDepot = true,
     };
 
+    // ----- Rail (feature 015) -----
+
+    public static ConstructionTool Rail { get; } = new("rail", "toolRail", DragShape.Path,
+        static (planner, state, company, a, b, plan) => planner.Rails.PlanTrack(state, company, RailToolOptions.TypeFor(state), a, b, plan),
+        static (company, a, b) => new BuildRailCommand(company, RailToolOptions.TypeId, a.X, a.Z, b.X, b.Z))
+    {
+        IsRail = true,
+    };
+
+    public static ConstructionTool RailBridge { get; } = new("railBridge", "toolRailBridge", DragShape.Line,
+        static (planner, state, company, a, b, plan) => planner.Rails.PlanBridge(state, company, RailToolOptions.TypeFor(state), a, b, plan),
+        static (company, a, b) => new BuildRailBridgeCommand(company, RailToolOptions.TypeId, a.X, a.Z, b.X, b.Z))
+    {
+        IsRail = true,
+    };
+
+    public static ConstructionTool RailTunnel { get; } = new("railTunnel", "toolRailTunnel", DragShape.Line,
+        static (planner, state, company, a, b, plan) => planner.Rails.PlanTunnel(state, company, RailToolOptions.TypeFor(state), a, TunnelDirection(a, b), plan),
+        static (company, a, b) => new BuildRailTunnelCommand(company, RailToolOptions.TypeId, a.X, a.Z, TunnelDirection(a, b)))
+    {
+        IsRail = true,
+    };
+
+    public static ConstructionTool RemoveRail { get; } = new("removeRail", "toolRemoveRail", DragShape.Line8,
+        static (planner, state, company, a, b, plan) => planner.Rails.PlanRemoval(state, company, a, b, plan),
+        static (company, a, b) => new RemoveRailCommand(company, a.X, a.Z, b.X, b.Z))
+    {
+        Removes = true,
+        IsRail = true,
+    };
+
+    public static ConstructionTool Electrify { get; } = new("electrify", "toolElectrify", DragShape.Line8,
+        static (planner, state, company, a, b, plan) => planner.Rails.PlanConversion(state, company, Math.Max(0, state.RailRules.ElectrifiedType()), a, b, plan),
+        static (company, a, b) => new ConvertRailCommand(company, "electrified", a.X, a.Z, b.X, b.Z))
+    {
+        CreateFor = static (state, company, a, b) =>
+            new ConvertRailCommand(company, state.RailRules.Types[Math.Max(0, state.RailRules.ElectrifiedType())].Id, a.X, a.Z, b.X, b.Z),
+        IsRail = true,
+    };
+
+    /// <summary>Signal tool: a click sets the chosen kind facing one way, then the other, then both, then removes it.</summary>
+    public static ConstructionTool Signal { get; } = new("signal", "toolSignal", DragShape.Tile,
+        static (planner, state, company, a, _, plan) =>
+        {
+            var (kind, faces) = RailToolOptions.NextSignal(state, a);
+            planner.Rails.PlanSignal(state, company, a.X, a.Z, kind, faces, plan);
+        },
+        static (company, a, _) => new SetSignalCommand(company, a.X, a.Z, 1, 1))
+    {
+        CreateFor = static (state, company, a, _) =>
+        {
+            var (kind, faces) = RailToolOptions.NextSignal(state, a);
+            return new SetSignalCommand(company, a.X, a.Z, (int)kind, faces);
+        },
+        IsRail = true,
+    };
+
+    /// <summary>Rail station of the chosen shape; the cursor tile is its minimum corner.</summary>
+    public static ConstructionTool RailStation { get; } = new("railStation", "toolRailStation", DragShape.Tile,
+        static (planner, state, company, a, _, plan) => planner.Rails.PlanStation(state, company,
+            RulesOf(state).FindPiece(StationPieceKind.Rail, StationPieceForm.Platform), a.X, a.Z, RailToolOptions.Axis, RailToolOptions.Platforms, RailToolOptions.Length, plan),
+        static (company, a, _) => new BuildRailStationCommand(company, a.X, a.Z, RailToolOptions.Axis, RailToolOptions.Platforms, RailToolOptions.Length))
+    {
+        IsRail = true,
+    };
+
+    public static ConstructionTool RailDepot { get; } = new("railDepot", "toolRailDepot", DragShape.Tile,
+        static (planner, state, company, a, _, plan) => planner.Rails.PlanDepot(state, company, a.X, a.Z, RailToolOptions.DepotDirection(state, a), plan),
+        static (company, a, _) => new BuildRailDepotCommand(company, a.X, a.Z, 2))
+    {
+        CreateFor = static (state, company, a, _) => new BuildRailDepotCommand(company, a.X, a.Z, RailToolOptions.DepotDirection(state, a)),
+        IsRail = true,
+    };
+
+    public static ConstructionTool RemoveRailDepot { get; } = new("removeRailDepot", "toolRemoveRailDepot", DragShape.Tile,
+        static (planner, state, company, a, _, plan) => planner.Rails.PlanDepotRemoval(state, company,
+            state.Map.Contains(a.X, a.Z) ? state.Map.Index(a.X, a.Z) : -1, plan),
+        static (company, a, _) => new RemoveRailDepotCommand(company, -1))
+    {
+        CreateFor = static (state, company, a, _) => new RemoveRailDepotCommand(company, RailToolOptions.DepotAt(state, a)),
+        Removes = true,
+        IsRail = true,
+    };
+
     /// <summary>
     /// The construction tools in toolbar order: terrain (feature 006), roads (feature 007), stations (feature 010),
     /// depots (feature 012).
     /// </summary>
     public static IReadOnlyList<ConstructionTool> All { get; } =
         [Raise, Lower, Level, Clear, Road, Bridge, Tunnel, RemoveRoad, OneWay, Motorway, MotorwayExit, MotorwayEntry, BusStop, TruckStop, Warehouse, RemoveStation,
-            Depot, RemoveDepot];
+            Depot, RemoveDepot, Rail, RailBridge, RailTunnel, RemoveRail, Electrify, Signal, RailStation, RailDepot, RemoveRailDepot];
 
     private static StationRules RulesOf(ConstructionState state) => state.Stations?.Rules ?? StationRules.Default;
 

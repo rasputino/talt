@@ -39,6 +39,38 @@ internal static class DepotPlaceholders
         return index;
     }
 
+    /// <summary>
+    /// Rail depots (feature 015): a long engine shed open towards its track, in the depot colours, with a darker roof.
+    /// </summary>
+    public static int BuildRail(Talt.Core.Rails.RailDepotRegistry depots, MapData map, IndustryInstance[] into, int index)
+    {
+        ArgumentNullException.ThrowIfNull(depots);
+        ArgumentNullException.ThrowIfNull(map);
+        ArgumentNullException.ThrowIfNull(into);
+        const int Walls = 0x6E5A73;
+        const int Roof = 0x3A2F45;
+        for (var i = 0; i < depots.Count; i++)
+        {
+            var tile = depots.TileAt(i);
+            var x = tile % map.Width;
+            var z = tile / map.Width;
+            var ground = map.HeightAt(x, z);
+            var direction = depots.DirectionAt(i);
+            var bx = -Dir8.OffsetX(direction) * 0.4f;
+            var bz = -Dir8.OffsetZ(direction) * 0.4f;
+            var alongX = Dir8.OffsetX(direction) != 0;
+            into[index++] = Box(x + 0.5f + bx, ground, z + 0.5f + bz, alongX ? 0.12f : 0.95f, 1.0f, alongX ? 0.95f : 0.12f, Walls);
+            into[index++] = Box(x + 0.5f + (alongX ? 0 : -0.44f), ground, z + 0.5f + (alongX ? -0.44f : 0), alongX ? 0.95f : 0.08f, 1.0f, alongX ? 0.08f : 0.95f, Walls);
+            into[index++] = Box(x + 0.5f + (alongX ? 0 : 0.44f), ground, z + 0.5f + (alongX ? 0.44f : 0), alongX ? 0.95f : 0.08f, 1.0f, alongX ? 0.08f : 0.95f, Walls);
+            into[index++] = Box(x + 0.5f, ground + 1.0f, z + 0.5f, 1.0f, 0.18f, 1.0f, Roof);
+        }
+
+        return index;
+    }
+
+    /// <summary>Upper bound of the boxes <see cref="BuildRail"/> writes.</summary>
+    public static int RailBoxCount(Talt.Core.Rails.RailDepotRegistry? depots) => (depots?.Count ?? 0) * 4;
+
     /// <summary>Upper bound of the boxes <see cref="Build"/> writes.</summary>
     public static int BoxCount(DepotRegistry depots) => (depots?.Count ?? 0) * 4;
 

@@ -31,6 +31,15 @@ public enum TileObjectKind : byte
     /// </summary>
     Depot = 4,
 
+    /// <summary>
+    /// A rail track tile (feature 015): owned by the company; the track is in <see cref="Rails.RailLayer"/>. Level crossings
+    /// stay <see cref="Road"/> tiles with a rail piece on them; rail station tiles are <see cref="Station"/>.
+    /// </summary>
+    Rail = 5,
+
+    /// <summary>A rail depot (feature 015): owned by the company, with a one-link rail piece towards its track.</summary>
+    RailDepot = 6,
+
     /// <summary>Reserved for tests of the demolish rules (nothing in the game creates it).</summary>
     Test = 255,
 }

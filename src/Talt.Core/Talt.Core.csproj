@@ -28,6 +28,8 @@
     <EmbeddedResource Include="Stations\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Stations.Data.%(Filename)%(Extension)" />
     <!-- Finance balancing (feature 011, contracts/data-files.md). -->
     <EmbeddedResource Include="Finance\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Finance.Data.%(Filename)%(Extension)" />
+    <!-- Track, signals and rolling stock (feature 015, contracts/data-files.md). -->
+    <EmbeddedResource Include="Rails\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Rails.Data.%(Filename)%(Extension)" />
     <!-- Road vehicle models, physics and balancing (feature 012, contracts/data-files.md). -->
     <EmbeddedResource Include="Vehicles\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Vehicles.Data.%(Filename)%(Extension)" />
   </ItemGroup>

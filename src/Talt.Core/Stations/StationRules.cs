@@ -10,6 +10,9 @@ public enum StationPieceKind : byte
 {
     Bus = 0,
     Truck = 1,
+
+    /// <summary>A rail platform tile (feature 015).</summary>
+    Rail = 2,
 }
 
 /// <summary>How a road station piece sits on the road (clarification Q1, research R2).</summary>
@@ -20,6 +23,9 @@ public enum StationPieceForm : byte
 
     /// <summary>On a straight road tile that vehicles pass through.</summary>
     DriveThrough = 1,
+
+    /// <summary>A rail platform tile with straight track along the station's axis (feature 015, research R10).</summary>
+    Platform = 2,
 }
 
 /// <summary>One road station piece type from <c>stations.json</c> (data-model.md StationRules.pieces).</summary>
@@ -263,14 +269,20 @@ public sealed class StationRules
             {
                 "bus" => StationPieceKind.Bus,
                 "truck" => StationPieceKind.Truck,
-                var other => throw j.Invalid($"'{p}kind' must be bus or truck (was '{other}')"),
+                "rail" => StationPieceKind.Rail,
+                var other => throw j.Invalid($"'{p}kind' must be bus, truck or rail (was '{other}')"),
             };
             var form = j.String(element, "form", p) switch
             {
                 "bay" => StationPieceForm.Bay,
                 "driveThrough" => StationPieceForm.DriveThrough,
-                var other => throw j.Invalid($"'{p}form' must be bay or driveThrough (was '{other}')"),
+                "platform" => StationPieceForm.Platform,
+                var other => throw j.Invalid($"'{p}form' must be bay, driveThrough or platform (was '{other}')"),
             };
+            if ((kind == StationPieceKind.Rail) != (form == StationPieceForm.Platform))
+            {
+                throw j.Invalid($"'{p}form' must be platform exactly for rail pieces");
+            }
             var mask = 0;
             foreach (var category in j.ArrayOf(element, "categories", p).EnumerateArray())
             {
@@ -301,6 +313,11 @@ public sealed class StationRules
                     throw j.Invalid($"'pieces' must have exactly one {kind.ToString().ToLowerInvariant()} piece of form {form}");
                 }
             }
+        }
+
+        if (pieces.Count(piece => piece.Kind == StationPieceKind.Rail) > 1)
+        {
+            throw j.Invalid("'pieces' may have at most one rail piece");
         }
 
         var warehouses = new List<WarehouseType>();
@@ -404,6 +421,11 @@ public sealed class StationRules
         var h = new StateHasher();
         foreach (var piece in Pieces)
         {
+            if (piece.Kind == StationPieceKind.Rail)
+            {
+                continue; // Feature 015 (research R15): hashed by the train system once rail exists.
+            }
+
             h.Append(piece.Id);
             h.Append((int)piece.Kind);
             h.Append((int)piece.Form);

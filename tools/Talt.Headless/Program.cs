@@ -74,7 +74,14 @@ static int Run(HeadlessOptions options)
         simulation.Submit(command);
     }
 
-    if (seeded.Count > 0)
+    // Feature 015: debug trains (loops, stations, signals, depots, purchases) as ordinary commands.
+    var seededTrains = Talt.Core.Rails.TrainSeeder.Plan(simulation, options.SeedTrains);
+    foreach (var command in seededTrains)
+    {
+        simulation.Submit(command);
+    }
+
+    if (seeded.Count > 0 || seededTrains.Count > 0)
     {
         setup = stopwatch.Elapsed;
     }
@@ -85,7 +92,7 @@ static int Run(HeadlessOptions options)
     var secondHalfMs = -1.0;
     for (long t = 0; t < ticks; t++)
     {
-        if (t == ticks / 2 && simulation.RoadVehicles is { Count: > 0 })
+        if (t == ticks / 2 && (simulation.RoadVehicles is { Count: > 0 } || simulation.Trains is { Count: > 0 }))
         {
             halfStart = Stopwatch.GetTimestamp();
         }
@@ -96,7 +103,7 @@ static int Run(HeadlessOptions options)
             secondHalfMs = (Stopwatch.GetTimestamp() - halfStart) * 1000.0 / Stopwatch.Frequency / (ticks - (ticks / 2));
         }
 
-        if (options.CheckOverlaps && simulation.RoadVehicles?.CheckInvariants() is { } problem)
+        if (options.CheckOverlaps && (simulation.RoadVehicles?.CheckInvariants() ?? simulation.Trains?.CheckInvariants()) is { } problem)
         {
             Console.Error.WriteLine($"Vehicle check failed at tick {simulation.CurrentTick}: {problem}");
             return 1;
@@ -205,6 +212,14 @@ static void PrintSummary(GameSimulation simulation, TimeSpan setup, TimeSpan sim
         Console.WriteLine($"route-searches: {roadVehicles.RouteSearches}");
         var states = Enumerable.Range(0, roadVehicles.Count).GroupBy(roadVehicles.StatusAt).OrderBy(g => g.Key);
         Console.WriteLine("vehicle-states: " + string.Join(", ", states.Select(g => $"{g.Key} {g.Count()}")));
+    }
+
+    if (simulation.Trains is { Count: > 0 } trains)
+    {
+        // Feature 015: trains, track and train deliveries.
+        Console.WriteLine($"trains: {trains.Count}");
+        Console.WriteLine($"rail-tiles: {simulation.Construction!.Rails.RailTileCount}");
+        Console.WriteLine($"train-deliveries: {trains.Deliveries}");
     }
 
     if (simulation.Finance is { } finance)

@@ -13,6 +13,9 @@ public enum StationKind : byte
 {
     Road = 0,
     Warehouse = 1,
+
+    /// <summary>A rail station of platform tiles (feature 015).</summary>
+    Rail = 2,
 }
 
 /// <summary>What an automatic station name is made of (research R11).</summary>
@@ -21,6 +24,9 @@ public enum StationNameKind : byte
     BusStop = 0,
     TruckStop = 1,
     Warehouse = 2,
+
+    /// <summary>A rail station: town and place suffix (feature 015).</summary>
+    RailStation = 3,
 }
 
 /// <summary>Place suffix of a warehouse name, from its position relative to the town centre.</summary>

@@ -1,11 +1,12 @@
 using Talt.Core.Determinism;
 using Talt.Core.Maps;
+using Talt.Core.Rails;
 using Talt.Core.Roads;
 
 namespace Talt.Core.Construction;
 
 /// <summary>Everything construction can change on one tile.</summary>
-public readonly record struct TileSnapshot(byte Height, byte Terrain, byte Flags, byte Scenery, TileObjectKind Kind, TileOwner Owner, RoadPiece Road = default);
+public readonly record struct TileSnapshot(byte Height, byte Terrain, byte Flags, byte Scenery, TileObjectKind Kind, TileOwner Owner, RoadPiece Road = default, RailPiece Rail = default);
 
 /// <summary>
 /// The last applied construction action, kept so it can be undone (data-model.md UndoRecord,
@@ -34,18 +35,24 @@ public sealed class UndoRecord : IStateHashable
 
     public ReadOnlySpan<TileSnapshot> After => _after.AsSpan(0, TileCount);
 
-    public static TileSnapshot Capture(MapData map, TileObjects objects, RoadLayer roads, int tile) => new(
+    public static TileSnapshot Capture(MapData map, TileObjects objects, RoadLayer roads, RailLayer? rails, int tile) => new(
         map.Heights[tile],
         map.Terrain[tile],
         map.Flags[tile],
         map.SceneryData[tile],
         objects.KindAt(tile),
         objects.OwnerAt(tile),
-        roads.PieceAt(tile));
+        roads.PieceAt(tile),
+        rails?.PieceAt(tile) ?? default);
 
     /// <summary>Restores a tile; returns true when its road piece changed (the network must be updated).</summary>
-    public static bool Restore(MapData map, TileObjects objects, RoadLayer roads, int tile, in TileSnapshot snapshot)
+    public static bool Restore(MapData map, TileObjects objects, RoadLayer roads, RailLayer? rails, int tile, in TileSnapshot snapshot)
     {
+        if (rails is not null && rails.PieceAt(tile) != snapshot.Rail)
+        {
+            rails.Set(tile, snapshot.Rail);
+        }
+
         map.SetHeight(tile, snapshot.Height);
         map.SetTerrain(tile, (TerrainType)snapshot.Terrain);
         map.SetFlags(tile, (TileTraits)snapshot.Flags);
@@ -124,5 +131,9 @@ public sealed class UndoRecord : IStateHashable
     {
         hasher.Append((long)s.Height | ((long)s.Terrain << 8) | ((long)s.Flags << 16) | ((long)s.Scenery << 24) | ((long)s.Kind << 32) | ((long)s.Owner.Raw << 40));
         hasher.Append(s.Road.Pack());
+        if (!s.Rail.IsEmpty)
+        {
+            hasher.Append(s.Rail.Pack()); // Feature 015 (research R15): only rail snapshots add to the hash.
+        }
     }
 }
