@@ -85,6 +85,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
     private int _industryCount;
 
     private RoadRenderer? _roadRenderer;
+    private RoadRenderer? _railRenderer;
     private TownRenderer? _townRenderer;
     private ModelRenderer? _modelRenderer;
     private ModelLibrary? _models;
@@ -183,6 +184,13 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _roadRenderer = new RoadRenderer(_context, roads, map, rules);
     }
 
+    /// <summary>Starts drawing the track of the game (feature 015); call after <see cref="SetWorld"/>.</summary>
+    public void SetRails(Talt.Core.Rails.RailLayer rails, MapData map, Talt.Core.Rails.RailRules rules)
+    {
+        _railRenderer?.Dispose();
+        _railRenderer = new RoadRenderer(_context, new RailMesher(rails, map, rules), map);
+    }
+
     /// <summary>Starts drawing the town buildings of the game (feature 008); call after <see cref="SetWorld"/>.</summary>
     public void SetTowns(Talt.Core.Towns.TownRegistry towns, MapData map)
     {
@@ -263,6 +271,8 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _worldRenderer = null;
         _roadRenderer?.Dispose();
         _roadRenderer = null;
+        _railRenderer?.Dispose();
+        _railRenderer = null;
         _townRenderer?.Dispose();
         _townRenderer = null;
         _instanceCount = 0;
@@ -541,6 +551,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         if (world is not null)
         {
             _roadRenderer?.Prepare(viewProjection, camera.Position, fogDistance);
+            _railRenderer?.Prepare(viewProjection, camera.Position, fogDistance);
             if (!_townsPrepared)
             {
                 _townRenderer?.Prepare(viewProjection, camera.Position, fogDistance);
@@ -602,6 +613,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         if (world is not null)
         {
             _roadRenderer?.Encode(pass); // Roads on top of the terrain (feature 007).
+            _railRenderer?.Encode(pass); // Track, after roads so level crossings show the rails (feature 015).
             _townRenderer?.Encode(pass); // Town buildings (feature 008).
             _wgpu.RenderPassEncoderSetBindGroup(pass, 0, _bindGroup, 0, null);
             _modelRenderer?.Encode(pass); // Voxel models (feature 018).
@@ -667,6 +679,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _disposed = true;
         _worldRenderer?.Dispose();
         _worldRenderer = null;
+        _railRenderer?.Dispose();
         _roadRenderer?.Dispose();
         _townRenderer?.Dispose();
         _modelRenderer?.Dispose();
@@ -722,6 +735,7 @@ internal sealed unsafe class WebGpuRenderer : IDisposable
         _wgpu.RenderPassEncoderSetPipeline(pass, _pipeline.Shadow);
         world.EncodeShadow(pass, cascade);
         _roadRenderer?.EncodeShadow(pass);
+        _railRenderer?.EncodeShadow(pass);
         _townRenderer?.EncodeShadow(pass);
         if (cascade < 2)
         {

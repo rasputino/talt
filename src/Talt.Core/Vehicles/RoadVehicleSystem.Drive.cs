@@ -341,6 +341,17 @@ public sealed partial class RoadVehicleSystem
                 break;
             }
 
+            if (Crossings is { } crossings && crossings.IsClosed(sTo))
+            {
+                // Feature 015 (research R12): a level crossing a train owns; stop before it unless already committed.
+                var stopLine = len - (Dir8.StraightLength / 2) - gap;
+                if (offset + stopLine >= 0)
+                {
+                    Limit(ref free, ref budget, offset + stopLine, 0, braking);
+                    break;
+                }
+            }
+
             var ri = routeIndex;
             var nextDir = NextDirection(v, sTo, sDir, links, (byte)(masks >> 8), ref ri);
             if (nextDir < 0)

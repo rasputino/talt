@@ -104,6 +104,33 @@
       { "file": "building-walk-up-flats-a.vox", "glow": [1] },
       { "file": "building-walk-up-flats-b.vox", "glow": [1] }
     ],
+    "train:loco-aurora": [
+      { "file": "train-loco-aurora.vox", "paint": [1] }
+    ],
+    "train:loco-ironhorse": [
+      { "file": "train-loco-ironhorse.vox", "paint": [1] }
+    ],
+    "train:loco-meridian": [
+      { "file": "train-loco-meridian.vox", "paint": [1] }
+    ],
+    "train:railcar-swift": [
+      { "file": "train-railcar-swift.vox", "paint": [1] }
+    ],
+    "train:wagon-boxcar": [
+      { "file": "train-wagon-boxcar.vox", "paint": [1] }
+    ],
+    "train:wagon-coach": [
+      { "file": "train-wagon-coach.vox", "paint": [1] }
+    ],
+    "train:wagon-hopper": [
+      { "file": "train-wagon-hopper.vox", "paint": [1] }
+    ],
+    "train:wagon-mailvan": [
+      { "file": "train-wagon-mailvan.vox", "paint": [1] }
+    ],
+    "train:wagon-tank": [
+      { "file": "train-wagon-tank.vox", "paint": [1] }
+    ],
     "tree:birch": [
       { "file": "birch-a.vox" },
       { "file": "birch-b.vox" }

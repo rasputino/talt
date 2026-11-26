@@ -24,6 +24,7 @@ internal sealed class ModelCatalog
     {
         var catalog = new ModelCatalog();
         Vehicles.AddAll(catalog);
+        Trains.AddAll(catalog);
         Nature.AddAll(catalog);
         foreach (var building in buildings)
         {

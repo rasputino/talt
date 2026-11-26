@@ -173,15 +173,40 @@ public sealed partial class StationRegistry
             return;
         }
 
+        PreviewArea(companyId, typeIndex, x, z, x, z, into);
+    }
+
+    /// <summary>
+    /// The catchment preview of a rectangle of pieces (feature 015: rail platforms), like <see cref="PreviewCatchment"/>
+    /// for one piece.
+    /// </summary>
+    public void PreviewArea(int companyId, int typeIndex, int x, int z, int xEnd, int zEnd, CatchmentPreview into)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        into.Reset();
+        if (!_map.Contains(x, z) || (uint)typeIndex >= (uint)Rules.Pieces.Count)
+        {
+            return;
+        }
+
+        EnsureCoverage();
         var piece = Rules.Pieces[typeIndex];
-        var join = JoinTarget(companyId, x, z);
+        var join = -1;
+        for (var jz = z; jz <= zEnd && join < 0; jz++)
+        {
+            for (var jx = x; jx <= xEnd && join < 0; jx++)
+            {
+                join = _map.Contains(jx, jz) ? JoinTarget(companyId, jx, jz) : -1;
+            }
+        }
+
         var joinSlot = join >= 0 ? SlotOf(join) : -1;
         var categories = piece.CategoryMask | (joinSlot >= 0 ? _categories[joinSlot] : 0);
         var radius = Math.Max(piece.CatchmentRadius, joinSlot >= 0 ? _radius[joinSlot] : 0);
         var x0 = x - piece.CatchmentRadius;
         var z0 = z - piece.CatchmentRadius;
-        var x1 = x + piece.CatchmentRadius;
-        var z1 = z + piece.CatchmentRadius;
+        var x1 = xEnd + piece.CatchmentRadius;
+        var z1 = zEnd + piece.CatchmentRadius;
         if (joinSlot >= 0)
         {
             x0 = Math.Min(x0, _x0[joinSlot] - radius);
@@ -199,7 +224,8 @@ public sealed partial class StationRegistry
         {
             for (var tx = into.X0; tx <= into.X1; tx++)
             {
-                var inNew = Math.Abs(tx - x) <= piece.CatchmentRadius && Math.Abs(tz - z) <= piece.CatchmentRadius;
+                var inNew = tx >= x - piece.CatchmentRadius && tx <= xEnd + piece.CatchmentRadius
+                    && tz >= z - piece.CatchmentRadius && tz <= zEnd + piece.CatchmentRadius;
                 if (!inNew && (joinSlot < 0 || !InCatchmentSlot(joinSlot, tx, tz)))
                 {
                     continue;
@@ -298,7 +324,7 @@ public sealed partial class StationRegistry
 
     private bool InCatchmentSlot(int slot, int x, int z)
     {
-        if (_kind[slot] != (byte)StationKind.Road)
+        if (_kind[slot] == (byte)StationKind.Warehouse) // Road and rail stations (feature 015) have a catchment.
         {
             return false;
         }
@@ -325,7 +351,7 @@ public sealed partial class StationRegistry
     /// <summary>Puts a road station in the grid cells its catchment touches (warehouses have none).</summary>
     private void RegisterGrid(int slot)
     {
-        if (_kind[slot] != (byte)StationKind.Road)
+        if (_kind[slot] == (byte)StationKind.Warehouse) // Road and rail stations (feature 015) have a catchment.
         {
             _gx1[slot] = -1;
             return;
@@ -443,7 +469,7 @@ public sealed partial class StationRegistry
         var buildingsList = _covBuildings[slot];
         industries.Clear();
         buildingsList.Clear();
-        if (_kind[slot] != (byte)StationKind.Road)
+        if (_kind[slot] == (byte)StationKind.Warehouse) // Road and rail stations (feature 015) have a catchment.
         {
             return;
         }

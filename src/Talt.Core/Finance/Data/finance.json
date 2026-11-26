@@ -33,7 +33,7 @@
     // Per road tile owned, by road type of roads.json.
     "roads": { "dirt": 30, "paved": 60, "fast": 110, "motorway": 260 },
     // Per station piece, by piece id of stations.json.
-    "stationPieces": { "bus-bay": 300, "bus-stop": 250, "truck-bay": 400, "truck-stop": 320 },
+    "stationPieces": { "bus-bay": 300, "bus-stop": 250, "truck-bay": 400, "truck-stop": 320, "rail-platform": 300 },
     // Per warehouse, by size id of stations.json.
     "warehouses": { "small": 1800, "medium": 4200, "large": 10000 }
   },

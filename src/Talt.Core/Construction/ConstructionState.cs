@@ -2,6 +2,7 @@ using Talt.Core.Determinism;
 using Talt.Core.Industries;
 using Talt.Core.Maps;
 using Talt.Core.Network;
+using Talt.Core.Rails;
 using Talt.Core.Roads;
 
 namespace Talt.Core.Construction;
@@ -23,6 +24,9 @@ public sealed class ConstructionState : IStateHashable
     // mutation path so monthly maintenance never scans the map. Derived from tiles, so not hashed.
     private int[] _ownedRoads;
 
+    // Feature 015: track tiles owned by each company, by track type (derived from tiles, not hashed).
+    private int[] _ownedRails = new int[8];
+
     public ConstructionState(ConstructionRules rules, MapData map, RoadRules? roadRules = null)
     {
         Rules = rules ?? throw new ArgumentNullException(nameof(rules));
@@ -30,6 +34,7 @@ public sealed class ConstructionState : IStateHashable
         RoadRules = roadRules ?? RoadRules.Default;
         Objects = new TileObjects(map.Width, map.Depth);
         Roads = new RoadLayer(map.Width, map.Depth);
+        Rails = new RailLayer(map.Width, map.Depth);
         Network = new RoadNetwork(Roads);
         Span<int> speeds = stackalloc int[RoadRules.Types.Count];
         for (var i = 0; i < speeds.Length; i++)
@@ -56,6 +61,21 @@ public sealed class ConstructionState : IStateHashable
 
     /// <summary>Per-tile road pieces (feature 007).</summary>
     public RoadLayer Roads { get; }
+
+    /// <summary>Per-tile rail pieces and signals (feature 015).</summary>
+    public RailLayer Rails { get; }
+
+    /// <summary>Rail balancing (feature 015); the game's data file unless the simulation attaches its own.</summary>
+    public RailRules RailRules { get; internal set; } = RailRules.Default;
+
+    /// <summary>Rail depots (feature 015); hashed once one was ever built.</summary>
+    public RailDepotRegistry RailDepots { get; } = new();
+
+    /// <summary>
+    /// Where trains are and what they reserved (feature 015): plans that change track under a train are refused. Null when
+    /// the game has no train system.
+    /// </summary>
+    public IRailOccupancy? RailOccupancy { get; set; }
 
     /// <summary>The routing graph derived from <see cref="Roads"/>, updated after every change (not hashed: derived).</summary>
     public RoadNetwork Network { get; }
@@ -87,6 +107,13 @@ public sealed class ConstructionState : IStateHashable
     {
         var index = (companyId * RoadRules.Types.Count) + roadType;
         return (uint)roadType < (uint)RoadRules.Types.Count && (uint)index < (uint)_ownedRoads.Length ? _ownedRoads[index] : 0;
+    }
+
+    /// <summary>Track tiles owned by the company with this track type (feature 015).</summary>
+    public int OwnedRailTiles(int companyId, int railType)
+    {
+        var index = (companyId * RailRules.Types.Count) + railType;
+        return (uint)railType < (uint)RailRules.Types.Count && (uint)index < (uint)_ownedRails.Length ? _ownedRails[index] : 0;
     }
 
     /// <summary>Bumped by every applied action (lets previews know they must be planned again). Not hashed.</summary>
@@ -171,6 +198,11 @@ public sealed class ConstructionState : IStateHashable
         hasher.Append(Objects);
         hasher.Append(Undo);
         hasher.Append(Roads);
+        hasher.Append(Rails); // Appends nothing until rail existed (feature 015, research R15).
+        if (RailDepots.EverUsed)
+        {
+            hasher.Append(RailDepots);
+        }
     }
 
     /// <summary>Builds the routing graph from the road layer from scratch (game creation).</summary>
@@ -231,7 +263,7 @@ public sealed class ConstructionState : IStateHashable
         Undo.Begin(company.Id, tick, plan.Cost);
         for (var slot = 0; slot < _touched.Count; slot++)
         {
-            Undo.AddBefore(_touched[slot], UndoRecord.Capture(map, Objects, Roads, _touched[slot]));
+            Undo.AddBefore(_touched[slot], UndoRecord.Capture(map, Objects, Roads, Rails, _touched[slot]));
         }
 
         var roadsChange = _roadTiles.Count > 0;
@@ -244,6 +276,7 @@ public sealed class ConstructionState : IStateHashable
         {
             var tile = change.Index;
             CountRoad(tile, -1);
+            CountRail(tile, -1);
             if (change.NewHeight != change.OldHeight)
             {
                 map.SetHeight(tile, change.NewHeight);
@@ -260,7 +293,13 @@ public sealed class ConstructionState : IStateHashable
                 Roads.Set(tile, change.NewRoad);
             }
 
+            if (change.RailChanged)
+            {
+                Rails.Set(tile, change.NewRail);
+            }
+
             CountRoad(tile, 1);
+            CountRail(tile, 1);
             _changedTiles.Add(tile);
         }
 
@@ -277,7 +316,7 @@ public sealed class ConstructionState : IStateHashable
 
         for (var slot = 0; slot < _touched.Count; slot++)
         {
-            Undo.SetAfter(slot, UndoRecord.Capture(map, Objects, Roads, _touched[slot]));
+            Undo.SetAfter(slot, UndoRecord.Capture(map, Objects, Roads, Rails, _touched[slot]));
         }
 
         company.Spend(plan.Cost);
@@ -306,11 +345,17 @@ public sealed class ConstructionState : IStateHashable
 
         var tiles = undo.Tiles;
         var after = undo.After;
+        var before = undo.Before;
         for (var i = 0; i < tiles.Length; i++)
         {
-            if (UndoRecord.Capture(Map, Objects, Roads, tiles[i]) != after[i])
+            if (UndoRecord.Capture(Map, Objects, Roads, Rails, tiles[i]) != after[i])
             {
                 return ConstructionReasons.ChangedSince;
+            }
+
+            if (RailOccupancy is { } trains && before[i].Rail != after[i].Rail && trains.IsTileUsed(tiles[i]))
+            {
+                return ConstructionReasons.TrainInTheWay; // Feature 015: never take track from under a train.
             }
         }
 
@@ -343,8 +388,10 @@ public sealed class ConstructionState : IStateHashable
         for (var i = 0; i < tiles.Length; i++)
         {
             CountRoad(tiles[i], -1);
-            UndoRecord.Restore(Map, Objects, Roads, tiles[i], before[i]);
+            CountRail(tiles[i], -1);
+            UndoRecord.Restore(Map, Objects, Roads, Rails, tiles[i], before[i]);
             CountRoad(tiles[i], 1);
+            CountRail(tiles[i], 1);
             if (before[i].Height != after[i].Height || before[i].Scenery != after[i].Scenery || before[i].Kind != after[i].Kind
                 || before[i].Road != after[i].Road)
             {
@@ -430,6 +477,26 @@ public sealed class ConstructionState : IStateHashable
         Objects.Set(tile, piece.HasRoad ? TileObjectKind.Road : TileObjectKind.None, owner);
         CountRoad(tile, 1);
         Map.SetScenery(tile, Scenery.None);
+    }
+
+    /// <summary>Adds (+1) or removes (−1) a tile's contribution to the owned-track counts (feature 015).</summary>
+    private void CountRail(int tile, int sign)
+    {
+        var owner = Objects.OwnerAt(tile);
+        if (owner.Kind != TileOwnerKind.Company || !Rails.HasRail(tile))
+        {
+            return;
+        }
+
+        var types = RailRules.Types.Count;
+        var type = Rails.TypeAt(tile);
+        var index = (owner.Index * types) + type;
+        if (index >= _ownedRails.Length)
+        {
+            Array.Resize(ref _ownedRails, Math.Max(index + 1, _ownedRails.Length * 2));
+        }
+
+        _ownedRails[index] += sign;
     }
 
     /// <summary>Adds (+1) or removes (−1) a tile's contribution to the owned-road counts (research R5).</summary>

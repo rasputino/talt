@@ -44,6 +44,23 @@ public static class CommandSerializer
         [Vehicles.RenameLineCommand.Type] = Vehicles.RenameLineCommand.Read,
         [Vehicles.EditLineStopsCommand.Type] = Vehicles.EditLineStopsCommand.Read,
         [Vehicles.AssignLineCommand.Type] = Vehicles.AssignLineCommand.Read,
+        [Rails.BuildRailCommand.Type] = Rails.BuildRailCommand.Read,
+        [Rails.BuildRailBridgeCommand.Type] = Rails.BuildRailBridgeCommand.Read,
+        [Rails.BuildRailTunnelCommand.Type] = Rails.BuildRailTunnelCommand.Read,
+        [Rails.RemoveRailCommand.Type] = Rails.RemoveRailCommand.Read,
+        [Rails.ConvertRailCommand.Type] = Rails.ConvertRailCommand.Read,
+        [Rails.SetSignalCommand.Type] = Rails.SetSignalCommand.Read,
+        [Rails.BuildRailStationCommand.Type] = Rails.BuildRailStationCommand.Read,
+        [Rails.BuildRailDepotCommand.Type] = Rails.BuildRailDepotCommand.Read,
+        [Rails.RemoveRailDepotCommand.Type] = Rails.RemoveRailDepotCommand.Read,
+        [Rails.BuyRailVehicleCommand.Type] = Rails.BuyRailVehicleCommand.Read,
+        [Rails.SellRailVehicleCommand.Type] = Rails.SellRailVehicleCommand.Read,
+        [Rails.StartTrainCommand.Type] = Rails.StartTrainCommand.Read,
+        [Rails.SendTrainToDepotCommand.Type] = Rails.SendTrainToDepotCommand.Read,
+        [Rails.AssignTrainLineCommand.Type] = Rails.AssignTrainLineCommand.Read,
+        [Rails.SetTrainCargoCommand.Type] = Rails.SetTrainCargoCommand.Read,
+        [Rails.SetTrainServiceIntervalCommand.Type] = Rails.SetTrainServiceIntervalCommand.Read,
+        [Rails.CloneTrainCommand.Type] = Rails.CloneTrainCommand.Read,
     };
 
     private static readonly Lock Gate = new();

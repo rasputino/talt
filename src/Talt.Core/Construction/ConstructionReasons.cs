@@ -41,6 +41,18 @@ public static class ConstructionReasons
     public const string UseDepotTool = "use-depot-tool";
     public const string TooManyVehicles = "too-many-vehicles";
 
+    // Railways (feature 015, specs/015-railways/contracts/commands.md).
+    public const string TrainInTheWay = "train-in-the-way";
+    public const string NoRail = "no-rail";
+    public const string TurnTooSharp = "turn-too-sharp";
+    public const string SignalPlace = "signal-place";
+    public const string UnknownRailType = "unknown-rail-type";
+    public const string NoTrain = "no-train";
+    public const string TrainTooLong = "train-too-long";
+    public const string NeedsLocomotive = "needs-locomotive";
+    public const string RailStationTrack = "rail-station-track";
+    public const string TrackLoop = "track-loop";
+
     // Finance (feature 011, specs/011-economy-finance/contracts/commands.md).
     public const string MaxLoan = "max-loan";
     public const string NoLoan = "no-loan";
@@ -152,6 +164,16 @@ public static class ConstructionReasons
         DepotRoad => "A depot uses this road.",
         UseDepotTool => "Depots are removed with the depot removal tool.",
         TooManyVehicles => "The company has too many vehicles.",
+        TrainInTheWay => "A train is on or has reserved this track.",
+        NoRail => "There is no track here.",
+        TurnTooSharp => "Track may turn at most 45 degrees per tile.",
+        SignalPlace => "Signals go on plain straight or diagonal track.",
+        UnknownRailType => "Unknown track type.",
+        NoTrain => "The train does not exist.",
+        TrainTooLong => "The train would be too long.",
+        NeedsLocomotive => "A train needs a locomotive first.",
+        RailStationTrack => "Station track is removed with the station.",
+        TrackLoop => "The track would have to loop round to join there.",
         _ => "Refused.",
     };
 
@@ -168,5 +190,6 @@ public static class ConstructionReasons
         NoDepot, UnknownModel, ModelNotAvailable, CargoNotAllowed, NoVehicle, NotInDepot, NoDepotReachable, HoldNotEmpty,
         NoLine, InvalidIndex, TooManyStops, LastStop, WrongKind, VehicleInTheWay, InvalidValue, DepotRoad, UseDepotTool,
         TooManyVehicles,
+        TrainInTheWay, NoRail, TurnTooSharp, SignalPlace, UnknownRailType, NoTrain, TrainTooLong, NeedsLocomotive, RailStationTrack, TrackLoop,
     ];
 }

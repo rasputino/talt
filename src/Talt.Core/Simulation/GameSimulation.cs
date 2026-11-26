@@ -7,6 +7,7 @@ using Talt.Core.Finance;
 using Talt.Core.Industries;
 using Talt.Core.Maps;
 using Talt.Core.Network;
+using Talt.Core.Rails;
 using Talt.Core.Roads;
 using Talt.Core.Scenarios;
 using Talt.Core.Stations;
@@ -80,12 +81,19 @@ public sealed class GameSimulation : IStateHashable
             // Feature 012: road vehicles, depots and lines (nothing is hashed until one exists).
             var vehicleRules = ReferenceEquals(content, GameContent.Default) ? VehicleRules.Default : VehicleRules.FromJson(VehicleRules.ReadResource(), content);
             RoadVehicles = new RoadVehicleSystem(construction, Stations, Finance, content, vehicleRules, Random.Fork(0x52_56).NextUInt64());
+            // Feature 015: trains on the company's track, sharing the road vehicles' lines (nothing is hashed until rail exists).
+            var railRules = ReferenceEquals(content, GameContent.Default) ? RailRules.Default : RailRules.FromJson(RailRules.ReadResource(), content, vehicleRules.KmhPerTileSecond);
+            Trains = new TrainSystem(construction, Stations, Finance, RoadVehicles.Lines, content, railRules, vehicleRules, Random.Fork(0x54_52).NextUInt64(), RoadVehicles);
+            Industries.TileBlocked = tile => construction.Objects.KindAt(tile) != TileObjectKind.None
+                || (construction.Roads.FlagsAt(tile) & RoadFeatures.Passing) != 0
+                || (construction.Rails.FlagsAt(tile) & RailFeatures.Passing) != 0;
 
             // Feature 013: destination tables, routes over the lines of every mode, destination cargo at stations.
             var demandRules = ReferenceEquals(content, GameContent.Default) ? DemandRules.Default : DemandRules.FromJson(DemandRules.ReadResource(), content);
             Destinations = new DestinationTables(demandRules, new GameDemandWorld(Towns, Industries));
             Router = new CargoRouter(demandRules, Stations, Destinations);
             Router.AddSource(RoadVehicles);
+            Router.AddSource(Trains); // Feature 015's trains carry destination cargo through the same stations.
             Stations.AttachDemand(demandRules, Destinations, Router);
             Stations.TransferValuer = Finance;
             Events.OnDayEnded(simulation => simulation.Destinations!.AdvanceDay());
@@ -118,6 +126,11 @@ public sealed class GameSimulation : IStateHashable
             Events.OnMonthEnded(simulation => simulation.RoadVehicles!.AdvanceMonth(simulation.Date));
         }
 
+        if (Trains is not null)
+        {
+            Events.OnMonthEnded(simulation => simulation.Trains!.AdvanceMonth(simulation.Date));
+        }
+
         if (Finance is not null)
         {
             // After the stations, so a day's deliveries and debug pickups are paid before its costs (research R9).
@@ -130,6 +143,12 @@ public sealed class GameSimulation : IStateHashable
         {
             Events.OnDayEnded(simulation => simulation.RoadVehicles!.AdvanceDay(simulation.Date));
             Events.OnYearEnded(simulation => simulation.RoadVehicles!.AdvanceYear(simulation.Date));
+        }
+
+        if (Trains is not null)
+        {
+            Events.OnDayEnded(simulation => simulation.Trains!.AdvanceDay(simulation.Date));
+            Events.OnYearEnded(simulation => simulation.Trains!.AdvanceYear(simulation.Date));
         }
     }
 
@@ -162,6 +181,8 @@ public sealed class GameSimulation : IStateHashable
 
     /// <summary>Routes of destination cargo over every mode's lines (feature 013); null without a map.</summary>
     public CargoRouter? Router { get; }
+    /// <summary>Trains and rail depots of a game with a map (feature 015); null for map-less scenarios.</summary>
+    public TrainSystem? Trains { get; }
 
     /// <summary>All industries of the world; empty when the game was created without a map.</summary>
     public IndustryFleet Industries { get; }
@@ -245,6 +266,7 @@ public sealed class GameSimulation : IStateHashable
         ProcessCommands();
         Vehicles.Tick(parallel);
         RoadVehicles?.Tick(CurrentTick, parallel);
+        Trains?.Tick(CurrentTick, parallel);
         Router?.Tick(CurrentTick, parallel);
         CurrentTick++;
 
@@ -303,6 +325,11 @@ public sealed class GameSimulation : IStateHashable
         if (RoadVehicles is not null)
         {
             hasher.Append(RoadVehicles); // Appends nothing until a depot, line or vehicle exists (feature 012, FR-031).
+        }
+
+        if (Trains is not null)
+        {
+            hasher.Append(Trains); // Appends nothing until a train was bought (feature 015, research R15).
         }
 
         if (Router is not null)

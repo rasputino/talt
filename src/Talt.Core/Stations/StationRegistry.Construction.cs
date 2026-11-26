@@ -135,6 +135,57 @@ public sealed partial class StationRegistry
         return _id[slot];
     }
 
+    /// <summary>
+    /// Records committed rail platform tiles (feature 015, research R10): the rectangle (x0, z0)–(x1, z1) joins the
+    /// company's adjacent station or forms a new rail station. The track is already on the tiles.
+    /// </summary>
+    internal int AddRailPieces(int companyId, int pieceType, int x0, int z0, int x1, int z1, int axis)
+    {
+        var type = Rules.Pieces[pieceType];
+        var join = -1;
+        for (var z = z0; z <= z1 && join < 0; z++)
+        {
+            for (var x = x0; x <= x1 && join < 0; x++)
+            {
+                join = JoinTarget(companyId, x, z);
+            }
+        }
+
+        int slot;
+        if (join >= 0)
+        {
+            slot = SlotOf(join);
+            _x0[slot] = Math.Min(_x0[slot], x0);
+            _z0[slot] = Math.Min(_z0[slot], z0);
+            _x1[slot] = Math.Max(_x1[slot], x1);
+            _z1[slot] = Math.Max(_z1[slot], z1);
+            if (_kind[slot] == (byte)StationKind.Road)
+            {
+                _kind[slot] = (byte)StationKind.Rail; // A road station joined by platforms becomes a rail station.
+            }
+        }
+        else
+        {
+            slot = CreateStation(companyId, StationKind.Rail, 0, x0, z0, x1, z1, StationNameKind.RailStation);
+        }
+
+        var direction = axis == 0 ? Dir8.E : Dir8.S;
+        for (var z = z0; z <= z1; z++)
+        {
+            for (var x = x0; x <= x1; x++)
+            {
+                var tile = _map.Index(x, z);
+                _tiles[slot].Add(tile);
+                _pieces[tile] = new StationPiece(_id[slot], (byte)pieceType, (byte)direction);
+            }
+        }
+
+        _categories[slot] |= type.CategoryMask;
+        _radius[slot] = Math.Max(_radius[slot], type.CatchmentRadius);
+        AfterStationChange(slot);
+        return _id[slot];
+    }
+
     /// <summary>Records a committed warehouse whose footprint's minimum corner is (x, z).</summary>
     internal int AddWarehouse(int companyId, int warehouseType, int x, int z)
     {
@@ -237,7 +288,7 @@ public sealed partial class StationRegistry
         var centreZ = (z0 + z1) / 2;
         var town = NearestTown(centreX, centreZ);
         var place = StationPlace.Central;
-        if (nameKind == StationNameKind.Warehouse && town >= 0)
+        if (nameKind is StationNameKind.Warehouse or StationNameKind.RailStation && town >= 0)
         {
             var (cx, cz) = _towns!.CentreOf(town);
             var dx = centreX - cx;

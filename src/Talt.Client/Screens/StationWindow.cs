@@ -44,6 +44,7 @@ internal static class StationWindow
         {
             StationNameKind.BusStop => "station.name.busStop",
             StationNameKind.TruckStop => "station.name.truckStop",
+            StationNameKind.RailStation => $"station.name.rail.{place.ToString().ToLowerInvariant()}",
             _ => $"station.name.warehouse.{place.ToString().ToLowerInvariant()}",
         };
         var name = s.Format(key, ("town", townName));

@@ -17,7 +17,7 @@ namespace Talt.Client.Screens;
 /// The game: top bar (money, date, speed controls), toolbar, notifications, pause menu, map picking
 /// with hover and selection highlights, object information windows and camera control (US1, US2).
 /// </summary>
-internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
+internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
 {
     private const float KeyboardPanSpeed = 1.2f;    // Fraction of the camera distance per second.
     private const float KeyboardRotateSpeed = 1.5f; // Radians per second.
@@ -271,7 +271,28 @@ internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
                 return true;
             case "toolDepot":
             case "toolRemoveDepot":
+            case "toolRail":
+            case "toolRailBridge":
+            case "toolRailTunnel":
+            case "toolRemoveRail":
+            case "toolElectrify":
+            case "toolSignal":
+            case "toolRailStation":
+            case "toolRailDepot":
+            case "toolRemoveRailDepot":
                 ToggleTool(actionId);
+                return true;
+            case "railType":
+                RailToolOptions.CycleType(_session.Construction);
+                return true;
+            case "signalKind":
+                RailToolOptions.CycleSignal();
+                return true;
+            case "railStationShape":
+                RailToolOptions.CycleStation();
+                return true;
+            case "trains":
+                OpenTrains();
                 return true;
             case "lines":
                 OpenLines();
@@ -446,6 +467,25 @@ internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
         {
             OpenVehicle(pick.VehicleId); // Feature 012: road vehicles have their own window.
             return;
+        }
+
+        // Feature 015: a click on a train's track opens the train; on a rail depot, the depot.
+        if (_session.Simulation.Trains is { } trains && _session.Construction.Map.Contains(pick.TileX, pick.TileZ))
+        {
+            var tile = _session.Construction.Map.Index(pick.TileX, pick.TileZ);
+            var owner = trains.OwnerOfTile(tile);
+            if (owner != 0)
+            {
+                OpenTrain(owner);
+                return;
+            }
+
+            var depot = _session.Construction.RailDepots.IndexAtTile(tile);
+            if (depot >= 0)
+            {
+                OpenRailDepot(_session.Construction.RailDepots.IdAt(depot));
+                return;
+            }
         }
 
         if (pick.Kind == PickKind.Depot && _session.RoadVehicles is not null)
@@ -827,11 +867,22 @@ internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
             Padding = new Thickness(4),
         });
         var stationTools = stationToolbar.Add(new StackPanel(Orientation.Vertical) { Spacing = 4 });
+        // Rail tools (feature 015) in a fourth column.
+        var railToolbar = root.Add(new Panel
+        {
+            Style = PanelStyle.Panel,
+            HorizontalAlignment = Alignment.Start,
+            VerticalAlignment = Alignment.Start,
+            Width = theme.ToolbarWidth,
+            Margin = new Thickness(24 + (3 * theme.ToolbarWidth), theme.TopBarHeight + 8, 0, 0),
+            Padding = new Thickness(4),
+        });
+        var railTools = railToolbar.Add(new StackPanel(Orientation.Vertical) { Spacing = 4 });
         foreach (var tool in ConstructionTool.All)
         {
             var button = ToolButton(tool.Id, () => ToggleTool(tool.ActionId), $"tool.{tool.Id}.tooltip", tool.ActionId);
             button.IsSelected = () => _tools.Active == tool;
-            var column = tool.IsStation || tool.IsDepot ? stationTools : tool.Shape == DragShape.Area || tool == ConstructionTool.Clear ? tools : roadTools;
+            var column = tool.IsRail ? railTools : tool.IsStation || tool.IsDepot ? stationTools : tool.Shape == DragShape.Area || tool == ConstructionTool.Clear ? tools : roadTools;
             HudButtons.Add(column.Add(button));
         }
 
@@ -847,6 +898,19 @@ internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
         }));
 
         HudButtons.Add(tools.Add(ToolButton("undo", () => HandleAction("undoConstruction", false), "tool.undo.tooltip", "undoConstruction")));
+        HudButtons.Add(railTools.Add(OptionButton("railType", () => RailToolOptions.Version,
+            s => s.Format("tool.railType.tooltip", ("type", s.Get(_session.Construction.RailRules.Types[RailToolOptions.TypeFor(_session.Construction)].NameKey))))));
+        HudButtons.Add(railTools.Add(OptionButton("signalKind", () => RailToolOptions.Version,
+            s => s.Format("tool.signalKind.tooltip", ("kind", s.Get($"rail.signal.{RailToolOptions.Signal}"))))));
+        HudButtons.Add(railTools.Add(OptionButton("railStationShape", () => RailToolOptions.Version,
+            s => s.Format("tool.railStationShape.tooltip",
+                ("platforms", RailToolOptions.Platforms.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                ("length", RailToolOptions.Length.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                ("axis", s.Get(RailToolOptions.Axis == 0 ? "rail.axis.x" : "rail.axis.z"))))));
+        if (_session.Simulation.Trains is not null)
+        {
+            HudButtons.Add(railTools.Add(ToolButton("trains", OpenTrains, "toolbar.trains.tooltip", "trains")));
+        }
         if (_session.RoadVehicles is not null)
         {
             HudButtons.Add(stationTools.Add(ToolButton("lines", OpenLines, "toolbar.lines.tooltip", "lines")));
@@ -925,6 +989,14 @@ internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
             _demandOverlay.Visible = !_demandOverlay.Visible;
         }
     }
+    private Button OptionButton(string action, Func<long> version, Func<Strings, string> text) =>
+        new(null, () => HandleAction(action, false), action)
+        {
+            Style = ButtonStyle.Flat,
+            Tooltip = TextRef.Dynamic(version, text),
+            ShortcutAction = action,
+            Height = 36,
+        };
 
     private static Button ToolButton(string icon, Action onClick, string tooltip, string action) =>
         new(null, onClick, icon)
@@ -970,7 +1042,15 @@ internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
             if (_tools.HasPreview)
             {
                 _previewBoxes.Build(_tools.Preview, _tools.PreviewResult.Succeeded, state.Map, _host.Ui.Theme, _tools.Active?.Removes == true);
-                if (stations is not null && _tools.Active is { IsStation: true, Removes: false } tool && _tools.Preview.HasArea)
+                if (stations is not null && _tools.Active == ConstructionTool.RailStation && _tools.Preview.HasArea)
+                {
+                    // Feature 015: the catchment of the whole platform rectangle.
+                    var area = _tools.Preview.Area;
+                    var type = stations.Rules.FindPiece(Talt.Core.Stations.StationPieceKind.Rail, Talt.Core.Stations.StationPieceForm.Platform);
+                    stations.PreviewArea(state.Player.Id, type, area.X0, area.Z0, area.X1, area.Z1, _catchment);
+                    _previewBoxes.AppendArea(_catchment.Tiles, state.Map, _host.Ui.Theme);
+                }
+                else if (stations is not null && _tools.Active is { IsStation: true, Removes: false } tool && _tools.Preview.HasArea)
                 {
                     // Feature 010 (FR-011): the catchment and the cargo the placement would receive and accept.
                     var area = _tools.Preview.Area;
@@ -1031,7 +1111,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
         var text = _tools.PreviewResult.Succeeded || reason is null
             ? cost
             : s.Format("construction.costAndReason", ("cost", cost), ("reason", s.Get($"construction.reason.{reason}")));
-        if (_tools.Active is { IsStation: true, Removes: false } && _tools.Active != ConstructionTool.Warehouse)
+        if ((_tools.Active is { IsStation: true, Removes: false } && _tools.Active != ConstructionTool.Warehouse) || _tools.Active == ConstructionTool.RailStation)
         {
             // Feature 010 (US1): what the station would receive and accept.
             var content = _session.Simulation.Content;
@@ -1079,6 +1159,33 @@ internal sealed class InGameScreen : IScreen, IWorldInput, IVehicleUi
                     _selected = PickResult.None;
                 }
             };
+        }
+    }
+
+    /// <summary>Opens (or focuses) a train's window (feature 015).</summary>
+    public void OpenTrain(int trainId)
+    {
+        if (_session.Simulation.Trains is not null)
+        {
+            _host.Ui.Windows.Open(TrainWindow.Create(this, trainId));
+        }
+    }
+
+    /// <summary>Opens (or focuses) a rail depot's window (feature 015).</summary>
+    public void OpenRailDepot(int depotId)
+    {
+        if (_session.Simulation.Trains is not null)
+        {
+            _host.Ui.Windows.Open(RailDepotWindow.Create(this, depotId));
+        }
+    }
+
+    /// <summary>Opens the list of trains (feature 015).</summary>
+    public void OpenTrains()
+    {
+        if (_session.Simulation.Trains is not null)
+        {
+            _host.Ui.Windows.Open(TrainsWindow.Create(this));
         }
     }
 

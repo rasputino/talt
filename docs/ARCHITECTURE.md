@@ -797,7 +797,7 @@ cargo is aggregated in packets, never simulated per passenger. Everything lives 
   heads, daily). Group recomputation moves buckets to the old group's lowest surviving station's group.
 - **Link graph** (`ILinkSource`, `LinkCollector`, `RoutingProblem`): mode-agnostic. A source reports its lines (company,
   cargo, ticks per tile of its slowest vehicle, units per round) and their stops (loads / unloads). `RoadVehicleSystem`
-  implements it; rail (015) registers its own with `Router.AddSource`. Nodes are station groups by key; an edge goes
+  implements it, and so does `TrainSystem` (feature 015, `TrainSystem.Links.cs`), registered with `Router.AddSource`. Nodes are station groups by key; an edge goes
   from each loading stop to the next stop of another group where cargo may leave, with travel ticks from Manhattan
   distance and monthly capacity = units per round × ticks per month / round-trip ticks. Parallel edges merge.
 - **Assignment** (`RouteAssignment`, a pure function): per destination town with demand and a serving group, a
@@ -849,7 +849,82 @@ router work reached 5.2–20 ms on the same runs, so the spikes are the machine 
 Steady-state ticks with routing allocate nothing (`RouterDeterminismTests.SteadyStateTicks_WithRouting_AllocateNothing`,
 sequential, a whole route period per window). Goldens: map-less, `ci/golden-fingerprints.json`, windows-reference and
 the station, finance, road and construction replays are unchanged; `RoadVehicleReplayTests` changed on purpose
-(`91E0F1189491671C` → `396343F72649C68E`: passengers now have destinations).
+(`91E0F1189491671C` → `396343F72649C68E`: passengers now have destinations), and after merging feature 015
+`RailReplayTests` (`051623FE7E98467D` → `51B7F8F782F00DFE`: trains carry destination cargo too).
+## Railways (feature 015)
+
+Specs in `specs/015-railways/` (spec with five clarifications, plan, research R1–R15, data model, contracts).
+
+- **Track** is tile data in `ConstructionState.Rails` (`Talt.Core.Rails.RailLayer`): a link mask over `Dir8`, type,
+  bridge/tunnel long links and passing flags like roads, and a signal byte (kind in bits 0–1, faces in bits 2–3). A train
+  heading `h` may leave a tile only by links `h−1`, `h`, `h+1` (45° per tile, clarification Q1), so the mask alone
+  describes switches and diamond crossings; `RailGeometry.IsValidShape` refuses 90° kinks. Track tiles are
+  `TileObjectKind.Rail`, depots `RailDepot`, platforms `Station`; a level crossing is a `Road` tile with a straight rail
+  pair at right angles to its straight road. The layer is hashed only once rail ever existed (research R15).
+- **Construction** reuses feature 006: `TileChange` and `TileSnapshot` carry the rail piece, so `ConstructionState.Commit`
+  and undo write it like roads, and `ConstructionCommand.Check` asks `IRailOccupancy` (the train system) whether the plan
+  reshapes track a train covers or reserved (a new type or signal is allowed). `RailPlanner` (one per planner) plans the
+  track tool's drag as an A* over (tile, heading) states with turns of at most 45°, the road slope rules and joins into
+  existing track; bridges, tunnels, removal, conversion (electrify), signals, stations (`buildRailStation`, P × L platform
+  tiles) and depots. Commands: `buildRail`, `buildRailBridge`, `buildRailTunnel`, `removeRail`, `convertRail`,
+  `setSignal`, `buildRailStation`, `buildRailDepot`, `removeRailDepot`, plus the train commands `buyRailVehicle`,
+  `sellRailVehicle`, `startTrain`, `sendTrainToDepot`, `assignTrainLine`, `setTrainCargo`, `setTrainServiceInterval`,
+  `cloneTrain`, all in `CommandSerializer`.
+- **Data**: `Rails/Data/rail.json` (`RailRules`): track types with speed, cost and maintenance, signals, bridges, tunnels,
+  depot, station limits, physics, stop timing, routing budgets and the rolling stock (four locomotives incl. a railcar,
+  five wagon categories). `stations.json` has the `rail-platform` piece; its rule fingerprint and finance maintenance
+  are left out of the station and finance rule fingerprints (games without rail keep their goldens).
+- **Stations**: rail platforms are pieces of feature 010 stations (`StationKind.Rail`, names "town + place + Station"),
+  with catchment, acceptance, ratings and warehouse groups like road stations, so feature 013's destination routing sees
+  one station abstraction for every mode. Trains use the shared `LineRegistry` of feature 012.
+- **Safety** (research R4): every track tile has at most one owner train (`TrainSystem.OwnerOfTile`): the train whose
+  body covers it or that reserved it. A train's track is a ring deque of steps (from tile, direction, length) from its tail
+  to the end of its authority; it moves only on owned steps, so collisions are impossible by construction
+  (`CheckInvariants`, run every tick by the tests and `--check-overlaps`).
+- **Signals and blocks** (research R5): a signal facing travel `d` sits on its tile's edge towards `d`; `RailBlocks`
+  flood-fills components cut at signal edges (derived, rebuilt when the layer's version changes). Passing a signal (or
+  extending from a stop or depot) reserves the route up to the next signal facing the travel direction, the stop or 96
+  steps: a block signal also needs the entered block to hold no other train; path signals only need the tiles; one-way
+  path signals are never passed against their face. Requests are served in ascending train id.
+- **Tick** (research R7), after road vehicles: (1) parallel move over batches of 256 trains: speed from power,
+  tractive effort, mass, slope (ramps), rolling resistance, track and curve limits and braking to the end of the
+  authority (integer physics, `Approach` uses an exact double square root); each train writes only its speed and head;
+  (2) sequential by id: release tail tiles, reserve, arrive, load per wagon, pull forward on short through platforms
+  (clarification Q5), depots, routing, stuck notices. Parallel and sequential ticks are identical (test).
+- **Routing** (`RailRouter`, research R8, R9): A* over (tile, heading) with an admissible octile heuristic, costs inverse
+  to the track speed and a penalty for tiles other trains own, so at a path signal a train takes a free platform or loop
+  track. A station goal is the far end of a platform entered along it, so the search runs along the platform and counts
+  trains standing there. A halted train may also plan from its tail, reversed (termini, dead ends).
+- **Client**: `RoadRenderer` takes an `ITileLayerSource`; `RailMesher` draws ballast, sleepers, rails, ramps, bridge decks
+  and pillars, tunnel mouths, wire posts and signals (heads coloured by kind) on the road renderer's blocks and areas.
+  Trains are model instances (`train:<model id>` from `tools/Talt.ModelGen/Trains.cs`), interpolated between ticks.
+  A fourth toolbar column holds the rail tools (track, bridge, tunnel, removal, electrify, signal, station, depot, depot
+  removal) and their options (track type, signal kind, station size and axis); windows for trains, rail depots (the
+  consist editor: new train from a locomotive, add wagons one or five at a time, remove parts) and the train list.
+- **Debug**: `--seed-trains <n>` (client and headless) lays clockwise racetrack loops (`TrainSeeder`) with two stations,
+  one-way path signals, a depot and up to eight trains each.
+
+Known limits of version 1: signal heads show their kind, not their red/green state; trains reverse only when halted;
+blocks are rebuilt in full after a track or signal change (a few milliseconds on a 4096 map, once per action); a train
+standing with no route keeps its track until a route appears.
+
+### Rail numbers
+
+BenchmarkDotNet (2026-11-26, AMD Ryzen 7 160, 8 cores / 16 threads; `TrainBenchmarks`, `RailRouteBenchmarks`): a flat
+4096 × 4096 map with `TrainSeeder` loops (two stations, one-way path signals every five tiles, a locomotive and two coaches
+per train, eight trains per loop), run 2 400 ticks first; each invocation is one full `GameSimulation.Tick`.
+
+| Benchmark | Trains | Mean | Allocated | Budget |
+|---|---|---|---|---|
+| `Tick` (parallel) | 1 000 | 0.19 ms | 2.1 KB | — |
+| `Tick` (parallel) | 5 000 | **1.57 ms** | 4.2 KB | within the 4 ms tick budget (SC-001) |
+| `TickSequential` | 1 000 / 5 000 | 0.24 / 1.86 ms | 0 B | — |
+| `Route1000` (A*, double-track ladder 1 000 tiles, crossovers every 50) | — | **0.10 ms** | 0 B | ≤ 2 ms (SC-005) |
+
+The parallel tick's allocation is `Parallel.For` bookkeeping; the sequential tick allocates nothing
+(`TrainSeederTests.TheTrainTickAllocatesNothingInSteadyState`). Headless on the generated map
+`T2-1024x1024-s7-r50-h28-w25-l7` with 400 seeded trains: 0.73 ms per tick and no invariant failure over 8 000 ticks.
+Goldens: all earlier ones unchanged (map-less, windows-reference and every map golden).
 
 ## Determinism
 

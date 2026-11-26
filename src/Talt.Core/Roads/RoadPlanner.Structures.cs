@@ -120,7 +120,8 @@ public sealed partial class RoadPlanner
                 return false;
             }
 
-            if (Surface(tile) > h || (Piece(tile).Flags & (RoadFeatures.OverBridgeX | RoadFeatures.OverBridgeZ)) != 0)
+            if (Surface(tile) > h || (Piece(tile).Flags & (RoadFeatures.OverBridgeX | RoadFeatures.OverBridgeZ)) != 0
+                || (_state.Rails.FlagsAt(tile) & (Rails.RailFeatures.OverBridgeX | Rails.RailFeatures.OverBridgeZ)) != 0)
             {
                 Refuse(tile, ConstructionReasons.BridgeBlocked);
                 return false;
@@ -199,7 +200,8 @@ public sealed partial class RoadPlanner
             var height = Height(tile);
             if (height > h)
             {
-                if ((Piece(tile).Flags & (RoadFeatures.UnderTunnelX | RoadFeatures.UnderTunnelZ)) != 0)
+                if ((Piece(tile).Flags & (RoadFeatures.UnderTunnelX | RoadFeatures.UnderTunnelZ)) != 0
+                    || (_state.Rails.FlagsAt(tile) & (Rails.RailFeatures.UnderTunnelX | Rails.RailFeatures.UnderTunnelZ)) != 0)
                 {
                     Refuse(tile, ConstructionReasons.TunnelBlocked);
                     return;
