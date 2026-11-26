@@ -29,7 +29,7 @@ public readonly record struct CompanyFinance(
 /// Hashes nothing until something is booked, borrowed or registered, or the settings differ from the defaults
 /// (research R11), so games where the player did nothing keep their earlier fingerprints.
 /// </remarks>
-public sealed class FinanceSystem : IStateHashable, IDeliveryListener
+public sealed class FinanceSystem : IStateHashable, IDeliveryListener, ITransferValuer
 {
     private readonly ConstructionState _state;
     private readonly StationRegistry? _stations;
@@ -153,6 +153,9 @@ public sealed class FinanceSystem : IStateHashable, IDeliveryListener
         return PaymentCalculator.Quote(payment.Rate, payment.FreeDays, definition.ValueDecayPerDayPerMille, definition.MinimumValuePercent,
             amount, distance, Rules.MinDistance, days, PaymentLevel);
     }
+
+    /// <summary>Feature 013: what a transfer leg is worth for vehicle profit (a quote, nothing booked).</summary>
+    public long Estimate(int cargo, int amount, int distanceTiles, int days) => Quote(cargo, amount, distanceTiles, days).Amount;
 
     /// <summary>Feature 010's report of an accepted delivery: pays it.</summary>
     public void OnDelivered(in CargoDelivery delivery) => Pay(delivery);

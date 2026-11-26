@@ -589,7 +589,11 @@ public sealed partial class RoadVehicleSystem : IStateHashable, IVehicleOccupanc
         }
     }
 
-    internal void SetCargo(int slot, int cargo) => _cargo[slot] = cargo;
+    internal void SetCargo(int slot, int cargo)
+    {
+        _cargo[slot] = cargo;
+        _linkChanges++;
+    }
 
     internal void SetServiceInterval(int slot, int days) => _serviceInterval[slot] = days;
 
@@ -597,6 +601,7 @@ public sealed partial class RoadVehicleSystem : IStateHashable, IVehicleOccupanc
     internal void AssignLine(int slot, int lineId)
     {
         _line[slot] = lineId;
+        _linkChanges++;
         _stopIndex[slot] = 0;
         if ((_orders[slot] & (VehicleOrders.SendToDepot | VehicleOrders.Repair | VehicleOrders.ServiceDue)) == 0 || _targetKind[slot] != VehicleTargetKind.Depot)
         {

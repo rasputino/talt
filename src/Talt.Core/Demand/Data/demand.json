@@ -1,0 +1,41 @@
+{
+  // Destination demand and cargo routing (feature 013, contracts/data-files.md). Every value is original to TALT.
+  // Changing a value changes what recorded sessions replay to.
+  //
+  // Each destination cargo (cargo.json destinationRequired: true) gets a destination town. Cargo from town buildings
+  // keeps ownTownPerMille for its own town; the rest goes to other towns in proportion to
+  // population^populationExponent / distance^distanceExponent (distance in tiles between town centres).
+  "cargo": [
+    { "id": "passengers", "source": "buildings", "ownTownPerMille": 500, "populationExponent": 1, "distanceExponent": 1 },
+    // Large towns receive more mail: population counts twice, distance as much.
+    { "id": "mail", "source": "buildings", "ownTownPerMille": 500, "populationExponent": 2, "distanceExponent": 2 },
+    // Goods from industries go to towns that accept goods.
+    { "id": "goods", "source": "industries", "ownTownPerMille": 0, "populationExponent": 1, "distanceExponent": 1 }
+  ],
+  // Other towns kept per source (the largest weights).
+  "maxDestinations": 32,
+  // Towns farther than this (tiles between centres) are never destinations.
+  "rangeTiles": 1500,
+  // Destination cargo waiting this long at one station expires (clarification Q4).
+  "expiryDays": 60,
+  "routing": {
+    // A new route set is computed every updateIntervalDays (sooner when lines change) and applied applyDelayDays
+    // after its start, whatever the threads did meanwhile.
+    "updateIntervalDays": 4,
+    "applyDelayDays": 2,
+    // 1: shortest routes only; 2: a second pass with congestion costs, splitting between the two passes' choices.
+    "iterations": 2,
+    // Ticks added to every hop (stopping, loading, waiting for the next vehicle).
+    "dwellTicks": 120,
+    // An edge loaded beyond its monthly capacity costs this per mille more per 100 % of excess.
+    "congestionPenaltyPerMille": 1000,
+    // Extra cost of a connection whose line has no vehicle capacity.
+    "zeroCapacityPenaltyTicks": 20000,
+    // Routes longer than this are not used.
+    "maxRouteDays": 90,
+    // Stations farther than this beyond the farthest origin of a destination are not searched.
+    "pruneMarginTiles": 400
+  },
+  // Client: the unserved-demand overlay draws this many town pairs.
+  "overlay": { "pairs": 40 }
+}

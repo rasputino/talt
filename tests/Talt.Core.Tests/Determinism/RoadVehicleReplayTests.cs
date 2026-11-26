@@ -15,7 +15,8 @@ namespace Talt.Core.Tests.Determinism;
 /// <remarks>Regenerate the golden only when vehicle rules or their data file change on purpose (or anything earlier goldens depend on).</remarks>
 public class RoadVehicleReplayTests
 {
-    private const string ExpectedAtTick4000 = "91E0F1189491671C";
+    // Feature 013 changed it on purpose: passengers have destinations and travel by route (91E0F1189491671C before).
+    private const string ExpectedAtTick4000 = "396343F72649C68E";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 12,

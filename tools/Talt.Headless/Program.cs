@@ -207,6 +207,15 @@ static void PrintSummary(GameSimulation simulation, TimeSpan setup, TimeSpan sim
         Console.WriteLine("vehicle-states: " + string.Join(", ", states.Select(g => $"{g.Key} {g.Count()}")));
     }
 
+    if (simulation.Router is { EverStarted: true } router && simulation.Stations is { } directed)
+    {
+        // Feature 013: destination cargo (contracts/demand-api.md).
+        Console.WriteLine($"route-sets: {router.AppliedCount} ({router.LastDestinations} destinations)");
+        Console.WriteLine($"destination-cargo: generated {directed.DirectedGenerated}, delivered {directed.DirectedDelivered}, "
+            + $"waiting {directed.DirectedWaiting}, transferred {directed.DirectedTransferred}, lost {directed.DirectedLost} "
+            + $"(expired {directed.DirectedExpired}), unserved {directed.DirectedUnserved}");
+    }
+
     if (simulation.Finance is { } finance)
     {
         // Feature 011: the player's finances (contracts/cli.md), internal units.

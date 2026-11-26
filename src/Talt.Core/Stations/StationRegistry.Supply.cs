@@ -89,6 +89,8 @@ public sealed partial class StationRegistry
                 }
             }
         }
+
+        FlushPendingSupply(); // Feature 013: the day's destination cargo split over destinations.
     }
 
     /// <summary>
@@ -193,18 +195,24 @@ public sealed partial class StationRegistry
         }
 
         var given = 0;
+        var taken = 0;
         for (var i = 1; i < count && sum > 0; i++)
         {
             var part = (int)(moved * (long)ratings[i] / sum);
             if (part > 0)
             {
-                Arrive(groups[i], cargo, part, origins[i], sourceTown, -1, -1, supplied: true);
+                taken += SupplyPart(row, groups[i], cargo, part, origins[i], sourceTown);
                 given += part;
             }
         }
 
-        Arrive(groups[0], cargo, moved - given, origins[0], sourceTown, -1, -1, supplied: true);
-        return moved;
+        if (moved - given > 0)
+        {
+            taken += SupplyPart(row, groups[0], cargo, moved - given, origins[0], sourceTown);
+        }
+
+        // Feature 013: industry cargo without a route stays at the industry.
+        return taken;
     }
 
     /// <summary>Adds cargo to a group's waiting stock up to the cap; the excess is lost and marks an overflow.</summary>

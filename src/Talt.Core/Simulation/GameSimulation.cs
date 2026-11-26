@@ -1,6 +1,7 @@
 using Talt.Core.Commands;
 using Talt.Core.Construction;
 using Talt.Core.Content;
+using Talt.Core.Demand;
 using Talt.Core.Determinism;
 using Talt.Core.Finance;
 using Talt.Core.Industries;
@@ -79,6 +80,16 @@ public sealed class GameSimulation : IStateHashable
             // Feature 012: road vehicles, depots and lines (nothing is hashed until one exists).
             var vehicleRules = ReferenceEquals(content, GameContent.Default) ? VehicleRules.Default : VehicleRules.FromJson(VehicleRules.ReadResource(), content);
             RoadVehicles = new RoadVehicleSystem(construction, Stations, Finance, content, vehicleRules, Random.Fork(0x52_56).NextUInt64());
+
+            // Feature 013: destination tables, routes over the lines of every mode, destination cargo at stations.
+            var demandRules = ReferenceEquals(content, GameContent.Default) ? DemandRules.Default : DemandRules.FromJson(DemandRules.ReadResource(), content);
+            Destinations = new DestinationTables(demandRules, new GameDemandWorld(Towns, Industries));
+            Router = new CargoRouter(demandRules, Stations, Destinations);
+            Router.AddSource(RoadVehicles);
+            Stations.AttachDemand(demandRules, Destinations, Router);
+            Stations.TransferValuer = Finance;
+            Events.OnDayEnded(simulation => simulation.Destinations!.AdvanceDay());
+            Events.OnMonthEnded(simulation => simulation.Destinations!.AdvanceMonth());
         }
 
         // Stations refresh their coverage before industries produce (industries hand them their share), then
@@ -145,6 +156,12 @@ public sealed class GameSimulation : IStateHashable
 
     /// <summary>Road vehicles, depots and lines of a game with a map (feature 012); null for map-less scenarios.</summary>
     public RoadVehicleSystem? RoadVehicles { get; }
+
+    /// <summary>Where destination cargo wants to go (feature 013); null without a map.</summary>
+    public DestinationTables? Destinations { get; }
+
+    /// <summary>Routes of destination cargo over every mode's lines (feature 013); null without a map.</summary>
+    public CargoRouter? Router { get; }
 
     /// <summary>All industries of the world; empty when the game was created without a map.</summary>
     public IndustryFleet Industries { get; }
@@ -228,6 +245,7 @@ public sealed class GameSimulation : IStateHashable
         ProcessCommands();
         Vehicles.Tick(parallel);
         RoadVehicles?.Tick(CurrentTick, parallel);
+        Router?.Tick(CurrentTick, parallel);
         CurrentTick++;
 
         if (GameClock.IsDayBoundary(CurrentTick))
@@ -285,6 +303,11 @@ public sealed class GameSimulation : IStateHashable
         if (RoadVehicles is not null)
         {
             hasher.Append(RoadVehicles); // Appends nothing until a depot, line or vehicle exists (feature 012, FR-031).
+        }
+
+        if (Router is not null)
+        {
+            hasher.Append(Router); // Appends nothing until a line carried destination cargo (feature 013, FR-026).
         }
     }
 

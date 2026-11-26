@@ -412,6 +412,8 @@ public sealed partial class StationRegistry
                 }
             }
 
+            // Feature 013: destination cargo follows the old group's lowest surviving station (MigrateDirected).
+            _groupRemap[oldKey[old]] = survivors == 0 ? -1 : _groupKey[firstTarget];
             for (var cargo = 0; cargo < c; cargo++)
             {
                 var o = (old * c) + cargo;
@@ -491,6 +493,8 @@ public sealed partial class StationRegistry
                 }
             }
         }
+
+        MigrateDirected();
     }
 
     private void AppendGroups(StateHasher hasher)

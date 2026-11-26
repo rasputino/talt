@@ -338,6 +338,7 @@ public sealed partial class StationRegistry : IStateHashable, IProductionSink
 
         SupplyFromBuildings(date);
         UpdateRatings(parallel);
+        ExpireDirected();
         if (_settings.DebugServicePercent > 0 && date.DayNumber % Rules.DebugIntervalDays == 0)
         {
             DebugPickups();
@@ -409,6 +410,7 @@ public sealed partial class StationRegistry : IStateHashable, IProductionSink
         hasher.Append(_totalLost);
         hasher.Append(_totalDelivered);
         hasher.Append(_totalDebugCollected);
+        AppendDirected(hasher); // Feature 013: nothing until destination cargo existed.
         if (_removedCentre.Count > 0)
         {
             // Feature 011: only once a station was removed, so earlier station goldens stay valid.

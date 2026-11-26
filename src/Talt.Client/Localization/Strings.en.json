@@ -674,5 +674,22 @@
   "construction.reason.too-many-vehicles": "The company has too many vehicles",
   "lineMode.noStations": "You have no stops yet: build bus stops (G) or truck stops (H) next to roads first",
   "lineMode.added": "Stop {number}: {station}",
-  "lineMode.tooFew": "No line created: click at least one stop before Esc"
+  "lineMode.tooFew": "No line created: click at least one stop before Esc",
+  "vehicle.destinations": "Going to: {list}",
+  "vehicle.destination": "{town} {amount}",
+  "info.town.demand.passengers": "Passengers want to go to:",
+  "info.town.demand.mail": "Mail wants to go to:",
+  "info.town.demand.ownTown": "this town",
+  "info.town.demand.line": "   {town}: {amount} a month, {served} % carried",
+  "info.town.demand.goods": "Goods: wanted from {sources} factories, {moved} sent here last month",
+  "toolbar.demand.tooltip": "Unserved demand: lines between towns whose travellers nobody carries",
+  "action.demandOverlay": "Unserved demand overlay",
+  "info.cargo.expand.tooltip": "Show or hide where they want to go",
+  "info.cargo.destination": "{amount} to {town} (next stop {next})",
+  "info.cargo.destination.noRoute": "{amount} to {town} (no route yet)",
+  "info.cargo.destination.any": "{amount} with no fixed destination",
+  "info.cargo.destination.more": "and {count} more destinations",
+  "info.town.waiting": "{amount} {cargo} waiting at your stations here",
+  "lineMode.stop": "{number}. {station}",
+  "lineMode.noStops": "No stops yet"
 }

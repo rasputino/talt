@@ -523,11 +523,14 @@ public sealed partial class RoadVehicleSystem
                 _finance.CurrentVehicleId = _id[slot];
             }
 
-            var result = _stations.Unload(_targetId[slot], _hold[slot], rule == StopRule.UnloadOnly ? UnloadMode.Transfer : UnloadMode.Normal);
+            var result = _stations.Unload(_targetId[slot], _hold[slot], rule == StopRule.UnloadOnly ? UnloadMode.Transfer : UnloadMode.Normal, NextStopStation(slot));
             if (_finance is not null)
             {
                 _finance.CurrentVehicleId = -1;
-                _profitThisYear[slot] = Money.Add(_profitThisYear[slot], _finance.TotalPaid - paidBefore);
+
+                // Feature 013 (research R12): transfer credits move profit between the legs of a trip, never money.
+                var earned = _finance.TotalPaid - paidBefore - result.CreditDelivered + result.CreditEarned;
+                _profitThisYear[slot] = Money.Add(_profitThisYear[slot], earned);
             }
 
             if (result.Delivered > 0)
@@ -568,7 +571,7 @@ public sealed partial class RoadVehicleSystem
             return;
         }
 
-        var loaded = _stations.Load(_targetId[slot], _cargo[slot], Math.Min(model.LoadPerStep, space), _hold[slot], model.SpeedKmh);
+        var loaded = _stations.Load(_targetId[slot], _cargo[slot], Math.Min(model.LoadPerStep, space), _hold[slot], model.SpeedKmh, NextStopStation(slot));
         if (loaded > 0 || rule == StopRule.FullLoad)
         {
             _loadTimer[slot] = Rules.LoadIntervalTicks;

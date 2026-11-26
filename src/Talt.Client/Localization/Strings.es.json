@@ -674,5 +674,22 @@
   "construction.reason.too-many-vehicles": "La empresa tiene demasiados vehículos",
   "lineMode.noStations": "Aún no tienes paradas: primero construye paradas de autobús (G) o de camión (H) junto a una carretera",
   "lineMode.added": "Parada {number}: {station}",
-  "lineMode.tooFew": "No se ha creado la línea: haz clic al menos en una parada antes de pulsar Esc"
+  "lineMode.tooFew": "No se ha creado la línea: haz clic al menos en una parada antes de pulsar Esc",
+  "vehicle.destinations": "Destinos: {list}",
+  "vehicle.destination": "{town} {amount}",
+  "info.town.demand.passengers": "Los pasajeros quieren ir a:",
+  "info.town.demand.mail": "El correo quiere ir a:",
+  "info.town.demand.ownTown": "esta ciudad",
+  "info.town.demand.line": "   {town}: {amount} al mes, {served} % transportado",
+  "info.town.demand.goods": "Mercancías: la piden {sources} fábricas, {moved} enviadas aquí el mes pasado",
+  "toolbar.demand.tooltip": "Demanda sin servir: líneas entre ciudades cuyos viajeros nadie transporta",
+  "action.demandOverlay": "Capa de demanda sin servir",
+  "info.cargo.expand.tooltip": "Mostrar u ocultar adónde quieren ir",
+  "info.cargo.destination": "{amount} a {town} (próxima parada {next})",
+  "info.cargo.destination.noRoute": "{amount} a {town} (todavía sin ruta)",
+  "info.cargo.destination.any": "{amount} sin destino fijo",
+  "info.cargo.destination.more": "y {count} destinos más",
+  "info.town.waiting": "{amount} {cargo} esperando en tus estaciones de aquí",
+  "lineMode.stop": "{number}. {station}",
+  "lineMode.noStops": "Aún no hay paradas"
 }

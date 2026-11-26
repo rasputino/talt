@@ -91,13 +91,23 @@ internal sealed class StationKit
     /// Finds the first open industry (slot order) that produces a cargo and has a tile where a
     /// truck bay could be built beside a new road, builds that road and the bay, and returns the station id.
     /// </summary>
-    public (int StationId, int IndustryId, int Cargo) ServeIndustry()
+    public (int StationId, int IndustryId, int Cargo) ServeIndustry(string? kind = null, string? cargoId = null)
     {
         var industries = Simulation.Industries;
         var plan = new ConstructionPlan();
         for (var slot = 0; slot < industries.Count; slot++)
         {
             var c = -1;
+            if (kind is not null)
+            {
+                if (industries.KindIdAt(slot) != kind)
+                {
+                    continue;
+                }
+
+                c = Cargo(cargoId!);
+            }
+
             for (var cargo = 0; cargo < Simulation.Content.CargoCount && c < 0; cargo++)
             {
                 if (industries.EffectiveProductionPerMonth(slot, cargo) > 0)
@@ -136,11 +146,11 @@ internal sealed class StationKit
     }
 
     /// <summary>A bus bay beside a town street, returning the station id (first fit in tile order around town 0).</summary>
-    public int ServeTown(int town = 0)
+    public int ServeTown(int town = 0, string piece = "bus-bay")
     {
         var (cx, cz) = Simulation.Towns!.CentreOf(town);
         var plan = new ConstructionPlan();
-        var bus = Stations.Rules.FindPiece("bus-bay");
+        var bus = Stations.Rules.FindPiece(piece);
         for (var r = 1; r < 12; r++)
         {
             for (var z = cz - r; z <= cz + r; z++)
@@ -158,7 +168,7 @@ internal sealed class StationKit
                     }
 
                     StationPlanner.PlanPiece(State, Company.PlayerId, bus, x, z, plan);
-                    if (plan.IsValid && Build("bus-bay", x, z).Succeeded)
+                    if (plan.IsValid && Build(piece, x, z).Succeeded)
                     {
                         return StationAt(x, z);
                     }

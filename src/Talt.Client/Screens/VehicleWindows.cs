@@ -185,6 +185,35 @@ internal static class VehicleWindow
         return window;
     }
 
+    /// <summary>Feature 013 (FR-021): the cargo on board per destination town, largest first.</summary>
+    public static void AppendDestinations(Strings s, GameSession session, CargoHold hold, StringBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(s);
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(hold);
+        ArgumentNullException.ThrowIfNull(builder);
+        var towns = session.Simulation.Towns;
+        var amounts = new SortedDictionary<int, int>();
+        for (var i = 0; i < hold.Count; i++)
+        {
+            if (hold[i].Destination >= 0)
+            {
+                amounts.TryGetValue(hold[i].Destination, out var sum);
+                amounts[hold[i].Destination] = sum + hold[i].Amount;
+            }
+        }
+
+        if (amounts.Count == 0 || towns is null)
+        {
+            return;
+        }
+
+        var parts = amounts.OrderByDescending(p => p.Value).ThenBy(p => p.Key).Take(6)
+            .Select(p => s.Format("vehicle.destination", ("town", (uint)p.Key < (uint)towns.Count ? towns.NameOf(p.Key) : "?"), ("amount", p.Value.ToString("N0", s.Culture))));
+        builder.Append(s.Format("vehicle.destinations", ("list", string.Join(", ", parts))));
+        builder.Append('\n');
+    }
+
     private static void ChangeService(GameSession session, int company, int vehicleId, int delta)
     {
         var vehicles = session.RoadVehicles!;
@@ -212,6 +241,7 @@ internal static class VehicleWindow
         builder.Append(s.Format("vehicle.load", ("cargo", VehicleTexts.CargoName(s, session, vehicles.CargoAt(slot))),
             ("amount", hold.Total.ToString("N0", s.Culture)), ("capacity", model.Capacity.ToString("N0", s.Culture))));
         builder.Append('\n');
+        AppendDestinations(s, session, hold, builder);
         builder.Append(s.Format("vehicle.speed", ("speed", vehicles.SpeedKmhAt(slot).ToString(CultureInfo.InvariantCulture)), ("max", model.SpeedKmh.ToString(CultureInfo.InvariantCulture))));
         builder.Append('\n');
         var years = vehicles.AgeDaysAt(slot) / 365;
