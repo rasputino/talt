@@ -207,6 +207,13 @@ public sealed class ConstructionPlanner
                     continue;
                 }
 
+                if (kind == TileObjectKind.Depot)
+                {
+                    // Depots keep their vehicles and road link through the depot tool (feature 012).
+                    plan.AddProblem(i, ConstructionReasons.UseDepotTool, blocking: false);
+                    continue;
+                }
+
                 if (kind == TileObjectKind.Station)
                 {
                     // Station bays and warehouses keep their cargo and road links through the station tool (feature 010).

@@ -55,17 +55,53 @@ static int Run(HeadlessOptions options)
         simulation.AttachRecorder(recorder);
     }
 
+    if (options.RoadGrid is int spacing && simulation.Construction is { } construction)
+    {
+        // Debug: a full road grid (not a command: recordings of such runs do not replay).
+        construction.SeedDebugGrid(spacing);
+    }
+
     // Feature 010: debug stations as ordinary commands, processed at the first tick (recorded and replayed).
     foreach (var command in Talt.Core.Stations.StationSeeder.Plan(simulation, options.SeedStations))
     {
         simulation.Submit(command);
     }
 
+    // Feature 012: debug vehicles (stations, depots, lines, purchases) as ordinary commands.
+    var seeded = Talt.Core.Vehicles.VehicleSeeder.Plan(simulation, options.SeedVehicles);
+    foreach (var command in seeded)
+    {
+        simulation.Submit(command);
+    }
+
+    if (seeded.Count > 0)
+    {
+        setup = stopwatch.Elapsed;
+    }
+
     stopwatch.Restart();
     var ticks = options.Ticks!.Value;
+    var halfStart = 0L;
+    var secondHalfMs = -1.0;
     for (long t = 0; t < ticks; t++)
     {
+        if (t == ticks / 2 && simulation.RoadVehicles is { Count: > 0 })
+        {
+            halfStart = Stopwatch.GetTimestamp();
+        }
+
         simulation.Tick(!options.Sequential);
+        if (t == ticks - 1 && halfStart > 0)
+        {
+            secondHalfMs = (Stopwatch.GetTimestamp() - halfStart) * 1000.0 / Stopwatch.Frequency / (ticks - (ticks / 2));
+        }
+
+        if (options.CheckOverlaps && simulation.RoadVehicles?.CheckInvariants() is { } problem)
+        {
+            Console.Error.WriteLine($"Vehicle check failed at tick {simulation.CurrentTick}: {problem}");
+            return 1;
+        }
+
         if (recorder is not null && (simulation.CurrentTick % 1000 == 0 || simulation.CurrentTick == ticks))
         {
             recorder.AddCheckpoint(simulation);
@@ -79,6 +115,12 @@ static int Run(HeadlessOptions options)
     }
 
     PrintSummary(simulation, setup, simulate, ticks);
+    if (secondHalfMs >= 0)
+    {
+        // Feature 012: the steady-state tick once seeded vehicles have left their depots.
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"second-half-avg-tick-ms: {secondHalfMs:F3}"));
+    }
+
     return 0;
 }
 
@@ -150,6 +192,19 @@ static void PrintSummary(GameSimulation simulation, TimeSpan setup, TimeSpan sim
         {
             Console.WriteLine($"  station {id}: {waiting} waiting");
         }
+    }
+
+    if (simulation.RoadVehicles is { } roadVehicles && roadVehicles.EverUsed)
+    {
+        // Feature 012: vehicle summary (contracts/cli.md).
+        Console.WriteLine($"road-vehicles: {roadVehicles.Count}");
+        Console.WriteLine($"lines: {roadVehicles.Lines.Count}");
+        Console.WriteLine($"depots: {roadVehicles.Depots.Count}");
+        Console.WriteLine($"vehicle-deliveries: {roadVehicles.Deliveries}");
+        Console.WriteLine($"vehicle-tiles: {roadVehicles.TotalDistance / 65_536}");
+        Console.WriteLine($"route-searches: {roadVehicles.RouteSearches}");
+        var states = Enumerable.Range(0, roadVehicles.Count).GroupBy(roadVehicles.StatusAt).OrderBy(g => g.Key);
+        Console.WriteLine("vehicle-states: " + string.Join(", ", states.Select(g => $"{g.Key} {g.Count()}")));
     }
 
     if (simulation.Finance is { } finance)

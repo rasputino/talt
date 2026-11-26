@@ -109,6 +109,18 @@ public sealed class ConstructionState : IStateHashable
     /// <summary>Lets road planning protect station roads and planners find stations (feature 010).</summary>
     public void AttachStations(Stations.StationRegistry stations) => Stations = stations ?? throw new ArgumentNullException(nameof(stations));
 
+    /// <summary>The road depots of the game (feature 012); null in tests that build a bare state.</summary>
+    public Vehicles.DepotRegistry? Depots { get; private set; }
+
+    /// <summary>Lets road planning protect depot entrances (feature 012).</summary>
+    public void AttachDepots(Vehicles.DepotRegistry depots) => Depots = depots ?? throw new ArgumentNullException(nameof(depots));
+
+    /// <summary>
+    /// Where road vehicles stand (feature 012, research R12): plans that change road links, station pieces or depots
+    /// under a vehicle are refused. Null when the game has no vehicles system.
+    /// </summary>
+    public Vehicles.IVehicleOccupancy? Occupancy { get; set; }
+
     /// <summary>Lets road planning avoid industry footprints (feature 009).</summary>
     public void AttachIndustries(IndustryFleet industries) => Industries = industries ?? throw new ArgumentNullException(nameof(industries));
 

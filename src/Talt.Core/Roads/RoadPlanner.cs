@@ -198,6 +198,11 @@ public sealed partial class RoadPlanner
                 // Feature 010: the road under a drive-through stop and the link into a bay stay while the station stands.
                 plan.AddProblem(tile, ConstructionReasons.StationRoad);
             }
+            else if (oldPiece != _piece[slot] && (_state.Depots?.RoadChangeBlocked(_state, tile, _piece[slot]) ?? false))
+            {
+                // Feature 012: the link into a depot stays while the depot stands.
+                plan.AddProblem(tile, ConstructionReasons.DepotRoad);
+            }
 
             var height = (byte)Height(tile);
             plan.AddChange(new TileChange(tile, height, height, oldScenery, _scenery[slot], oldKind, _kind[slot], oldOwner, _owner[slot],

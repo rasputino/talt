@@ -30,6 +30,20 @@ public static class CommandSerializer
         [Stations.RenameStationCommand.Type] = Stations.RenameStationCommand.Read,
         [Finance.ChangeLoanCommand.Type] = Finance.ChangeLoanCommand.Read,
         [Finance.EnableInfiniteMoneyCommand.Type] = Finance.EnableInfiniteMoneyCommand.Read,
+        [Vehicles.BuildDepotCommand.Type] = Vehicles.BuildDepotCommand.Read,
+        [Vehicles.RemoveDepotCommand.Type] = Vehicles.RemoveDepotCommand.Read,
+        [Vehicles.BuyVehicleCommand.Type] = Vehicles.BuyVehicleCommand.Read,
+        [Vehicles.SellVehicleCommand.Type] = Vehicles.SellVehicleCommand.Read,
+        [Vehicles.CloneVehicleCommand.Type] = Vehicles.CloneVehicleCommand.Read,
+        [Vehicles.StartVehicleCommand.Type] = Vehicles.StartVehicleCommand.Read,
+        [Vehicles.SendToDepotCommand.Type] = Vehicles.SendToDepotCommand.Read,
+        [Vehicles.SetVehicleCargoCommand.Type] = Vehicles.SetVehicleCargoCommand.Read,
+        [Vehicles.SetServiceIntervalCommand.Type] = Vehicles.SetServiceIntervalCommand.Read,
+        [Vehicles.CreateLineCommand.Type] = Vehicles.CreateLineCommand.Read,
+        [Vehicles.DeleteLineCommand.Type] = Vehicles.DeleteLineCommand.Read,
+        [Vehicles.RenameLineCommand.Type] = Vehicles.RenameLineCommand.Read,
+        [Vehicles.EditLineStopsCommand.Type] = Vehicles.EditLineStopsCommand.Read,
+        [Vehicles.AssignLineCommand.Type] = Vehicles.AssignLineCommand.Read,
     };
 
     private static readonly Lock Gate = new();

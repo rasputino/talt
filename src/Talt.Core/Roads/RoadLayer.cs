@@ -22,6 +22,7 @@ public sealed class RoadLayer : IStateHashable
     private readonly byte[] _spans;
     private readonly byte[] _longDirs;
     private readonly List<int> _changed = [];
+    private readonly int[] _delta = new int[8];
 
     public RoadLayer(int width, int depth)
     {
@@ -36,6 +37,10 @@ public sealed class RoadLayer : IStateHashable
         _flags = new byte[size];
         _spans = new byte[size];
         _longDirs = new byte[size];
+        for (var d = 0; d < 8; d++)
+        {
+            _delta[d] = Dir8.OffsetX(d) + (Dir8.OffsetZ(d) * width);
+        }
     }
 
     public int Width { get; }
@@ -80,6 +85,13 @@ public sealed class RoadLayer : IStateHashable
         var z = (tile / Width) + (Dir8.OffsetZ(direction) * steps);
         return Contains(x, z) ? Index(x, z) : -1;
     }
+
+    /// <summary>
+    /// <see cref="Follow"/> for a direction the tile has a link in (feature 012's hot path): links never leave the map, so
+    /// a short link is one array offset away, without dividing by the width.
+    /// </summary>
+    public int FollowLink(int tile, int direction) =>
+        _longDirs[tile] == direction + 1 ? Follow(tile, direction) : tile + _delta[direction];
 
     /// <summary>Length in units of the link in <paramref name="direction"/> from <paramref name="tile"/>.</summary>
     public int LinkLength(int tile, int direction) =>

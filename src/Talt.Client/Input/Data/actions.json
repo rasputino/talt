@@ -41,6 +41,9 @@
     { "id": "toolWarehouse", "label": "action.toolWarehouse", "category": "tools", "kind": "press", "keys": ["K"] },
     { "id": "toolRemoveStation", "label": "action.toolRemoveStation", "category": "tools", "kind": "press", "keys": ["Shift+H"] },
     { "id": "warehouseSize", "label": "action.warehouseSize", "category": "tools", "kind": "press", "keys": ["Shift+K"] },
+    { "id": "toolDepot", "label": "action.toolDepot", "category": "tools", "kind": "press", "keys": ["J"] },
+    { "id": "toolRemoveDepot", "label": "action.toolRemoveDepot", "category": "tools", "kind": "press", "keys": ["Shift+J"] },
+    { "id": "lines", "label": "action.lines", "category": "game", "kind": "press", "keys": ["F4"] },
     { "id": "statistics", "label": "action.statistics", "category": "debug", "kind": "press", "keys": ["F3"] }
   ]
 }

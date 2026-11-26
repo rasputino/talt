@@ -77,6 +77,20 @@ public sealed class RunningCosts : IStateHashable
         ActiveCount--;
     }
 
+    /// <summary>Changes the value of a registration (vehicles lose value with age, feature 012).</summary>
+    public void SetValue(int handle, long value)
+    {
+        if ((uint)handle >= (uint)_count || !_active[handle])
+        {
+            throw new ArgumentOutOfRangeException(nameof(handle), handle, "No running cost is registered with this handle.");
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(value);
+        var company = _company[handle];
+        _valueByCompany[company] = Money.Add(_valueByCompany[company], value - _value[handle]);
+        _value[handle] = value;
+    }
+
     /// <summary>Sum of the yearly costs of a company's registrations (before inflation).</summary>
     public long YearlyTotal(int companyId) => (uint)companyId < (uint)_yearlyByCompany.Length ? _yearlyByCompany[companyId] : 0;
 

@@ -10,6 +10,7 @@ using Talt.Core.Roads;
 using Talt.Core.Scenarios;
 using Talt.Core.Stations;
 using Talt.Core.Towns;
+using Talt.Core.Vehicles;
 
 namespace Talt.Core.Simulation;
 
@@ -75,6 +76,9 @@ public sealed class GameSimulation : IStateHashable
                 ? FinanceRules.Default
                 : FinanceRules.FromJson(FinanceRules.ReadResource(), content, construction.RoadRules, Stations.Rules);
             Finance = new FinanceSystem(construction, Stations, content, financeRules, settings.EffectiveFinance, Date);
+            // Feature 012: road vehicles, depots and lines (nothing is hashed until one exists).
+            var vehicleRules = ReferenceEquals(content, GameContent.Default) ? VehicleRules.Default : VehicleRules.FromJson(VehicleRules.ReadResource(), content);
+            RoadVehicles = new RoadVehicleSystem(construction, Stations, Finance, content, vehicleRules, Random.Fork(0x52_56).NextUInt64());
         }
 
         // Stations refresh their coverage before industries produce (industries hand them their share), then
@@ -97,12 +101,24 @@ public sealed class GameSimulation : IStateHashable
             Events.OnMonthEnded(simulation => simulation.Stations!.AdvanceMonth(simulation.Date));
         }
 
+        if (RoadVehicles is not null)
+        {
+            // Vehicle values and depot maintenance before finance's month end (company value, ledger rotation).
+            Events.OnMonthEnded(simulation => simulation.RoadVehicles!.AdvanceMonth(simulation.Date));
+        }
+
         if (Finance is not null)
         {
             // After the stations, so a day's deliveries and debug pickups are paid before its costs (research R9).
             Events.OnDayEnded(simulation => simulation.Finance!.AdvanceDay(simulation.Date));
             Events.OnMonthEnded(simulation => simulation.Finance!.AdvanceMonth(simulation.Date));
             Events.OnYearEnded(simulation => simulation.Finance!.AdvanceYear(simulation.Date));
+        }
+
+        if (RoadVehicles is not null)
+        {
+            Events.OnDayEnded(simulation => simulation.RoadVehicles!.AdvanceDay(simulation.Date));
+            Events.OnYearEnded(simulation => simulation.RoadVehicles!.AdvanceYear(simulation.Date));
         }
     }
 
@@ -126,6 +142,9 @@ public sealed class GameSimulation : IStateHashable
 
     /// <summary>The company accounts of a game with a map (feature 011); null for map-less scenarios.</summary>
     public FinanceSystem? Finance { get; }
+
+    /// <summary>Road vehicles, depots and lines of a game with a map (feature 012); null for map-less scenarios.</summary>
+    public RoadVehicleSystem? RoadVehicles { get; }
 
     /// <summary>All industries of the world; empty when the game was created without a map.</summary>
     public IndustryFleet Industries { get; }
@@ -208,6 +227,7 @@ public sealed class GameSimulation : IStateHashable
         _parallelTick = parallel;
         ProcessCommands();
         Vehicles.Tick(parallel);
+        RoadVehicles?.Tick(CurrentTick, parallel);
         CurrentTick++;
 
         if (GameClock.IsDayBoundary(CurrentTick))
@@ -260,6 +280,11 @@ public sealed class GameSimulation : IStateHashable
         if (Finance is not null)
         {
             hasher.Append(Finance); // Appends nothing until the first booking (feature 011, research R11).
+        }
+
+        if (RoadVehicles is not null)
+        {
+            hasher.Append(RoadVehicles); // Appends nothing until a depot, line or vehicle exists (feature 012, FR-031).
         }
     }
 

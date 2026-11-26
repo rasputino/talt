@@ -759,6 +759,69 @@
         "................"
       ]
     },
+    "depot": {
+      "palette": {"w": "#7D6B5A", "r": "#3F5A73", "d": "#2B2F36", "y": "#D8A32B"},
+      "rows": [
+        "................",
+        "................",
+        "...rrrrrrrrrr...",
+        "..rrrrrrrrrrrr..",
+        ".rrrrrrrrrrrrrr.",
+        ".wwwwwwwwwwwwww.",
+        ".ww..........ww.",
+        ".ww.yyyyyyyy.ww.",
+        ".ww.yyyyyyyy.ww.",
+        ".ww.yyyyyyyy.ww.",
+        ".ww.ddyyyydd.ww.",
+        ".ww.dd....dd.ww.",
+        ".ww..........ww.",
+        "dddddddddddddddd",
+        "................",
+        "................"
+      ]
+    },
+    "removeDepot": {
+      "palette": {"w": "#7D6B5A", "r": "#3F5A73", "x": "#D9483B"},
+      "rows": [
+        "................",
+        "...rrrrrrrrrr...",
+        "..rrrrrrrrrrrr..",
+        ".wwwwwwwwwwwwww.",
+        ".ww..........ww.",
+        ".ww.x......x.ww.",
+        ".ww..x....x..ww.",
+        ".ww...x..x...ww.",
+        ".ww....xx....ww.",
+        ".ww....xx....ww.",
+        ".ww...x..x...ww.",
+        ".ww..x....x..ww.",
+        ".ww.x......x.ww.",
+        "................",
+        "................",
+        "................"
+      ]
+    },
+    "lines": {
+      "palette": {"b": "#2E77C8", "o": "#C7782E", "w": "#DCE9F7", "k": "#2B2F36"},
+      "rows": [
+        "................",
+        "..www......www..",
+        ".wkkkw....wkkkw.",
+        ".wkbkwbbbbwkbkw.",
+        ".wkkkw....wkkkw.",
+        "..www......www..",
+        "...b........o...",
+        "...b........o...",
+        "...b........o...",
+        "...b........o...",
+        "..www......www..",
+        ".wkkkw....wkkkw.",
+        ".wkokwoooowkokw.",
+        ".wkkkw....wkkkw.",
+        "..www......www..",
+        "................"
+      ]
+    },
     "removeStation": {
       "palette": {"p": "#9AA3AC", "b": "#2E77C8", "x": "#D9483B"},
       "rows": [

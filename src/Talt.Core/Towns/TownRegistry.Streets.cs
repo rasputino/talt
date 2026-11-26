@@ -165,7 +165,7 @@ public sealed partial class TownRegistry
         && !_state.RoadRules.IsMotorway(piece.TypeIndex);
 
     /// <summary>Station pieces (feature 010): towns never extend or join their streets through them.</summary>
-    private bool IsStation(int tile) => _state.Stations?.HasPiece(tile) ?? false;
+    private bool IsStation(int tile) => (_state.Stations?.HasPiece(tile) ?? false) || (_state.Depots?.HasDepot(tile) ?? false);
 
     /// <summary>A tile a new street piece may use: land, nothing on it, nothing passing, no industry.</summary>
     private bool StreetTileFree(int tile)

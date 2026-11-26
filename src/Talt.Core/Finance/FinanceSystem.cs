@@ -95,6 +95,12 @@ public sealed class FinanceSystem : IStateHashable, IDeliveryListener
     /// <summary>Events for the client's floating texts and messages; not state.</summary>
     public MoneyEventFeed Events { get; } = new();
 
+    /// <summary>
+    /// The road vehicle unloading right now (feature 012), written into income events for the client; −1 otherwise.
+    /// Not state.
+    /// </summary>
+    public int CurrentVehicleId { get; set; } = -1;
+
     /// <summary>Money paid for deliveries since the start.</summary>
     public long TotalPaid { get; private set; }
 
@@ -191,7 +197,7 @@ public sealed class FinanceSystem : IStateHashable, IDeliveryListener
         TotalPaid = Money.Add(TotalPaid, quote.Amount);
         Deliveries++;
         _active = true;
-        Events.Add(new MoneyEvent(company.Id, quote.Amount, x, z, MoneyEventKind.Income));
+        Events.Add(new MoneyEvent(company.Id, quote.Amount, x, z, MoneyEventKind.Income, CurrentVehicleId));
         return quote.Amount;
     }
 

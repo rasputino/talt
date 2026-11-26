@@ -23,6 +23,21 @@ public class FontAtlasTests
         }
     }
 
+    [Theory]
+    [InlineData("en")]
+    [InlineData("es")]
+    public void EveryLocalizedText_HasItsGlyphs(string language)
+    {
+        // Hand test of feature 012: "−30 days" showed as "?30" because U+2212 has no glyph in the bundled font.
+        foreach (var (key, value) in Talt.Client.Localization.Strings.LoadTable(language))
+        {
+            foreach (var c in value)
+            {
+                Assert.True(c == (char)10 || UiTestKit.Font.Contains(c), $"{language} '{key}': no glyph for U+{(int)c:X4} '{c}'");
+            }
+        }
+    }
+
     [Fact]
     public void Measure_GrowsWithTextAndSize()
     {

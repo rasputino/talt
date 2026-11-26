@@ -28,6 +28,8 @@
     <EmbeddedResource Include="Stations\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Stations.Data.%(Filename)%(Extension)" />
     <!-- Finance balancing (feature 011, contracts/data-files.md). -->
     <EmbeddedResource Include="Finance\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Finance.Data.%(Filename)%(Extension)" />
+    <!-- Road vehicle models, physics and balancing (feature 012, contracts/data-files.md). -->
+    <EmbeddedResource Include="Vehicles\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Vehicles.Data.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>
