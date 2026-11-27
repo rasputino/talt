@@ -15,7 +15,7 @@ internal sealed class Theme
     [
         "panel", "panelBorder", "titleBar", "text", "textMuted", "accent", "button", "buttonHover",
         "buttonPressed", "buttonDisabled", "buttonSelected", "tooltip", "overlay", "input",
-        "highlightHover", "highlightSelection", "background",
+        "highlightHover", "highlightSelection", "background", "positive", "negative", "warning",
     ];
 
     public required UiColor Panel { get; init; }
@@ -56,6 +56,9 @@ internal sealed class Theme
 
     /// <summary>Expenses and negative cash (feature 011).</summary>
     public required UiColor Negative { get; init; }
+
+    /// <summary>Middle of the rating colour ramp in the info windows (between negative and positive).</summary>
+    public required UiColor Warning { get; init; }
 
     public required float CornerRadius { get; init; }
     public required float BorderWidth { get; init; }
@@ -123,6 +126,7 @@ internal sealed class Theme
             Background = C("background"),
             Positive = C("positive"),
             Negative = C("negative"),
+            Warning = C("warning"),
             CornerRadius = data.CornerRadius,
             BorderWidth = data.BorderWidth,
             Spacing = data.Spacing,

@@ -787,6 +787,11 @@ internal static class SampleWindows
             [new DropdownChoice(TextRef.Of("sample.choice", ("n", "1")), 1), new DropdownChoice(TextRef.Of("sample.choice", ("n", "2")), 2)],
             () => state.Choice, i => state.Choice = i));
         first.Add(new Button(TextRef.Of("sample.button"), () => state.Clicks++, "info") { Tooltip = TextRef.Of("sample.button.tooltip") });
+        var gauges = first.Add(new StackPanel(Orientation.Horizontal) { Spacing = 6 });
+        gauges.Add(new CargoBadge("passengers", UiColor.Parse("#2E77C8")));
+        gauges.Add(new Meter(() => state.Value / 100f) { Width = 100 });
+        first.Add(new SegmentBar(() => 100, () => 3, i => (20, MeterColors.Shade(UiColor.Parse("#2E77C8"), i))));
+        first.Add(new StopStrip(() => 4, () => 0, markers => markers.AddRange([0.5f, 2f, 3.5f])));
         var list = new ListView(90);
         for (var i = 1; i <= 6; i++)
         {

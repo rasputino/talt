@@ -1157,6 +1157,280 @@
         "................",
         "................"
       ]
+    },
+    // Cargo icons (graphical info windows): drawn on a tile tinted with the cargo's cargo.json colour.
+    "cargo.passengers": {
+      "palette": { "s": "#F2C9A0", "b": "#D6E6F7" },
+      "rows": [
+        "................",
+        "......ssss......",
+        ".....ssssss.....",
+        ".....ssssss.....",
+        ".....ssssss.....",
+        "......ssss......",
+        "................",
+        "....bbbbbbbb....",
+        "...bbbbbbbbbb...",
+        "...bbbbbbbbbb...",
+        "...bb.bbbb.bb...",
+        "...bb.bbbb.bb...",
+        "...bb.bbbb.bb...",
+        "......bbbb......",
+        "......b..b......",
+        "................"
+      ]
+    },
+    "cargo.mail": {
+      "palette": { "w": "#F4EEC8", "k": "#8A7A3A" },
+      "rows": [
+        "................",
+        "................",
+        "................",
+        ".kkkkkkkkkkkkkk.",
+        ".kkwwwwwwwwwwkk.",
+        ".kwkwwwwwwwwkwk.",
+        ".kwwkwwwwwwkwwk.",
+        ".kwwwkwwwwkwwwk.",
+        ".kwwwwkwwkwwwwk.",
+        ".kwwwwwkkwwwwwk.",
+        ".kwwwwwwwwwwwwk.",
+        ".kwwwwwwwwwwwwk.",
+        ".kkkkkkkkkkkkkk.",
+        "................",
+        "................",
+        "................"
+      ]
+    },
+    "cargo.coal": {
+      "palette": { "k": "#141414", "g": "#7A7A7A" },
+      "rows": [
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        "......kkk.......",
+        ".....kkgkk......",
+        "....kkkkkkk.....",
+        "...kkgkkkkgkk...",
+        "..kkkkkkkkkkkk..",
+        ".kkgkkkkgkkkkgk.",
+        ".kkkkkkkkkkkkkk.",
+        "................",
+        "................",
+        "................"
+      ]
+    },
+    "cargo.wood": {
+      "palette": { "b": "#5A3A1E", "l": "#D9B07A", "r": "#A87A48" },
+      "rows": [
+        "................",
+        "................",
+        "................",
+        "....bbb..bbb....",
+        "...blllbblllb...",
+        "...blrlbblrlb...",
+        "...blllbblllb...",
+        "....bbb..bbb....",
+        "..bbb..bbb..bbb.",
+        ".blllbblllbblllb",
+        ".blrlbblrlbblrlb",
+        ".blllbblllbblllb",
+        "..bbb..bbb..bbb.",
+        "................",
+        "................",
+        "................"
+      ]
+    },
+    "cargo.iron-ore": {
+      "palette": { "r": "#8C4A35", "o": "#D08A68", "g": "#4A4A4A" },
+      "rows": [
+        "................",
+        "................",
+        "................",
+        "................",
+        "................",
+        ".......ggg......",
+        "......gorrg.....",
+        ".....grrrorg....",
+        "...ggrrrrrrrg...",
+        "..gorrrggrrorg..",
+        ".grrrrgoorrrrrg.",
+        ".grrorrrrrrorrg.",
+        ".gggggggggggggg.",
+        "................",
+        "................",
+        "................"
+      ]
+    },
+    "cargo.grain": {
+      "palette": { "y": "#F0CC60", "s": "#7FA040" },
+      "rows": [
+        "................",
+        ".......y........",
+        "......yyy.......",
+        ".....yy.yy......",
+        "......yyy.......",
+        ".....yy.yy......",
+        "......yyy.......",
+        ".....yy.yy......",
+        "......yyy.......",
+        ".......s........",
+        ".......s........",
+        ".......s........",
+        ".......s........",
+        "......sss.......",
+        "................",
+        "................"
+      ]
+    },
+    "cargo.livestock": {
+      "palette": { "w": "#F1F1EC", "k": "#2B2B2B", "p": "#E8A0A0" },
+      "rows": [
+        "................",
+        "................",
+        "................",
+        "................",
+        ".k.k............",
+        ".kkkkwwwwwwwwww.",
+        "kkwkwwkkwwwwwwk.",
+        "kkkkwwkkkwwwkkww",
+        ".pp.wwwwwwkkkww.",
+        "....wwkwwwwwwww.",
+        "....wwwwwwwwwww.",
+        "....k.k....k.k..",
+        "....k.k....k.k..",
+        "....k.k....k.k..",
+        "................",
+        "................"
+      ]
+    },
+    "cargo.oil": {
+      "palette": { "k": "#0B0D0F", "g": "#454D55", "h": "#A0A9B2" },
+      "rows": [
+        "................",
+        "................",
+        "....kkkkkkkk....",
+        "...kgggggghgk...",
+        "...kgggggghgk...",
+        "...kkkkkkkkkk...",
+        "...kgggggghgk...",
+        "...kgggggghgk...",
+        "...kgggggghgk...",
+        "...kkkkkkkkkk...",
+        "...kgggggghgk...",
+        "...kgggggghgk...",
+        "....kkkkkkkk....",
+        "................",
+        "................",
+        "................"
+      ]
+    },
+    "cargo.steel": {
+      "palette": { "s": "#C8D0D8", "d": "#6E7780" },
+      "rows": [
+        "................",
+        "................",
+        "..ssssssssssss..",
+        "..dddddddddddd..",
+        "......ssdd......",
+        "......ssdd......",
+        "......ssdd......",
+        "......ssdd......",
+        "......ssdd......",
+        "......ssdd......",
+        "..ssssssssssss..",
+        "..dddddddddddd..",
+        "................",
+        "................",
+        "................",
+        "................"
+      ]
+    },
+    "cargo.lumber": {
+      "palette": { "l": "#E0BA86", "d": "#7A5530" },
+      "rows": [
+        "................",
+        "................",
+        "................",
+        ".llllllllllllll.",
+        ".dddddddddddddd.",
+        "..llllllllllllll",
+        "..dddddddddddddd",
+        ".llllllllllllll.",
+        ".dddddddddddddd.",
+        "..llllllllllllll",
+        "..dddddddddddddd",
+        ".llllllllllllll.",
+        ".dddddddddddddd.",
+        "................",
+        "................",
+        "................"
+      ]
+    },
+    "cargo.fuel": {
+      "palette": { "o": "#E8873A", "h": "#F8D0A0", "k": "#5A2A0A" },
+      "rows": [
+        "................",
+        ".......kk.......",
+        "......kook......",
+        "......kook......",
+        ".....kooook.....",
+        ".....kohook.....",
+        "....kohooook....",
+        "...kohoooooook..",
+        "...kohoooooook..",
+        "...koooooooook..",
+        "...koooooooook..",
+        "....koooooook...",
+        ".....kkkkkkk....",
+        "................",
+        "................",
+        "................"
+      ]
+    },
+    "cargo.food": {
+      "palette": { "r": "#D0402E", "h": "#F49080", "g": "#6FC05F", "b": "#6A3A1A" },
+      "rows": [
+        "................",
+        ".......b........",
+        ".......bgg......",
+        "........gg......",
+        "....rrr..rrr....",
+        "...rrhrrrrrrr...",
+        "..rrhhrrrrrrrr..",
+        "..rrhrrrrrrrrr..",
+        "..rrrrrrrrrrrr..",
+        "..rrrrrrrrrrrr..",
+        "...rrrrrrrrrr...",
+        "....rrrrrrrr....",
+        ".....rrr.rrr....",
+        "................",
+        "................",
+        "................"
+      ]
+    },
+    "cargo.goods": {
+      "palette": { "w": "#E2B0DA", "d": "#6A2A60", "t": "#F0E2A8" },
+      "rows": [
+        "................",
+        "................",
+        "..dddddddddddd..",
+        "..dwwwwttwwwwd..",
+        "..dwwwwttwwwwd..",
+        "..dwwwwttwwwwd..",
+        "..dttttttttttd..",
+        "..dwwwwttwwwwd..",
+        "..dwwwwttwwwwd..",
+        "..dwwwwttwwwwd..",
+        "..dwwwwttwwwwd..",
+        "..dddddddddddd..",
+        "................",
+        "................",
+        "................",
+        "................"
+      ]
     }
   }
 }

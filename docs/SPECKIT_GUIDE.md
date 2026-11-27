@@ -1201,6 +1201,10 @@ Statistics collected in the simulation at monthly/yearly events into compact rin
 lists virtualized; graphs drawn with the UI layer. Interval keeping: vehicles adjust dwell time at
 the first stop to approach the target headway. Overlays rendered as separate passes. Tests:
 statistics aggregation, headway control. Benchmark: statistics collection cost.
+Also keep the last 12 months per station (per cargo: waiting, picked up, delivered, rating) and per
+town (passengers and mail generated and transported, rating) and draw them as small month charts
+(the existing BarChart widget) in the station and town windows, next to the gauges added by the
+graphical info windows work.
 ```
 
 ---
