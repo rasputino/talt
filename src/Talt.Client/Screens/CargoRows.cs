@@ -19,7 +19,13 @@ internal static class CargoRows
     /// <summary>Most destination lines shown when expanded.</summary>
     public const int MaxDestinationLines = 12;
 
-    /// <summary>Adds one row per cargo of a station's group: its figures and, for destination cargo, the breakdown.</summary>
+    /// <summary>Width of a row's text column, in logical pixels.</summary>
+    private const float NameWidth = 104;
+
+    /// <summary>
+    /// Adds one row per cargo of a station's group: badge, name, rating gauge and value, then the waiting amount and
+    /// last month's figures in small text, and for destination cargo the + / − breakdown.
+    /// </summary>
     public static void AddStation(StackPanel content, StationRegistry stations, TownRegistry? towns, int stationId, Func<long> version)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -28,10 +34,23 @@ internal static class CargoRows
         for (var c = 0; c < stations.Content.CargoCount; c++)
         {
             var cargo = c;
-            AddRow(content, view, cargo, version,
+            var row = AddRow(content, view, cargo, version,
                 () => view.Refresh().HasLine(cargo),
-                s => StationLine(s, stations, view, cargo),
+                s => StationDetails(s, view, cargo),
                 s => Breakdown(s, stations, towns, view, cargo));
+            row.Add(InfoRows.Badge(stations.Content, cargo)).Tooltip = TextRef.Of(stations.Content.Cargo(cargo).NameKey);
+            row.Add(new Label(TextRef.Of(stations.Content.Cargo(cargo).NameKey)) { Width = NameWidth });
+            row.Add(new Meter(() => view.Refresh().LineOf(cargo) is { } line ? line.Rating / 1000f : 0f)
+            {
+                Tooltip = TextRef.Of("info.station.rating.tooltip"),
+                VisibleWhen = () => view.Refresh().LineOf(cargo) is { Served: true },
+            });
+            row.Add(new Label(TextRef.Dynamic(version, s => view.Refresh().LineOf(cargo) is not { } line ? string.Empty
+                : line.Served ? InfoRows.Percent(s, line.Rating) : s.Get("info.station.cargo.notServed")))
+            {
+                MinWidth = 60,
+                ColorOf = () => view.Refresh().LineOf(cargo) is { Served: true } ? TextColor.Normal : TextColor.Muted,
+            });
         }
     }
 
@@ -55,18 +74,26 @@ internal static class CargoRows
             }
 
             var cargo = rule.CargoIndex;
-            AddRow(content, view, cargo, version,
-                () => view.Refresh().Waiting(cargo) > 0,
-                s => s.Format("info.town.waiting", ("amount", view.Waiting(cargo).ToString("N0", s.Culture)), ("cargo", s.Get(stations.Content.Cargo(cargo).NameKey))),
-                s => Breakdown(s, stations, towns, view, cargo));
+            var row = AddRow(content, view, cargo, version, () => view.Refresh().Waiting(cargo) > 0, null, s => Breakdown(s, stations, towns, view, cargo));
+            row.Add(InfoRows.Badge(stations.Content, cargo)).Tooltip = TextRef.Of(stations.Content.Cargo(cargo).NameKey);
+            row.Add(new Label(TextRef.Dynamic(version, s => s.Format("info.town.waiting", ("amount", view.Refresh().Waiting(cargo).ToString("N0", s.Culture)),
+                ("cargo", s.Get(stations.Content.Cargo(cargo).NameKey)))))
+            {
+                Wrap = true,
+                Width = 320,
+            });
         }
     }
 
-    private static void AddRow(StackPanel content, WaitingView view, int cargo, Func<long> version, Func<bool> visible, Func<Strings, string> summary, Func<Strings, string> details)
+    /// <summary>
+    /// A collapsible block: a header row starting with the + / − button (callers append the rest), an optional small
+    /// detail line and the breakdown shown while expanded. Returns the header row.
+    /// </summary>
+    private static StackPanel AddRow(StackPanel content, WaitingView view, int cargo, Func<long> version, Func<bool> visible, Func<Strings, string>? summary, Func<Strings, string> details)
     {
         var expanded = false;
-        var block = content.Add(new StackPanel(Orientation.Vertical) { Spacing = 0, VisibleWhen = visible });
-        var row = block.Add(new StackPanel(Orientation.Horizontal) { Spacing = 4 });
+        var block = content.Add(new StackPanel(Orientation.Vertical) { Spacing = 1, VisibleWhen = visible });
+        var row = block.Add(new StackPanel(Orientation.Horizontal) { Spacing = 6 });
         row.Add(new Button(TextRef.Dynamic(() => expanded ? 1 : 0, _ => expanded ? "−" : "+"), () => expanded = !expanded)
         {
             Style = ButtonStyle.Flat,
@@ -75,39 +102,46 @@ internal static class CargoRows
             VisibleWhen = () => view.Refresh().HasBreakdown(cargo),
         });
         row.Add(new Spacer { MinWidth = 24, VisibleWhen = () => !view.Refresh().HasBreakdown(cargo) });
-        row.Add(new Label(TextRef.Dynamic(version, summary)) { Wrap = true, Width = 350, Margin = new Thickness(0, 4, 0, 0) });
+        if (summary is not null)
+        {
+            block.Add(new Label(TextRef.Dynamic(version, summary), TextSize.Small)
+            {
+                Wrap = true,
+                Width = 330,
+                Margin = new Thickness(DetailIndent, 0, 0, 0),
+                Color = TextColor.Muted,
+            });
+        }
+
         block.Add(new Label(TextRef.Dynamic(() => version() ^ (expanded ? 1L << 62 : 0), details))
         {
             Wrap = true,
-            Width = 340,
-            Margin = new Thickness(28, 0, 0, 4),
-            Color = TextColor.Muted,
+            Width = 330,
+            Margin = new Thickness(DetailIndent, 2, 0, 4),
             VisibleWhen = () => expanded && view.Refresh().HasBreakdown(cargo),
         });
+        return row;
     }
 
-    /// <summary>The station window's line for one cargo: waiting, rating and last month's figures.</summary>
-    public static string StationLine(Strings s, StationRegistry stations, WaitingView view, int cargo)
+    /// <summary>Indent of the lines under a cargo's header row (past the + / − button and the badge).</summary>
+    private const float DetailIndent = 58;
+
+    /// <summary>The small line under a station's cargo row: waiting, received / accepted and last month's figures.</summary>
+    public static string StationDetails(Strings s, WaitingView view, int cargo)
     {
         ArgumentNullException.ThrowIfNull(s);
-        ArgumentNullException.ThrowIfNull(stations);
         ArgumentNullException.ThrowIfNull(view);
         if (view.Refresh().LineOf(cargo) is not { } line)
         {
             return string.Empty;
         }
 
-        var name = s.Get(stations.Content.Cargo(cargo).NameKey);
         var flags = (line.Received ? s.Get("info.station.cargo.receives") : string.Empty)
             + (line.Received && line.Accepted ? " · " : string.Empty)
             + (line.Accepted ? s.Get("info.station.cargo.accepts") : string.Empty);
-        return s.Format("info.station.cargo.line",
-                ("cargo", name),
-                ("flags", flags),
-                ("waiting", line.Waiting.ToString("N0", s.Culture)),
-                ("rating", line.Served ? s.Format("info.station.cargo.rating", ("percent", (line.Rating / 10).ToString(CultureInfo.InvariantCulture))) : s.Get("info.station.cargo.notServed")))
+        return s.Format("info.station.cargo.summary", ("waiting", view.Waiting(cargo).ToString("N0", s.Culture)), ("flags", flags))
             + "\n"
-            + s.Format("info.station.cargo.month",
+            + s.Format("info.station.cargo.lastMonth",
                 ("received", line.ReceivedLastMonth.ToString("N0", s.Culture)),
                 ("pickedUp", line.PickedUpLastMonth.ToString("N0", s.Culture)),
                 ("delivered", line.DeliveredLastMonth.ToString("N0", s.Culture)),

@@ -147,6 +147,9 @@ internal sealed class UiDrawList
         return x - position.X;
     }
 
+    /// <summary>The ellipsis as a string kept for the whole run: a <c>[c]</c> span literal allocated on every cut text.</summary>
+    private static readonly string EllipsisText = TextLayout.Ellipsis.ToString();
+
     /// <summary>Text cut with an ellipsis when wider than <paramref name="maxWidth"/>.</summary>
     public void AddTextClipped(FontAtlas font, ReadOnlySpan<char> text, Vector2 position, float size, UiColor color, float maxWidth)
     {
@@ -154,7 +157,7 @@ internal sealed class UiDrawList
         var width = AddText(font, text[..fit], position, size, color);
         if (fit < text.Length)
         {
-            AddText(font, [TextLayout.Ellipsis], position + new Vector2(width, 0), size, color);
+            AddText(font, EllipsisText, position + new Vector2(width, 0), size, color);
         }
     }
 

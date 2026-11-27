@@ -113,7 +113,7 @@ public class TownClientTests
 
         Assert.Equal("town:0", window.Key);
         var panel = Assert.IsType<StackPanel>(window.Content);
-        Assert.Equal(10, panel.ChildCount); // feature 013 adds waiting passengers and mail rows and the demand line
+        Assert.True(Talt.Client.Tests.Ui.UiTestKit.Walk(panel).OfType<Meter>().Count() >= 4); // Passengers, mail, rating and growth gauges.
         foreach (var language in Strings.SupportedLanguages)
         {
             var s = Strings.Load(language);

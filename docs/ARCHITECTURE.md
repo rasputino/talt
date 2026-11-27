@@ -1421,6 +1421,29 @@ was almost black because this driver stores clear colours without the sRGB conve
 their background as an interface rectangle); clicking the map selected nothing, because picking pauses
 while a button is held and the click looked at the cursor on release instead of at the press.
 
+**Graphical info windows (after features 013 and 015):** the station, town, road vehicle, train and line
+windows show figures as small drawings instead of wrapped text. New widgets in `Ui/Widgets/Meters.cs`
+draw only rectangles, icons and cached digit strings, and read their values through delegates every
+frame: `Meter` (a 0–1 gauge coloured with the accent, a cargo colour or the theme's negative →
+`warning` → positive ramp, with an optional threshold mark), `SegmentBar` (stacked segments against a
+total), `CargoBadge` (the cargo's 16 × 16 icon `cargo.<id>` from `icons.json` on a tile tinted with its
+`cargo.json` colour; a plain colour square if the icon is missing) and `StopStrip` (a line's stops as
+numbered dots, the first repeated faded at the end because lines are circular, and a mark per vehicle:
+on a dot while it loads there, half-way to the next dot while it drives). `Screens/InfoRows.cs` lays out
+the "label · gauge · value" rows in fixed columns. Figures that cost something to gather are refreshed
+into small views only when the window's version changes: `WaitingView` (station and town waiting cargo,
+feature 013, daily), `TownDemandView` (the town's largest destinations with the share carried, daily),
+`HoldSegments` (a vehicle's or train's cargo on board summed by destination town, every tick; the
+largest six get their own shade of the cargo colour) and the stop strip's markers (every 10 ticks).
+The station window keeps feature 013's + / − destination rows under each cargo's header row; the town
+window shows passengers, mail, the company's rating (marked at the rating needed to build stations) and
+growth as gauges, then a gauge row per destination; the line window lists its trains too (it listed only
+road vehicles). Making the windows allocation-free exposed two old per-frame allocations, now fixed with
+regression tests: the ellipsis of a cut text was a `[c]` span literal (now a static string), and the line
+drop-downs found their selection with a `FindIndex` lambda (now a loop). Graphs over past months need
+monthly history the simulation does not keep yet; they come with the statistics ring buffers of
+feature 017.
+
 ### Interface cost (feature 005)
 
 BenchmarkDotNet, short job, AMD Ryzen 7 160, 2026-11-23 (`UiFrameBenchmarks`, `PickingBenchmarks`):
@@ -1429,6 +1452,7 @@ BenchmarkDotNet, short job, AMD Ryzen 7 160, 2026-11-23 (`UiFrameBenchmarks`, `P
 |---|---|---|
 | Interface frame (layout + draw list), in-game HUD, 0 windows | 0.002 ms | 0 B |
 | Interface frame, HUD + 20 sample windows (every widget kind) | 0.076 ms | 0 B |
+| Same, 2026-11-27, sample windows with the info-window gauges (meter, segment bar, cargo badge, stop strip) | 0.086 ms | 0 B |
 | Terrain pick, grazing ray across a 4096 map | 0.030 ms | 0 B |
 | Full pick with 50 000 vehicles, ray straight down | 0.073 ms | 0 B |
 | Full pick with 50 000 vehicles, default camera view | 0.076 ms (0.45 ms before the footprint rectangle test) | 0 B |

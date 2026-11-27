@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text;
 using Talt.Client.Localization;
 using Talt.Client.Ui;
 using Talt.Client.Ui.Widgets;
@@ -46,49 +45,19 @@ internal static class TrainTexts
         return s.Format($"train.status.{TrainSystem.StatusOf(train).ToString().ToLowerInvariant()}", ("target", target));
     }
 
-    /// <summary>Consist, load, speed, age, reliability and money.</summary>
-    public static string Details(Strings s, ITrainUi ui, int trainId)
+    /// <summary>The consist: parts, length, mass and power.</summary>
+    public static string Consist(Strings s, TrainSystem trains, int trainId)
     {
-        var session = ui.Session;
-        var trains = session.Simulation.Trains!;
-        var train = trains.Find(trainId);
-        if (train is null)
+        ArgumentNullException.ThrowIfNull(s);
+        ArgumentNullException.ThrowIfNull(trains);
+        if (trains.Find(trainId) is not { } train)
         {
             return string.Empty;
         }
 
-        var builder = new StringBuilder();
-        builder.Append(s.Format("train.consist", ("parts", train.Parts.Count.ToString(CultureInfo.InvariantCulture)),
+        return s.Format("train.consist", ("parts", train.Parts.Count.ToString(CultureInfo.InvariantCulture)),
             ("length", (train.Length * 10 / Talt.Core.Determinism.FixedMath.UnitsPerTile / 10.0).ToString("0.0", s.Culture)),
-            ("mass", train.MassTonnes.ToString("N0", s.Culture)), ("power", train.PowerKw.ToString("N0", s.Culture))));
-        builder.Append('\n');
-        for (var c = 0; c < session.Simulation.Content.CargoCount; c++)
-        {
-            var capacity = trains.CapacityOf(train, c);
-            if (capacity == 0)
-            {
-                continue;
-            }
-
-            var amount = 0;
-            foreach (var part in train.Parts)
-            {
-                amount += part.Cargo == c ? part.Hold.Total : 0;
-            }
-
-            builder.Append(s.Format("vehicle.load", ("cargo", VehicleTexts.CargoName(s, session, c)),
-                ("amount", amount.ToString("N0", s.Culture)), ("capacity", capacity.ToString("N0", s.Culture))));
-            builder.Append('\n');
-        }
-
-        builder.Append(s.Format("vehicle.speed", ("speed", trains.SpeedKmh(train).ToString(CultureInfo.InvariantCulture)),
-            ("max", trains.Rules.KmhFromSpeed(train.MaxSpeed).ToString(CultureInfo.InvariantCulture))));
-        builder.Append('\n');
-        builder.Append(s.Format("vehicle.reliability", ("percent", (train.Reliability / 10).ToString(CultureInfo.InvariantCulture))));
-        builder.Append('\n');
-        builder.Append(s.Format("vehicle.money", ("value", ui.Money(trains.ValueOf(train), s)),
-            ("thisYear", ui.Money(train.ProfitThisYear, s)), ("lastYear", ui.Money(train.ProfitLastYear, s))));
-        return builder.ToString();
+            ("mass", train.MassTonnes.ToString("N0", s.Culture)), ("power", train.PowerKw.ToString("N0", s.Culture)));
     }
 }
 
@@ -113,7 +82,34 @@ internal static class TrainWindow
         Train? Find() => trains.Find(trainId);
 
         content.Add(new Label(TextRef.Dynamic(Tick, s => TrainTexts.Status(s, session, trainId))) { Wrap = true, Width = 360 });
-        content.Add(new Label(TextRef.Dynamic(Tick, s => TrainTexts.Details(s, ui, trainId))) { Wrap = true, Width = 360 });
+        content.Add(new Label(TextRef.Dynamic(() => trains.Version, s => TrainTexts.Consist(s, trains, trainId))) { Color = TextColor.Muted });
+
+        // Graphical figures: a load bar per carried cargo split by destination, speed and reliability gauges, the money.
+        content.Add(new RebuildingPanel(() => trains.Version, panel =>
+        {
+            if (Find() is not { } train)
+            {
+                return;
+            }
+
+            var cargoContent = session.Simulation.Content;
+            for (var c = 0; c < cargoContent.CargoCount; c++)
+            {
+                if (trains.CapacityOf(train, c) == 0)
+                {
+                    continue;
+                }
+
+                var cargo = c;
+                var hold = new HoldSegments(Tick, () => Find()?.Parts.Count ?? 0,
+                    i => Find() is { } t && i < t.Parts.Count && t.Parts[i].Cargo == cargo ? t.Parts[i].Hold : null, InfoRows.CargoColor(cargoContent, cargo));
+                VehicleGauges.AddLoad(panel, cargoContent, session.Simulation.Towns, cargo, hold, () => Find() is { } t ? trains.CapacityOf(t, cargo) : 0, Tick);
+            }
+
+            VehicleGauges.AddSpeed(panel, () => Find() is { } t ? trains.SpeedKmh(t) : 0, () => Find() is { } t ? trains.Rules.KmhFromSpeed(t.MaxSpeed) : 0, Tick);
+            VehicleGauges.AddReliability(panel, () => Find()?.Reliability ?? 0, Tick);
+            VehicleGauges.AddMoney(panel, ui, () => Find() is { } t ? trains.ValueOf(t) : 0, () => Find()?.ProfitThisYear ?? 0, () => Find()?.ProfitLastYear ?? 0, Tick);
+        }));
         content.Add(new RebuildingPanel(() => lines.Version ^ ((long)trains.Version << 32), panel =>
         {
             if (Find() is null)
@@ -133,7 +129,7 @@ internal static class TrainWindow
                 }
             }
 
-            row.Add(new Dropdown(choices, () => Math.Max(0, choices.FindIndex(c => (int)c.Value == (Find()?.Line ?? -1))),
+            row.Add(new Dropdown(choices, () => Math.Max(0, VehicleTexts.ChoiceIndex(choices, Find()?.Line ?? -1)),
                 index => session.Submit(new AssignTrainLineCommand(company, trainId, (int)choices[index].Value))));
             row.Add(new Button(TextRef.Of("vehicle.newLine"), () => ui.StartLineMode(-1, -1)) { Tooltip = TextRef.Of("train.newLine.tooltip") });
             row.Add(new Button(TextRef.Of("vehicle.openLine"), () =>

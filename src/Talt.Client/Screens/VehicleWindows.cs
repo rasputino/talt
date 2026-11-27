@@ -6,6 +6,7 @@ using Talt.Client.Ui;
 using Talt.Client.Ui.Widgets;
 using Talt.Client.Ui.Windows;
 using Talt.Core.Construction;
+using Talt.Core.Rails;
 using Talt.Core.Stations;
 using Talt.Core.Vehicles;
 
@@ -54,6 +55,21 @@ internal interface IVehicleUi
 internal static class VehicleTexts
 {
     public static string ModelName(Strings s, VehicleModel model) => s.Get(model.NameKey);
+
+    /// <summary>Index of the choice whose value is <paramref name="value"/>, or −1; a loop, as a predicate lambda would allocate every frame.</summary>
+    public static int ChoiceIndex(List<DropdownChoice> choices, int value)
+    {
+        ArgumentNullException.ThrowIfNull(choices);
+        for (var i = 0; i < choices.Count; i++)
+        {
+            if (choices[i].Value is int choice && choice == value)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
 
     public static string VehicleName(Strings s, RoadVehicleSystem vehicles, int vehicleId)
     {
@@ -115,7 +131,25 @@ internal static class VehicleWindow
         int Slot() => vehicles.SlotOf(vehicleId);
 
         content.Add(new Label(TextRef.Dynamic(Tick, s => VehicleTexts.Status(s, session, vehicleId))) { Wrap = true, Width = 340 });
-        content.Add(new Label(TextRef.Dynamic(Tick, s => Details(s, ui, vehicleId))) { Wrap = true, Width = 340 });
+
+        // Graphical figures: the load bar split by destination, gauges for speed, reliability and age, the money.
+        content.Add(new RebuildingPanel(() => vehicles.Version, panel =>
+        {
+            var slot = Slot();
+            if (slot < 0)
+            {
+                return;
+            }
+
+            var cargo = vehicles.CargoAt(slot);
+            var hold = new HoldSegments(Tick, () => Slot() >= 0 ? 1 : 0, _ => Slot() >= 0 ? vehicles.HoldAt(Slot()) : null, InfoRows.CargoColor(session.Simulation.Content, cargo));
+            VehicleGauges.AddLoad(panel, session.Simulation.Content, session.Simulation.Towns, cargo, hold, () => Slot() >= 0 ? vehicles.ModelAt(Slot()).Capacity : 0, Tick);
+            VehicleGauges.AddSpeed(panel, () => Slot() >= 0 ? vehicles.SpeedKmhAt(Slot()) : 0, () => Slot() >= 0 ? vehicles.ModelAt(Slot()).SpeedKmh : 0, Tick);
+            VehicleGauges.AddReliability(panel, () => Slot() >= 0 ? vehicles.ReliabilityAt(Slot()) : 0, Tick);
+            VehicleGauges.AddAge(panel, () => Slot() >= 0 ? vehicles.AgeDaysAt(Slot()) : 0, () => Slot() >= 0 ? vehicles.ModelAt(Slot()).LifeYears : 1, Tick);
+            VehicleGauges.AddMoney(panel, ui, () => Slot() >= 0 ? vehicles.ValueAt(Slot()) : 0, () => Slot() >= 0 ? vehicles.ProfitThisYearAt(Slot()) : 0,
+                () => Slot() >= 0 ? vehicles.ProfitLastYearAt(Slot()) : 0, Tick);
+        }));
 
         // Line: a choice of the company's lines (rebuilt when lines change) and "New line".
         content.Add(new RebuildingPanel(() => vehicles.Lines.Version ^ ((long)vehicles.Version << 32), panel =>
@@ -141,7 +175,7 @@ internal static class VehicleWindow
             row.Add(new Dropdown(choices, () =>
             {
                 var current = Slot() < 0 ? -1 : vehicles.LineAt(Slot());
-                return Math.Max(0, choices.FindIndex(c => (int)c.Value == current));
+                return Math.Max(0, VehicleTexts.ChoiceIndex(choices, current));
             }, index => session.Submit(new AssignLineCommand(company, vehicleId, (int)choices[index].Value))));
             row.Add(new Button(TextRef.Of("vehicle.newLine"), () => ui.StartLineMode(-1, vehicleId)) { Tooltip = TextRef.Of("vehicle.newLine.tooltip") });
             row.Add(new Button(TextRef.Of("vehicle.openLine"), () =>
@@ -185,35 +219,6 @@ internal static class VehicleWindow
         return window;
     }
 
-    /// <summary>Feature 013 (FR-021): the cargo on board per destination town, largest first.</summary>
-    public static void AppendDestinations(Strings s, GameSession session, CargoHold hold, StringBuilder builder)
-    {
-        ArgumentNullException.ThrowIfNull(s);
-        ArgumentNullException.ThrowIfNull(session);
-        ArgumentNullException.ThrowIfNull(hold);
-        ArgumentNullException.ThrowIfNull(builder);
-        var towns = session.Simulation.Towns;
-        var amounts = new SortedDictionary<int, int>();
-        for (var i = 0; i < hold.Count; i++)
-        {
-            if (hold[i].Destination >= 0)
-            {
-                amounts.TryGetValue(hold[i].Destination, out var sum);
-                amounts[hold[i].Destination] = sum + hold[i].Amount;
-            }
-        }
-
-        if (amounts.Count == 0 || towns is null)
-        {
-            return;
-        }
-
-        var parts = amounts.OrderByDescending(p => p.Value).ThenBy(p => p.Key).Take(6)
-            .Select(p => s.Format("vehicle.destination", ("town", (uint)p.Key < (uint)towns.Count ? towns.NameOf(p.Key) : "?"), ("amount", p.Value.ToString("N0", s.Culture))));
-        builder.Append(s.Format("vehicle.destinations", ("list", string.Join(", ", parts))));
-        builder.Append('\n');
-    }
-
     private static void ChangeService(GameSession session, int company, int vehicleId, int delta)
     {
         var vehicles = session.RoadVehicles!;
@@ -222,37 +227,6 @@ internal static class VehicleWindow
         {
             session.Submit(new SetServiceIntervalCommand(company, vehicleId, Math.Clamp(vehicles.ServiceIntervalAt(slot) + delta, 0, 990)));
         }
-    }
-
-    /// <summary>Load, speed, age, reliability, value and profits.</summary>
-    public static string Details(Strings s, IVehicleUi ui, int vehicleId)
-    {
-        var session = ui.Session;
-        var vehicles = session.RoadVehicles!;
-        var slot = vehicles.SlotOf(vehicleId);
-        if (slot < 0)
-        {
-            return string.Empty;
-        }
-
-        var model = vehicles.ModelAt(slot);
-        var hold = vehicles.HoldAt(slot);
-        var builder = new StringBuilder();
-        builder.Append(s.Format("vehicle.load", ("cargo", VehicleTexts.CargoName(s, session, vehicles.CargoAt(slot))),
-            ("amount", hold.Total.ToString("N0", s.Culture)), ("capacity", model.Capacity.ToString("N0", s.Culture))));
-        builder.Append('\n');
-        AppendDestinations(s, session, hold, builder);
-        builder.Append(s.Format("vehicle.speed", ("speed", vehicles.SpeedKmhAt(slot).ToString(CultureInfo.InvariantCulture)), ("max", model.SpeedKmh.ToString(CultureInfo.InvariantCulture))));
-        builder.Append('\n');
-        var years = vehicles.AgeDaysAt(slot) / 365;
-        builder.Append(s.Format(years > model.LifeYears ? "vehicle.age.old" : "vehicle.age",
-            ("years", years.ToString(CultureInfo.InvariantCulture)), ("life", model.LifeYears.ToString(CultureInfo.InvariantCulture))));
-        builder.Append(" · ");
-        builder.Append(s.Format("vehicle.reliability", ("percent", (vehicles.ReliabilityAt(slot) / 10).ToString(CultureInfo.InvariantCulture))));
-        builder.Append('\n');
-        builder.Append(s.Format("vehicle.money", ("value", ui.Money(vehicles.ValueAt(slot), s)),
-            ("thisYear", ui.Money(vehicles.ProfitThisYearAt(slot), s)), ("lastYear", ui.Money(vehicles.ProfitLastYearAt(slot), s))));
-        return builder.ToString();
     }
 }
 
@@ -339,8 +313,8 @@ internal static class DepotWindow
 }
 
 /// <summary>
-/// The line window (FR-036): stops in order with their loading rule (reorder, remove), "add stops" mode, the vehicles
-/// on the line, renaming and deleting.
+/// The line window (FR-036): a strip of the stops with a mark per vehicle, the stops in order with their loading rule
+/// (reorder, remove), "add stops" mode, the road vehicles and trains on the line with a load gauge, renaming and deleting.
 /// </summary>
 internal static class LineWindow
 {
@@ -356,6 +330,16 @@ internal static class LineWindow
         var window = new UiWindow(Kind, TextRef.Dynamic(() => lines.Version, s => VehicleTexts.LineName(s, lines, lineId))) { Key = $"line:{lineId}" };
         var content = new StackPanel(Orientation.Vertical) { Spacing = 6 };
         var onLine = new List<int>();
+        var scratch = new List<int>();
+
+        // The stops as a strip with a mark per vehicle (road vehicles and trains), refreshed every 10 ticks.
+        content.Add(new StopStrip(() => lines.Exists(lineId) ? lines.StopCount(lineId) : 0,
+            () => (session.Simulation.CurrentTick / 10) ^ ((long)lines.Version << 40),
+            into => LineMarkers(session, lineId, scratch, into))
+        {
+            Tooltip = TextRef.Of("line.strip.tooltip"),
+            VisibleWhen = () => lines.Exists(lineId) && lines.StopCount(lineId) > 0,
+        });
 
         content.Add(new RebuildingPanel(() => lines.Version, panel =>
         {
@@ -393,25 +377,114 @@ internal static class LineWindow
         rename.Add(new Button(TextRef.Of("line.rename"), () => session.Submit(new RenameLineCommand(company, lineId, input.Text))));
 
         content.Add(new Label(TextRef.Of("line.vehicles"), TextSize.Title));
-        content.Add(new RebuildingPanel(() => vehicles.Version ^ ((long)lines.Version << 32) ^ (session.Simulation.CurrentTick / 40 << 48), panel =>
+        var trains = session.Simulation.Trains;
+        content.Add(new RebuildingPanel(() => vehicles.Version ^ ((long)lines.Version << 32) ^ ((long)(trains?.Version ?? 0) << 16) ^ (session.Simulation.CurrentTick / 40 << 48), panel =>
         {
             vehicles.VehiclesOnLine(lineId, onLine);
-            if (onLine.Count == 0)
-            {
-                panel.Add(new Label(TextRef.Of("line.noVehicles")) { Color = TextColor.Muted });
-                return;
-            }
-
+            var any = onLine.Count > 0;
             foreach (var id in onLine)
             {
-                panel.Add(new Button(TextRef.Dynamic(() => session.Simulation.CurrentTick / 20, s => VehicleTexts.VehicleName(s, vehicles, id) + " — " + VehicleTexts.Status(s, session, id)), () => ui.OpenVehicle(id))
+                var row = panel.Add(new StackPanel(Orientation.Horizontal) { Spacing = 8 });
+                row.Add(new Meter(() => vehicles.SlotOf(id) is var slot and >= 0 ? InfoRows.Share(vehicles.HoldAt(slot).Total, vehicles.ModelAt(slot).Capacity) : 0f, MeterColoring.Fixed)
+                {
+                    Width = 60,
+                    FixedColor = vehicles.SlotOf(id) is var slot and >= 0 ? InfoRows.CargoColor(session.Simulation.Content, vehicles.CargoAt(slot)) : UiColor.White,
+                    Tooltip = TextRef.Of("line.vehicle.load.tooltip"),
+                });
+                row.Add(new Button(TextRef.Dynamic(() => session.Simulation.CurrentTick / 20, s => VehicleTexts.VehicleName(s, vehicles, id) + " — " + VehicleTexts.Status(s, session, id)), () => ui.OpenVehicle(id))
                 {
                     HorizontalAlignment = Alignment.Start,
                 });
             }
+
+            for (var i = 0; trains is not null && i < trains.Count; i++)
+            {
+                var train = trains.TrainAt(i);
+                if (train.Line != lineId)
+                {
+                    continue;
+                }
+
+                any = true;
+                var id = train.Id;
+                var row = panel.Add(new StackPanel(Orientation.Horizontal) { Spacing = 8 });
+                row.Add(new Meter(() => trains.Find(id) is { } t ? TrainLoad(trains, t, session.Simulation.Content.CargoCount) : 0f, MeterColoring.Accent)
+                {
+                    Width = 60,
+                    Tooltip = TextRef.Of("line.vehicle.load.tooltip"),
+                });
+                row.Add(new Button(TextRef.Dynamic(() => session.Simulation.CurrentTick / 20, s => TrainTexts.Name(s, trains, id) + " — " + TrainTexts.Status(s, session, id)),
+                    () => (ui as ITrainUi)?.OpenTrain(id))
+                {
+                    HorizontalAlignment = Alignment.Start,
+                });
+            }
+
+            if (!any)
+            {
+                panel.Add(new Label(TextRef.Of("line.noVehicles")) { Color = TextColor.Muted });
+            }
         }));
         window.Content = content;
         return window;
+    }
+
+    /// <summary>Where the line's vehicles and trains are drawn on its stop strip (see <see cref="StopStrip.Position"/>).</summary>
+    public static void LineMarkers(GameSession session, int lineId, List<int> scratch, List<float> into)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        ArgumentNullException.ThrowIfNull(scratch);
+        ArgumentNullException.ThrowIfNull(into);
+        var vehicles = session.RoadVehicles!;
+        var lines = vehicles.Lines;
+        var count = lines.Exists(lineId) ? lines.StopCount(lineId) : 0;
+        if (count == 0)
+        {
+            return;
+        }
+
+        vehicles.VehiclesOnLine(lineId, scratch);
+        foreach (var id in scratch)
+        {
+            var slot = vehicles.SlotOf(id);
+            var status = slot < 0 ? RoadVehicleStatus.InDepot : vehicles.StatusAt(slot);
+            if (status is not (RoadVehicleStatus.InDepot or RoadVehicleStatus.Stopped or RoadVehicleStatus.GoingToDepot))
+            {
+                into.Add(StopStrip.Position(vehicles.StopIndexAt(slot), count, status == RoadVehicleStatus.Loading));
+            }
+        }
+
+        if (session.Simulation.Trains is not { } trains)
+        {
+            return;
+        }
+
+        for (var i = 0; i < trains.Count; i++)
+        {
+            var train = trains.TrainAt(i);
+            var status = TrainSystem.StatusOf(train);
+            if (train.Line == lineId && status is not (TrainStatus.InDepot or TrainStatus.Stopped or TrainStatus.GoingToDepot))
+            {
+                into.Add(StopStrip.Position(train.StopIndex, count, status == TrainStatus.Loading));
+            }
+        }
+    }
+
+    /// <summary>Cargo on board a train against its total capacity, 0–1.</summary>
+    private static float TrainLoad(TrainSystem trains, Train train, int cargoCount)
+    {
+        long amount = 0, capacity = 0;
+        foreach (var part in train.Parts)
+        {
+            amount += part.Hold.Total;
+        }
+
+        for (var c = 0; c < cargoCount; c++)
+        {
+            capacity += trains.CapacityOf(train, c);
+        }
+
+        return InfoRows.Share(amount, capacity);
     }
 }
 

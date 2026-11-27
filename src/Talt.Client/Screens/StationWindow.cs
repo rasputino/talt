@@ -97,6 +97,7 @@ internal static class StationWindow
         content.Add(new Label(TextRef.Dynamic(Version, s => Kind(s, stations, stationId))));
         content.Add(new Label(TextRef.Dynamic(Version, s => Group(s, stations, stationId))) { Color = TextColor.Muted });
         // One row per cargo; destination cargo opens with + to show where it wants to go (feature 013).
+        content.Add(InfoRows.Section("info.station.section.cargo"));
         content.Add(new Label(TextRef.Of("info.station.cargo.none")) { Color = TextColor.Muted, VisibleWhen = () => !HasCargo(stations, stationId) });
         CargoRows.AddStation(content, stations, session.Simulation.Towns, stationId, Version);
 

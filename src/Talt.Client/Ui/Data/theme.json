@@ -26,7 +26,9 @@
     "background": "#1E3346FF",
     // Money (feature 011): income and positive figures, expenses and negative cash.
     "positive": "#6BD38AFF",
-    "negative": "#F0685CFF"
+    "negative": "#F0685CFF",
+    // Middle of the red → green gauges of the info windows (ratings, service, reliability).
+    "warning": "#E8C547FF"
   },
   "cornerRadius": 6,
   "borderWidth": 1,
