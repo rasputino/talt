@@ -96,7 +96,9 @@ internal static class StationWindow
 
         content.Add(new Label(TextRef.Dynamic(Version, s => Kind(s, stations, stationId))));
         content.Add(new Label(TextRef.Dynamic(Version, s => Group(s, stations, stationId))) { Color = TextColor.Muted });
-        content.Add(new Label(TextRef.Dynamic(Version, s => CargoTable(s, stations, stationId))) { Wrap = true, Width = 380 });
+        // One row per cargo; destination cargo opens with + to show where it wants to go (feature 013).
+        content.Add(new Label(TextRef.Of("info.station.cargo.none")) { Color = TextColor.Muted, VisibleWhen = () => !HasCargo(stations, stationId) });
+        CargoRows.AddStation(content, stations, session.Simulation.Towns, stationId, Version);
 
         var buttons = content.Add(new StackPanel(Orientation.Horizontal) { Spacing = 6 });
         buttons.Add(new Button(TextRef.Of("info.station.catchment"), () => session.ToggleCatchment(stationId))
@@ -152,6 +154,23 @@ internal static class StationWindow
         return count > 1
             ? s.Format("info.station.group", ("count", count.ToString(CultureInfo.InvariantCulture)))
             : s.Get("info.station.group.none");
+    }
+
+    /// <summary>True when the station's window has at least one cargo line (cheap: no snapshot).</summary>
+    private static bool HasCargo(StationRegistry stations, int stationId) =>
+        stations.SuppliesMask(stationId) != 0 || stations.AcceptsMask(stationId) != 0 || stations.GroupOf(stationId) >= 0 && HasServed(stations, stationId);
+
+    private static bool HasServed(StationRegistry stations, int stationId)
+    {
+        for (var c = 0; c < stations.Content.CargoCount; c++)
+        {
+            if (stations.IsServed(stationId, c) || stations.WaitingAt(stationId, c) > 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>One line per cargo: waiting (any destination until feature 013), rating and last month's figures.</summary>

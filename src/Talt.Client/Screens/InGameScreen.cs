@@ -34,6 +34,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
     private readonly MapPicker _picker = new();
     private readonly PickContext _pickContext;
     private readonly TownLabels? _labels;
+    private readonly DemandOverlay? _demandOverlay;
     private readonly HighlightBox[] _highlights = new HighlightBox[2];
     private readonly StackPanel _messages = new(Orientation.Vertical) { Spacing = 4 };
     private readonly List<double> _messageExpiry = [];
@@ -86,6 +87,11 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
         if (session.Simulation.Towns is { Count: > 0 } towns)
         {
             _labels = new TownLabels(towns, session.Heightmap);
+            if (session.Simulation.Destinations is { } destinations)
+            {
+                // Feature 013: unserved demand between towns, toggled from the HUD.
+                _demandOverlay = new DemandOverlay(towns, destinations, session.Heightmap, session.Simulation.Content.CargoIndex("mail"));
+            }
         }
 
         _moneyTexts = new MoneyTexts(session.Heightmap);
@@ -220,6 +226,11 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
             _labels.Update(_camera.ViewProjection(viewport.X / viewport.Y), viewport, _camera.Position, _camera.Distance * 2.5f);
         }
 
+        if (_demandOverlay is not null && viewport.X >= 1 && viewport.Y >= 1)
+        {
+            _demandOverlay.Update(_session.Simulation.CurrentTick / Talt.Core.Simulation.GameClock.TicksPerDay, _camera.ViewProjection(viewport.X / viewport.Y), viewport);
+        }
+
         if (viewport.X >= 1 && viewport.Y >= 1)
         {
             _moneyTexts.Update(_camera.ViewProjection(viewport.X / viewport.Y), viewport, _camera.Position, _camera.Distance * 2.5f, (float)_host.Ui.Time);
@@ -285,6 +296,9 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
                 return true;
             case "lines":
                 OpenLines();
+                return true;
+            case "demandOverlay":
+                ToggleDemandOverlay();
                 return true;
             case "toolRaise":
             case "toolLower":
@@ -760,6 +774,11 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
             root.Add(_labels); // Town plates under every other HUD element (feature 008).
         }
 
+        if (_demandOverlay is not null)
+        {
+            root.Add(_demandOverlay); // Feature 013: unserved demand lines, under the HUD.
+        }
+
         root.Add(_moneyTexts); // Floating income texts (feature 011), above the town plates.
 
         // Top bar: menu, money, date, speed controls (FR-004).
@@ -897,8 +916,15 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
             HudButtons.Add(stationTools.Add(ToolButton("lines", OpenLines, "toolbar.lines.tooltip", "lines")));
         }
 
+        if (_demandOverlay is not null)
+        {
+            var overlayButton = ToolButton("demand", ToggleDemandOverlay, "toolbar.demand.tooltip", "demandOverlay");
+            overlayButton.IsSelected = () => _demandOverlay.Visible;
+            HudButtons.Add(stationTools.Add(overlayButton));
+        }
+
         // The line-building hint (feature 012) above the notifications.
-        root.Add(new Panel
+        var lineHint = root.Add(new Panel
         {
             Style = PanelStyle.Panel,
             HorizontalAlignment = Alignment.Center,
@@ -906,9 +932,15 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
             Margin = new Thickness(0, theme.TopBarHeight + 8, 0, 0),
             Padding = new Thickness(10, 4),
             VisibleWhen = () => _lineMode,
-        }).Add(new Label(TextRef.Dynamic(() => _lineModeStations.Count + (_lineModeLine << 16), s => _lineModeLine >= 0
-            ? s.Format("lineMode.add", ("line", VehicleTexts.LineName(s, _session.RoadVehicles!.Lines, _lineModeLine)))
-            : s.Format("lineMode.new", ("count", _lineModeStations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))))));
+        }).Add(new StackPanel(Orientation.Vertical) { Spacing = 2 });
+        {
+            lineHint.Add(new Label(TextRef.Dynamic(() => _lineModeStations.Count + (_lineModeLine << 16), s => _lineModeLine >= 0
+                ? s.Format("lineMode.add", ("line", VehicleTexts.LineName(s, _session.RoadVehicles!.Lines, _lineModeLine)))
+                : s.Format("lineMode.new", ("count", _lineModeStations.Count.ToString(System.Globalization.CultureInfo.InvariantCulture))))));
+
+            // The stops so far, in order (developer's hand test of feature 013).
+            lineHint.Add(new Label(TextRef.Dynamic(LineModeStopsVersion, LineModeStops)) { Color = TextColor.Muted, Wrap = true, Width = 520 });
+        }
         var typeButton = new Button(null, () => HandleAction("roadType", false), "roadType")
         {
             Style = ButtonStyle.Flat,
@@ -949,6 +981,14 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
             ShortcutAction = action,
         };
 
+    /// <summary>Shows or hides the unserved demand overlay (feature 013).</summary>
+    private void ToggleDemandOverlay()
+    {
+        if (_demandOverlay is not null)
+        {
+            _demandOverlay.Visible = !_demandOverlay.Visible;
+        }
+    }
     private Button OptionButton(string action, Func<long> version, Func<Strings, string> text) =>
         new(null, () => HandleAction(action, false), action)
         {
@@ -1178,6 +1218,47 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
 
     /// <summary>True while clicking stations adds them to a line (feature 012).</summary>
     internal bool IsLineMode => _lineMode;
+
+    private int LineModeStopCount()
+    {
+        var lines = _session.RoadVehicles?.Lines;
+        return _lineModeLine >= 0 && lines is not null && lines.Exists(_lineModeLine) ? lines.StopCount(_lineModeLine) : _lineModeStations.Count;
+    }
+
+    private long LineModeStopsVersion() =>
+        LineModeStopCount() + ((long)(_session.RoadVehicles?.Lines.Version ?? 0) << 20) + ((long)_lineModeLine << 44);
+
+    /// <summary>"1. Station · 2. Station …": the stops of the line being built or extended.</summary>
+    private string LineModeStops(Strings s)
+    {
+        var stations = _session.Simulation.Stations;
+        var lines = _session.RoadVehicles?.Lines;
+        if (stations is null || lines is null)
+        {
+            return string.Empty;
+        }
+
+        var count = LineModeStopCount();
+        if (count == 0)
+        {
+            return s.Get("lineMode.noStops");
+        }
+
+        var builder = new System.Text.StringBuilder();
+        for (var i = 0; i < count; i++)
+        {
+            var station = _lineModeLine >= 0 ? lines.StopAt(_lineModeLine, i).StationId : _lineModeStations[i];
+            if (i > 0)
+            {
+                builder.Append("   ");
+            }
+
+            builder.Append(s.Format("lineMode.stop", ("number", (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                ("station", StationWindow.Name(s, stations, _session.Simulation.Towns, station))));
+        }
+
+        return builder.ToString();
+    }
 
     /// <summary>Starts the line-building mode (FR-036): stations clicked on the map are added in order; Esc ends it.</summary>
     public void StartLineMode(int lineId, int vehicleId)

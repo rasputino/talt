@@ -113,7 +113,7 @@ public class TownClientTests
 
         Assert.Equal("town:0", window.Key);
         var panel = Assert.IsType<StackPanel>(window.Content);
-        Assert.Equal(7, panel.ChildCount);
+        Assert.Equal(10, panel.ChildCount); // feature 013 adds waiting passengers and mail rows and the demand line
         foreach (var language in Strings.SupportedLanguages)
         {
             var s = Strings.Load(language);
@@ -124,6 +124,9 @@ public class TownClientTests
             Assert.DoesNotContain("[", TownWindow.Accepts(s, towns, 0), StringComparison.Ordinal);
             Assert.Contains("500", TownWindow.Rating(s, towns, 0, Company.PlayerId), StringComparison.Ordinal);
             Assert.DoesNotContain("[", TownWindow.Growth(s, towns, 0), StringComparison.Ordinal);
+            var demand = TownWindow.Demand(s, towns, session.Simulation.Destinations!, 0, session.Simulation.Content.CargoIndex("mail"));
+            Assert.DoesNotContain("[", demand, StringComparison.Ordinal);
+            Assert.Contains(s.Get("info.town.demand.passengers"), demand, StringComparison.Ordinal);
         }
     }
 

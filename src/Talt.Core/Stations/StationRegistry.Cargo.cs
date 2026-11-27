@@ -15,7 +15,15 @@ public sealed partial class StationRegistry
     /// the rating, and counts passengers and mail as transported for the town they came from (FR-024).
     /// </summary>
     /// <returns>Units loaded.</returns>
-    public int Load(int stationId, int cargo, int maxAmount, CargoHold hold, int speedKmh)
+    public int Load(int stationId, int cargo, int maxAmount, CargoHold hold, int speedKmh) =>
+        Load(stationId, cargo, maxAmount, hold, speedKmh, -1);
+
+    /// <summary>
+    /// Loads like <see cref="Load(int, int, int, CargoHold, int)"/>; destination cargo (feature 013) is taken only when
+    /// its route's next station group is the group of <paramref name="nextStationId"/>, the vehicle's next stop (any
+    /// transport mode passes its own next stop).
+    /// </summary>
+    public int Load(int stationId, int cargo, int maxAmount, CargoHold hold, int speedKmh, int nextStationId)
     {
         ArgumentNullException.ThrowIfNull(hold);
         var slot = SlotOf(stationId);
@@ -48,6 +56,11 @@ public sealed partial class StationRegistry
         }
 
         _waiting[cell] -= loaded;
+        if (loaded < maxAmount && _demand is not null && _demand.IsDirected(cargo))
+        {
+            loaded += LoadDirected(slot, cargo, maxAmount - loaded, hold, nextStationId);
+        }
+
         _pickedUpThis[cell] += loaded;
         _lastPickupDay[cell] = _today;
         _lastSpeed[cell] = speedKmh;
@@ -60,7 +73,14 @@ public sealed partial class StationRegistry
     /// <see cref="DeliveryListener"/>; the rest stays in the hold, or with <see cref="UnloadMode.Transfer"/>
     /// waits at the group with its origin and pickup day.
     /// </summary>
-    public UnloadResult Unload(int stationId, CargoHold hold, UnloadMode mode)
+    public UnloadResult Unload(int stationId, CargoHold hold, UnloadMode mode) => Unload(stationId, hold, mode, -1);
+
+    /// <summary>
+    /// Unloads like <see cref="Unload(int, CargoHold, UnloadMode)"/>; destination cargo (feature 013) is delivered only
+    /// where its town is served, rides on when its route continues to <paramref name="nextStationId"/> (the vehicle's
+    /// next stop), and otherwise waits here for the next line of its route.
+    /// </summary>
+    public UnloadResult Unload(int stationId, CargoHold hold, UnloadMode mode, int nextStationId)
     {
         ArgumentNullException.ThrowIfNull(hold);
         var slot = SlotOf(stationId);
@@ -73,15 +93,22 @@ public sealed partial class StationRegistry
         var group = _group[slot];
         var delivered = 0;
         var transferred = 0;
+        var totals = default(UnloadTotals);
         for (var i = hold.Count - 1; i >= 0; i--)
         {
             var part = hold[i];
+            if (part.Destination >= 0)
+            {
+                UnloadDirected(slot, group, hold, i, mode, nextStationId, ref totals);
+                continue;
+            }
+
             var remaining = part.Amount;
             var originSlot = SlotOf(part.Origin);
             var fromHere = originSlot >= 0 && _group[originSlot] == group;
             if (!fromHere && (_groupAccept[group] & (1UL << part.Cargo)) != 0)
             {
-                remaining = DeliverToConsumers(slot, group, part, remaining);
+                remaining = DeliverToConsumers(slot, group, part, remaining, -1);
                 delivered += part.Amount - remaining;
             }
 
@@ -95,13 +122,13 @@ public sealed partial class StationRegistry
             hold.SetAmount(i, remaining);
         }
 
-        return new UnloadResult(delivered, transferred, hold.Total);
+        return new UnloadResult(delivered + totals.Delivered, transferred + totals.Transferred, hold.Total, totals.CreditEarned, totals.CreditDelivered);
     }
 
     /// <summary>Hands a held part to the consumers of the group, unloading station first; returns what is left.</summary>
-    private int DeliverToConsumers(int unloadingSlot, int group, in HeldCargo part, int remaining)
+    private int DeliverToConsumers(int unloadingSlot, int group, in HeldCargo part, int remaining, int town)
     {
-        remaining = DeliverAtStation(unloadingSlot, group, part, remaining);
+        remaining = DeliverAtStation(unloadingSlot, group, part, remaining, town);
         foreach (var memberId in StationsInGroup(group))
         {
             if (remaining == 0)
@@ -112,14 +139,15 @@ public sealed partial class StationRegistry
             var member = SlotOf(memberId);
             if (member != unloadingSlot)
             {
-                remaining = DeliverAtStation(member, group, part, remaining);
+                remaining = DeliverAtStation(member, group, part, remaining, town);
             }
         }
 
         return remaining;
     }
 
-    private int DeliverAtStation(int slot, int group, in HeldCargo part, int remaining)
+    /// <param name="town">Feature 013: only buildings of this town take the cargo (−1: any consumer).</param>
+    private int DeliverAtStation(int slot, int group, in HeldCargo part, int remaining, int town)
     {
         var cargo = part.Cargo;
         if ((_acceptMask[slot] & (1UL << cargo)) == 0)
@@ -129,6 +157,11 @@ public sealed partial class StationRegistry
 
         foreach (var industryId in _covIndustries[slot])
         {
+            if (town >= 0)
+            {
+                break; // Destination cargo goes to its town's buildings only.
+            }
+
             if (remaining == 0)
             {
                 return 0;
@@ -152,7 +185,7 @@ public sealed partial class StationRegistry
         foreach (var buildingId in _covBuildings[slot])
         {
             var bslot = buildings.SlotOf(buildingId);
-            if (bslot >= 0 && BuildingAccepts(buildings.TypeDefinitionAt(bslot), cargo))
+            if (bslot >= 0 && (town < 0 || buildings.TownAt(bslot) == town) && BuildingAccepts(buildings.TypeDefinitionAt(bslot), cargo))
             {
                 Report(slot, group, part, remaining, DeliveryConsumer.Town, buildings.TownAt(bslot));
                 return 0;

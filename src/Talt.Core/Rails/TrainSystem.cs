@@ -321,6 +321,7 @@ public sealed partial class TrainSystem : IStateHashable, IRailOccupancy, ILevel
     internal void AssignLine(Train train, int lineId)
     {
         train.Line = lineId;
+        OnLinksChanged();
         train.StopIndex = 0;
         train.Orders &= ~VehicleOrders.SendToDepot;
         if (lineId >= 0)

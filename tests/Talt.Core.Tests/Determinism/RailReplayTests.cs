@@ -15,7 +15,8 @@ namespace Talt.Core.Tests.Determinism;
 /// <remarks>Regenerate the golden only when rail rules, their data file, construction, stations or map generation change on purpose.</remarks>
 public class RailReplayTests
 {
-    private const string ExpectedAtTick3000 = "051623FE7E98467D";
+    // Feature 013 changed it on purpose: trains carry destination cargo (051623FE7E98467D before).
+    private const string ExpectedAtTick3000 = "51B7F8F782F00DFE";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 41,
@@ -49,6 +50,27 @@ public class RailReplayTests
         Assert.True(replay.Succeeded, replay.FailureReason);
         Assert.All(replay.Checkpoints, c => Assert.True(c.Matches));
         Assert.Equal(simulation.ComputeFingerprint(), replay.Simulation.ComputeFingerprint());
+    }
+
+    [Fact]
+    public void TrainLines_AreRoutedForDestinationCargo()
+    {
+        // Feature 013: trains are a link source of the router (mode-agnostic routing).
+        var simulation = GameSimulation.Create(Settings);
+        foreach (var command in TrainSeeder.Plan(simulation, 24))
+        {
+            simulation.Submit(command);
+        }
+
+        for (var t = 0; t < 400; t++)
+        {
+            simulation.Tick();
+        }
+
+        Assert.Equal(0, simulation.RoadVehicles!.Count);
+        Assert.True(simulation.Router!.AppliedCount > 0, "routes applied for train lines");
+        Assert.True(simulation.Router.BuildProblemsNow() > 0, "train lines give a routing problem");
+        Assert.True(simulation.Router.ProblemSize().Edges > 0);
     }
 
     private static GameSimulation Run(bool parallel)

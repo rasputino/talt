@@ -32,6 +32,8 @@
     <EmbeddedResource Include="Rails\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Rails.Data.%(Filename)%(Extension)" />
     <!-- Road vehicle models, physics and balancing (feature 012, contracts/data-files.md). -->
     <EmbeddedResource Include="Vehicles\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Vehicles.Data.%(Filename)%(Extension)" />
+    <!-- Destination demand and cargo routing (feature 013, contracts/data-files.md). -->
+    <EmbeddedResource Include="Demand\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Demand.Data.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

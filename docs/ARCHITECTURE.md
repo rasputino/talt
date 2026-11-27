@@ -772,6 +772,85 @@ lane caches for the vehicle's lane and the next one, and per-batch lists of acti
 Parallel and sequential runs give the same fingerprints throughout. Earlier goldens: all unchanged; new
 `RoadVehicleReplayTests` golden `91E0F1189491671C`.
 
+## Destination demand and cargo routing (feature 013)
+
+Passengers, mail and goods want a specific destination **town** and travel there over the player's lines, changing
+line at shared stations; raw and processed cargo (and food) keep feature 010's "any accepting station". Destination
+cargo is aggregated in packets, never simulated per passenger. Everything lives in `Talt.Core.Demand` plus a partial of
+`StationRegistry`; all balancing is in `Demand/Data/demand.json` (`DemandRules`, validated with file and field names).
+
+- **Destination tables** (`DestinationTables`): one per source and destination cargo. Town buildings (passengers,
+  mail): an own-town share (50 %) plus the top 32 other towns within 1 500 tiles weighted
+  population^a × 2^24 / distance^k (passengers a = 1, k = 1; mail a = 2, k = 2). Goods: one table per producing industry
+  over goods-accepting towns. Shares are parts per million from cumulative floors (they sum exactly); a slice of
+  sources is refreshed every day so each table is refreshed monthly. `IDemandWorld` (`GameDemandWorld`) is what they
+  read, so tests use hand-made worlds.
+- **Supply split** (`StationRegistry.Destinations.cs`): feature 010's `Distribute` hands each group's share to
+  `SupplyPart`. Building cargo is gathered per (group, town, cargo) for the day and split once with `Apportion.Split`
+  (exact integer apportionment with a carry per table entry: every call hands out exactly the amount, long-run shares
+  within one unit, no randomness). Units whose destination has no route from the group never reach the station and
+  count as unserved (industry goods stay at the industry: `TakeProduction` returns less). Groups on none of the
+  company's lines keep the 010 behaviour (any destination), so the debug service and earlier goldens are unchanged.
+- **Destination stock**: buckets keyed by (group key, cargo, next group key) in a dictionary, each a FIFO list in a
+  separate packet pool (amount, origin, source town, destination, pickup day, waiting-since day, transfer credit).
+  `_waiting` counts both kinds, so the 4 000 cap and ratings are unchanged. Packets waiting 60 days expire (bucket
+  heads, daily). Group recomputation moves buckets to the old group's lowest surviving station's group.
+- **Link graph** (`ILinkSource`, `LinkCollector`, `RoutingProblem`): mode-agnostic. A source reports its lines (company,
+  cargo, ticks per tile of its slowest vehicle, units per round) and their stops (loads / unloads). `RoadVehicleSystem`
+  implements it, and so does `TrainSystem` (feature 015, `TrainSystem.Links.cs`), registered with `Router.AddSource`. Nodes are station groups by key; an edge goes
+  from each loading stop to the next stop of another group where cargo may leave, with travel ticks from Manhattan
+  distance and monthly capacity = units per round × ticks per month / round-trip ticks. Parallel edges merge.
+- **Assignment** (`RouteAssignment`, a pure function): per destination town with demand and a serving group, a
+  multi-source Dijkstra on the reversed graph keeping the two best labels with distinct serving sources, so own-town
+  cargo can be sent from one stop of a town to another. Labels compare as (cost, source), so the result does not depend
+  on the priority queue. The search is pruned to the bounding box of the destination's origins and serving groups
+  widened by 400 tiles (a route that would need a longer detour is not found: a documented limit) and at 90 days of
+  travel. Two passes (method of successive averages): pass 1 loads the estimated monthly flows on its hops, edges over
+  capacity get up to 4× dearer, pass 2's choice takes half of the cargo where it differs. Destinations are searched in
+  parallel with one `Searcher` per thread; loads are summed and the output sorted, so any thread count gives the same
+  `RouteTable` (test). A table is sorted by (group, town) with hop 1, hop 2, share and split carry.
+- **Router** (`CargoRouter`): every 4 days, or as soon as lines, vehicles or stations change, it builds the problems on
+  the main thread **over four consecutive ticks** (collect → nodes and edges → served towns and flows → seal), then runs
+  the assignment on the thread pool (inline when the tick is sequential) and applies it at exactly start + 2 days,
+  waiting for the worker if it is late. Waiting packets are then re-routed a slice per tick. Schedule, tables and stage
+  are hashed once a job ever started, so games without lines keep their fingerprints.
+- **Vehicles**: `Load` / `Unload` take the vehicle's next stop (`nextStationId`, any mode). Loading takes the bucket
+  whose next group is the next stop's group. Unloading delivers where the group serves the destination town (only
+  that town's buildings, never at the group the cargo started from), keeps cargo whose route continues with the
+  vehicle, and leaves the rest to change line. The route is chosen again at every station. Payment is feature 011's,
+  once, by the distance from the first pickup; a transfer records a leg credit (quote so far − credits carried) in the
+  vehicle's profit only, and the delivering vehicle books payment − credits carried.
+- **Client**: station window (waiting by destination with the next stop), vehicle window (on board by destination),
+  town window (top destinations, monthly demand, share carried last month, goods sources) and an unserved-demand
+  overlay (`DemandOverlay`, key V / HUD button): dotted screen-space lines between the 40 town pairs with the most
+  unserved passengers and mail, refreshed once a day.
+
+### Destination demand numbers
+
+BenchmarkDotNet (2026-11-26, AMD Ryzen 7 160, 8 cores / 16 threads; the machine was noisy, see the standard
+deviations; `DemandBenchmarks`, `RoadVehicleBenchmarks`): feature 012's reference game (4096 map, 538 towns, 8 422 bus
+bays, 7 722 lines, 50 000 buses) run 40 days so routes were applied: 7 889 graph nodes, 15 444 edges. This network has
+little real demand (its bays rarely cover town buildings: 13 routed destinations), so a synthetic dense network
+measures the assignment: 4 900 groups on a 70 × 70 lattice, 576 towns, every group producing for 33 towns.
+
+| Benchmark | Mean | Allocated | Notes |
+|---|---|---|---|
+| `Tick` (parallel, 50 000 buses, routing on) | 3.6–4.0 ms | 6.5–7.6 KB | 012's 3.35 ms before; same `Parallel.For` bookkeeping |
+| `BuildProblems` (main-thread part, whole) | 3.1 ms | 0 B | spread over four ticks in the game (≈ 0.5–2 ms each) |
+| `Solve` (reference game, build + assignment) | 4.4 ms | 10 KB | worker thread |
+| `SolveSynthetic` (dense, parallel) | 167 ms | 25 KB | worker; 1.39 M route entries |
+| `SolveSyntheticSequential` (dense, one thread) | 487 ms | 0 B | sequential ticks only |
+| `TablesDay` (one day of table refreshes, 538 towns) | 0.29–0.54 ms | 0 B | day boundary |
+
+Worst single ticks over four route periods (four runs): ticks with router work 5.9–7.9 ms; ordinary ticks without
+router work reached 5.2–20 ms on the same runs, so the spikes are the machine and 012's vehicles, not routing (SC-001's
+8 ms is met by the router's own ticks). At ×20 the 2-day apply window is 200 ms of real time, above the dense case's
+167 ms, so the main thread does not wait; a denser network than that would make the apply tick wait for the worker.
+Steady-state ticks with routing allocate nothing (`RouterDeterminismTests.SteadyStateTicks_WithRouting_AllocateNothing`,
+sequential, a whole route period per window). Goldens: map-less, `ci/golden-fingerprints.json`, windows-reference and
+the station, finance, road and construction replays are unchanged; `RoadVehicleReplayTests` changed on purpose
+(`91E0F1189491671C` → `396343F72649C68E`: passengers now have destinations), and after merging feature 015
+`RailReplayTests` (`051623FE7E98467D` → `51B7F8F782F00DFE`: trains carry destination cargo too).
 ## Railways (feature 015)
 
 Specs in `specs/015-railways/` (spec with five clarifications, plan, research R1–R15, data model, contracts).

@@ -50,7 +50,8 @@ internal static class ObjectInfoWindow
         }
         else if (pick.Kind == PickKind.Town && session.Simulation.Towns is { } towns)
         {
-            TownWindow.Add(content, towns, pick.TownId, () => (session.Simulation.CurrentTick / Talt.Core.Simulation.GameClock.TicksPerDay) ^ ((long)session.Construction.Version << 32));
+            TownWindow.Add(content, towns, pick.TownId, () => (session.Simulation.CurrentTick / Talt.Core.Simulation.GameClock.TicksPerDay) ^ ((long)session.Construction.Version << 32),
+                session.Simulation.Destinations, session.Simulation.Content.CargoIndex("mail"), session.Simulation.Stations);
         }
         else if (pick.Kind == PickKind.Station && session.Simulation.Stations is { } stations)
         {

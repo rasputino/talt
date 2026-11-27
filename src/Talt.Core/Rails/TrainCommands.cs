@@ -320,6 +320,7 @@ public sealed record SetTrainCargoCommand(int CompanyId, int TrainId, int Part, 
     {
         ArgumentNullException.ThrowIfNull(simulation);
         TrainSystem.SetCargo(simulation.Trains!.Find(TrainId)!, Part, simulation.Content.CargoIndex(Cargo));
+        simulation.Trains.OnLinksChanged(); // Feature 013: the line's capacity per cargo changed.
     }
 
     public void WriteProperties(Utf8JsonWriter writer)

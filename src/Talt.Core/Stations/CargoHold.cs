@@ -11,7 +11,8 @@ namespace Talt.Core.Stations;
 /// <param name="SourceTown">Town the passengers or mail came from, or −1.</param>
 /// <param name="Destination">Destination station id (feature 013), or −1 for any destination.</param>
 /// <param name="PickupDay">Day number when it was first loaded onto a vehicle.</param>
-public readonly record struct HeldCargo(int Cargo, int Amount, int Origin, int SourceTown, int Destination, int PickupDay);
+/// <param name="Credit">Transfer credit recorded by earlier legs (feature 013, money units; statistics only).</param>
+public readonly record struct HeldCargo(int Cargo, int Amount, int Origin, int SourceTown, int Destination, int PickupDay, long Credit = 0);
 
 /// <summary>
 /// What a vehicle carries (feature 012) or what a test moves between stations: a small list of
@@ -75,6 +76,7 @@ public sealed class CargoHold : IStateHashable
             hasher.Append(p.SourceTown);
             hasher.Append(p.Destination);
             hasher.Append(p.PickupDay);
+            hasher.Append(p.Credit);
         }
     }
 
@@ -91,7 +93,7 @@ public sealed class CargoHold : IStateHashable
             if (p.Cargo == cargo.Cargo && p.Origin == cargo.Origin && p.SourceTown == cargo.SourceTown
                 && p.Destination == cargo.Destination && p.PickupDay == cargo.PickupDay)
             {
-                _parts[i] = p with { Amount = p.Amount + cargo.Amount };
+                _parts[i] = p with { Amount = p.Amount + cargo.Amount, Credit = p.Credit + cargo.Credit };
                 return;
             }
         }
@@ -104,12 +106,19 @@ public sealed class CargoHold : IStateHashable
         _parts[Count++] = cargo;
     }
 
-    /// <summary>Sets a part's amount; zero removes it, keeping the order of the others.</summary>
+    /// <summary>Sets a part's amount; zero removes it, keeping the order of the others. The credit shrinks in proportion.</summary>
     internal void SetAmount(int index, int amount)
+    {
+        var part = _parts[index];
+        SetPart(index, amount, part.Amount > 0 ? part.Credit * Math.Max(0, amount) / part.Amount : 0);
+    }
+
+    /// <summary>Sets a part's amount and credit; zero amount removes it, keeping the order of the others.</summary>
+    internal void SetPart(int index, int amount, long credit)
     {
         if (amount > 0)
         {
-            _parts[index] = _parts[index] with { Amount = amount };
+            _parts[index] = _parts[index] with { Amount = amount, Credit = credit };
             return;
         }
 
