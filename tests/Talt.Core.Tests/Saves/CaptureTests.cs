@@ -5,6 +5,7 @@ using Talt.Tests.Support;
 namespace Talt.Core.Tests.Saves;
 
 /// <summary>Saving never changes the game (SC-007) and capture allocates nothing once warm (constitution II, research R7).</summary>
+[Collection(nameof(SaveCaptureMeasurements))]
 public class CaptureTests
 {
     [Fact]
@@ -84,3 +85,7 @@ public class CaptureTests
         AllocationAssert.NoSteadyStateAllocations(() => loaded.Tick(parallel: false), period, "ticks of a loaded game with destination routing");
     }
 }
+
+// Other save tests dispose snapshots and trim the same process-wide segment pool.
+[CollectionDefinition(nameof(SaveCaptureMeasurements), DisableParallelization = true)]
+public sealed class SaveCaptureMeasurements;
