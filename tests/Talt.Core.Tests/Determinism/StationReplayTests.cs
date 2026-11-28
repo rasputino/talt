@@ -17,7 +17,8 @@ namespace Talt.Core.Tests.Determinism;
 /// </remarks>
 public class StationReplayTests
 {
-    private const string ExpectedAtTick2000 = "BAAC9D06990E9E24";
+    // Feature 017 hashes the expanded company ledger and the station and town observations from the January close.
+    private const string ExpectedAtTick2000 = "3961153F48E862C1";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 31,

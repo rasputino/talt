@@ -121,6 +121,9 @@ public struct RoadVehicleState
 [StructLayout(LayoutKind.Sequential)]
 public struct LaneCache
 {
+    /// <summary>Stable index of the current lane, or -1 until first resolved.</summary>
+    public int Index;
+
     /// <summary>Cached for the lane (set whenever <see cref="RoadVehicleState.Lane"/> changes): the tile it leads to.</summary>
     public int To;
 
@@ -130,7 +133,7 @@ public struct LaneCache
     /// <summary>Cached for the lane: the road's speed limit with the ramp share, units per tick.</summary>
     public int RoadCap;
 
-    /// <summary>Cached for the lane: link mask (low byte) and exit mask (second byte) of <see cref="To"/>.</summary>
+    /// <summary>Cached for the lane: links, exits and permitted plain continuation of <see cref="To"/>.</summary>
     public int ToMasks;
 
     /// <summary>Derived look-up cache: the key of the lane after this one last time it was looked up, or −1.</summary>
@@ -138,6 +141,9 @@ public struct LaneCache
 
     /// <summary>Derived look-up cache: the lane index of <see cref="NextKey"/> (only cached once the lane exists).</summary>
     public int NextIndex;
+
+    /// <summary>Stable index of the plain continuation from NextKey, if published by the lane phase.</summary>
+    public int NextPlainIndex;
 
     /// <summary>Road network version the lane caches were filled at (refilled when the roads change).</summary>
     public int CacheVersion;
@@ -148,7 +154,7 @@ public struct LaneCache
     /// <summary>Derived look-up cache for <see cref="NextKey"/>: its link length.</summary>
     public int NextLength;
 
-    /// <summary>Derived look-up cache for <see cref="NextKey"/>: link and exit masks of <see cref="NextTo"/>.</summary>
+    /// <summary>Derived look-up cache for <see cref="NextKey"/>: links, exits and permitted plain continuation of <see cref="NextTo"/>.</summary>
     public int NextMasks;
 
 }

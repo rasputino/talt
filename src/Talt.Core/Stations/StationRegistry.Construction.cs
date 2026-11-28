@@ -269,6 +269,7 @@ public sealed partial class StationRegistry
         EnsureStationCapacity(_count + 1);
         var slot = _count++;
         var id = _nextId++;
+        _history.AddStation(slot, _id.Length);
         _id[slot] = id;
         _owner[slot] = companyId;
         _kind[slot] = (byte)kind;
@@ -427,6 +428,7 @@ public sealed partial class StationRegistry
             RegisterGrid(slot);
         }
 
+        _history.RemoveStation(slot, last);
         _tiles[last] = null!;
         _customName[last] = null;
         _count = last;

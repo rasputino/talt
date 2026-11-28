@@ -39,6 +39,7 @@ public sealed partial class TrainSystem
             var decay = rules.ReliabilityDecayPerDay * (train.AgeDays > life * 365 ? rules.OldAgeFactor : 1);
             train.Reliability = Math.Max(rules.MinReliability, train.Reliability - decay);
             train.ProfitThisYear = Money.Add(train.ProfitThisYear, -(running / 365));
+            Lines.RecordProfit(train.Line, -(running / 365));
             if (train.ServiceInterval > 0 && train.DaysSinceService >= train.ServiceInterval)
             {
                 train.Orders |= VehicleOrders.ServiceDue;

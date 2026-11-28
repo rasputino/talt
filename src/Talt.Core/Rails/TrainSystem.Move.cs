@@ -5,6 +5,8 @@ namespace Talt.Core.Rails;
 /// <summary>The parallel move phase (research R6, R7): speed from forces and authority, head advance on owned track.</summary>
 public sealed partial class TrainSystem
 {
+    internal Simulation.TrafficHistory? Traffic { get; set; }
+
     /// <summary>Advances the trains by one tick (called by the simulation after road vehicles).</summary>
     public void Tick(long tick, bool parallel)
     {
@@ -35,6 +37,31 @@ public sealed partial class TrainSystem
         _searchBudget = Rules.SearchNodesPerTick;
         foreach (var train in _byId)
         {
+            if (Traffic is { } traffic)
+            {
+                for (var step = train.FirstCrossedStep; step < train.EndCrossedStep; step++)
+                {
+                    var from = train.StepFrom(step);
+                    traffic.Record(from, _rails.FollowLink(from, train.StepDir(step)), rail: true);
+                }
+            }
+
+            if (train.ServiceDistance > 0 && train.Line >= 0 && train.TargetKind == RouteGoalKind.Station)
+            {
+                var load = 0;
+                var capacity = 0;
+                foreach (var part in train.Parts)
+                {
+                    if (part.Cargo >= 0)
+                    {
+                        load += part.Hold.Total;
+                        capacity += Rules.Models[part.Model].Capacity;
+                    }
+                }
+
+                Lines.RecordDistance(train.Line, train.ServiceDistance, load, capacity);
+            }
+
             Sequential(train);
         }
     }
@@ -45,7 +72,9 @@ public sealed partial class TrainSystem
         long moved = 0;
         for (var slot = batch * BatchSize; slot < end; slot++)
         {
-            moved += Move(_trains[slot]);
+            var train = _trains[slot];
+            train.ServiceDistance = Move(train);
+            moved += train.ServiceDistance;
         }
 
         if (moved != 0)
@@ -57,6 +86,7 @@ public sealed partial class TrainSystem
     /// <summary>One train's move: reads the rail layer, the rules and its own state; writes only its speed and head.</summary>
     private int Move(Train train)
     {
+        train.FirstCrossedStep = train.EndCrossedStep = 0;
         if (train.Mode != TrainMode.Running || train.StepCount == 0)
         {
             train.Speed = 0;
@@ -120,6 +150,8 @@ public sealed partial class TrainSystem
             step++;
         }
 
+        train.FirstCrossedStep = train.HeadStep + (train.HeadOffset == train.StepLength(train.HeadStep) ? 1 : 0);
+        train.EndCrossedStep = step + (offset >= train.StepLength(step) ? 1 : 0);
         train.HeadStep = step;
         train.HeadOffset = (int)Math.Min(offset, train.StepLength(step));
         if (advance >= ahead)

@@ -41,6 +41,8 @@ internal interface IVehicleUi
 
     string Money(long amount, Strings s);
 
+    TableCell MoneyCell(long amount, Strings s) => Money(amount, s);
+
     void OpenVehicle(int vehicleId);
 
     void OpenDepot(int depotId);
@@ -329,7 +331,7 @@ internal static class LineWindow
         var company = session.Construction.Player.Id;
         var window = new UiWindow(Kind, TextRef.Dynamic(() => lines.Version, s => VehicleTexts.LineName(s, lines, lineId))) { Key = $"line:{lineId}" };
         var content = new StackPanel(Orientation.Vertical) { Spacing = 6 };
-        var onLine = new List<int>();
+
         var scratch = new List<int>();
 
         // The stops as a strip with a mark per vehicle (road vehicles and trains), refreshed every 10 ticks.
@@ -376,55 +378,25 @@ internal static class LineWindow
         var input = rename.Add(new TextInput(lines.Exists(lineId) ? lines.NameOf(lineId) ?? string.Empty : string.Empty, LineRegistry.MaxNameLength) { MinWidth = 200 });
         rename.Add(new Button(TextRef.Of("line.rename"), () => session.Submit(new RenameLineCommand(company, lineId, input.Text))));
 
-        content.Add(new Label(TextRef.Of("line.vehicles"), TextSize.Title));
-        var trains = session.Simulation.Trains;
-        content.Add(new RebuildingPanel(() => vehicles.Version ^ ((long)lines.Version << 32) ^ ((long)(trains?.Version ?? 0) << 16) ^ (session.Simulation.CurrentTick / 40 << 48), panel =>
+        int Interval() => lines.Exists(lineId) ? lines.IntervalDays(lineId) : -1;
+        void ChangeInterval(int change)
         {
-            vehicles.VehiclesOnLine(lineId, onLine);
-            var any = onLine.Count > 0;
-            foreach (var id in onLine)
+            var days = Interval();
+            if (days >= 0)
             {
-                var row = panel.Add(new StackPanel(Orientation.Horizontal) { Spacing = 8 });
-                row.Add(new Meter(() => vehicles.SlotOf(id) is var slot and >= 0 ? InfoRows.Share(vehicles.HoldAt(slot).Total, vehicles.ModelAt(slot).Capacity) : 0f, MeterColoring.Fixed)
-                {
-                    Width = 60,
-                    FixedColor = vehicles.SlotOf(id) is var slot and >= 0 ? InfoRows.CargoColor(session.Simulation.Content, vehicles.CargoAt(slot)) : UiColor.White,
-                    Tooltip = TextRef.Of("line.vehicle.load.tooltip"),
-                });
-                row.Add(new Button(TextRef.Dynamic(() => session.Simulation.CurrentTick / 20, s => VehicleTexts.VehicleName(s, vehicles, id) + " — " + VehicleTexts.Status(s, session, id)), () => ui.OpenVehicle(id))
-                {
-                    HorizontalAlignment = Alignment.Start,
-                });
+                session.Submit(new SetLineIntervalCommand(company, lineId, (int)Math.Clamp((long)days + change, 0, int.MaxValue)));
             }
+        }
 
-            for (var i = 0; trains is not null && i < trains.Count; i++)
-            {
-                var train = trains.TrainAt(i);
-                if (train.Line != lineId)
-                {
-                    continue;
-                }
+        var interval = content.Add(new StackPanel(Orientation.Horizontal) { Spacing = 6, VisibleWhen = () => lines.Exists(lineId) });
+        interval.Add(new Label(TextRef.Dynamic(() => Interval(), s => Interval() <= 0
+            ? s.Get("line.interval.off")
+            : s.Format("line.interval.days", ("days", Interval().ToString(CultureInfo.InvariantCulture))))) { MinWidth = 200 });
+        interval.Add(new Button(TextRef.Of("line.interval.less"), () => ChangeInterval(-1)));
+        interval.Add(new Button(TextRef.Of("line.interval.more"), () => ChangeInterval(1)));
 
-                any = true;
-                var id = train.Id;
-                var row = panel.Add(new StackPanel(Orientation.Horizontal) { Spacing = 8 });
-                row.Add(new Meter(() => trains.Find(id) is { } t ? TrainLoad(trains, t, session.Simulation.Content.CargoCount) : 0f, MeterColoring.Accent)
-                {
-                    Width = 60,
-                    Tooltip = TextRef.Of("line.vehicle.load.tooltip"),
-                });
-                row.Add(new Button(TextRef.Dynamic(() => session.Simulation.CurrentTick / 20, s => TrainTexts.Name(s, trains, id) + " — " + TrainTexts.Status(s, session, id)),
-                    () => (ui as ITrainUi)?.OpenTrain(id))
-                {
-                    HorizontalAlignment = Alignment.Start,
-                });
-            }
-
-            if (!any)
-            {
-                panel.Add(new Label(TextRef.Of("line.noVehicles")) { Color = TextColor.Muted });
-            }
-        }));
+        content.Add(new Label(TextRef.Of("line.vehicles"), TextSize.Title));
+        content.Add(LinesWindow.AssignedVehicles(ui, lineId));
         window.Content = content;
         return window;
     }
@@ -471,7 +443,7 @@ internal static class LineWindow
     }
 
     /// <summary>Cargo on board a train against its total capacity, 0–1.</summary>
-    private static float TrainLoad(TrainSystem trains, Train train, int cargoCount)
+    internal static float TrainLoad(TrainSystem trains, Train train, int cargoCount)
     {
         long amount = 0, capacity = 0;
         foreach (var part in train.Parts)
@@ -485,52 +457,5 @@ internal static class LineWindow
         }
 
         return InfoRows.Share(amount, capacity);
-    }
-}
-
-/// <summary>The list of the company's lines (key F4): one button per line opens its window.</summary>
-internal static class LinesWindow
-{
-    public const string Kind = "lines";
-
-    public static UiWindow Create(IVehicleUi ui)
-    {
-        ArgumentNullException.ThrowIfNull(ui);
-        var session = ui.Session;
-        var vehicles = session.RoadVehicles!;
-        var lines = vehicles.Lines;
-        var company = session.Construction.Player.Id;
-        var window = new UiWindow(Kind, TextRef.Of("lines.title")) { Key = "lines", SingleInstance = true };
-        var content = new StackPanel(Orientation.Vertical) { Spacing = 4 };
-        var onLine = new List<int>();
-        content.Add(new RebuildingPanel(() => lines.Version ^ ((long)vehicles.Version << 32), panel =>
-        {
-            var any = false;
-            for (var i = 0; i < lines.Count; i++)
-            {
-                var lineId = lines.IdAt(i);
-                if (lines.OwnerOf(lineId) != company)
-                {
-                    continue;
-                }
-
-                any = true;
-                vehicles.VehiclesOnLine(lineId, onLine);
-                var count = onLine.Count;
-                panel.Add(new Button(TextRef.Dynamic(() => lines.Version, s => s.Format("lines.entry", ("name", VehicleTexts.LineName(s, lines, lineId)),
-                    ("stops", lines.StopCount(lineId).ToString(CultureInfo.InvariantCulture)), ("vehicles", count.ToString(CultureInfo.InvariantCulture)))), () => ui.OpenLine(lineId))
-                {
-                    HorizontalAlignment = Alignment.Start,
-                });
-            }
-
-            if (!any)
-            {
-                panel.Add(new Label(TextRef.Of("lines.none")) { Color = TextColor.Muted, Wrap = true, Width = 300 });
-            }
-        }));
-        content.Add(new Button(TextRef.Of("lines.new"), () => ui.StartLineMode(-1, -1)) { Tooltip = TextRef.Of("lines.new.tooltip") });
-        window.Content = content;
-        return window;
     }
 }

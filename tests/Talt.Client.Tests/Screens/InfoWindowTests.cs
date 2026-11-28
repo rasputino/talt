@@ -140,6 +140,8 @@ public class InfoWindowTests
         ui.Windows.Open(town);
         AssertSteady(ui);
 
+        Assert.Single(UiTestKit.Walk(town.Content!).OfType<BarChart>());
+        Assert.Single(UiTestKit.Walk(station.Content!).OfType<BarChart>());
         Assert.True(UiTestKit.Walk(town.Content!).OfType<Meter>().Count(m => m.Visible) >= 4); // Passengers, mail, rating, growth.
         Assert.Contains(UiTestKit.Walk(station.Content!), w => w is CargoBadge { Visible: true });
     }
@@ -184,7 +186,121 @@ public class InfoWindowTests
         Assert.Contains(UiTestKit.Walk(window.Content!), w => w is SegmentBar { Visible: true });
         var strip = Assert.Single(UiTestKit.Walk(line.Content!).OfType<StopStrip>());
         Assert.True(strip.MarkerPositions.Count > 0, $"{TrainSystem.StatusOf(train)} flags {train.Flags} mode {train.Mode}"); // Trains show on the strip of their line.
-        Assert.Contains(UiTestKit.Walk(line.Content!), w => w is Button b && b.Text is { } t && t.Resolve(ui).Contains(TrainTexts.Name(ui.Strings, trains, train.Id), StringComparison.Ordinal));
+        var row = Assert.Single(UiTestKit.Walk(line.Content!).OfType<VirtualTable>()).GetChild(0);
+        row.OnMouseDown(ui, Silk.NET.Input.MouseButton.Left, default);
+        row.OnMouseUp(ui, Silk.NET.Input.MouseButton.Left, default, true);
+        Assert.Equal(train.Id, fake.OpenedTrain);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FleetDirectoryActivatesTheVisibleVehicle(bool rail)
+    {
+        var session = rail ? RailGame.Value : Game.Value;
+        var ui = UiTestKit.CreateContext("es");
+        (bool Rail, int Id)? clicked = null;
+        var window = ui.Windows.Open(LinesWindow.Create(new FakeVehicleUi(session), (mode, id) => clicked = (mode, id)));
+        var tabs = Assert.IsType<TabControl>(window.Content);
+        tabs.Select(1);
+        var filters = UiTestKit.Walk(tabs).OfType<Dropdown>().ToArray();
+        filters[0].OnSelected(rail ? 2 : 1);
+        AssertSteady(ui);
+        var table = Assert.Single(UiTestKit.Walk(tabs).OfType<VirtualTable>());
+        var row = table.GetChild(0);
+        Assert.True(row.Visible);
+        Assert.True(row.OnMouseDown(ui, Silk.NET.Input.MouseButton.Left, default));
+        row.OnMouseUp(ui, Silk.NET.Input.MouseButton.Left, default, true);
+        var expected = rail ? session.Simulation.Trains!.TrainAt(0).Id : session.RoadVehicles!.IdAt(0);
+        Assert.Equal((rail, expected), clicked);
+    }
+
+    [Fact]
+    public void VirtualTableReachesLastOfFiftyThousandRowsAndRejectsReboundClick()
+    {
+        const int count = 50_000;
+        var ui = UiTestKit.CreateContext();
+        var selected = -1L;
+        var table = new VirtualTable([160], () => count, i => i, () => 0, (_, id, _) => id, id => selected = id);
+        ui.Windows.Open(new UiWindow("test", TextRef.Of("lines.title")) { Content = table });
+        AssertSteady(ui);
+        Assert.Equal(10, table.ChildCount);
+        var first = table.GetChild(0);
+        first.OnMouseDown(ui, Silk.NET.Input.MouseButton.Left, default);
+        Assert.True(table.OnScroll(ui, -count));
+        ui.Layout();
+        first.OnMouseUp(ui, Silk.NET.Input.MouseButton.Left, default, true);
+        Assert.Equal(-1L, selected);
+        Assert.Equal(count - 10, table.FirstRow);
+        var last = table.GetChild(9);
+        last.OnMouseDown(ui, Silk.NET.Input.MouseButton.Left, default);
+        last.OnMouseUp(ui, Silk.NET.Input.MouseButton.Left, default, true);
+        Assert.Equal(count - 1L, selected);
+        var draw = new UiDrawList();
+        AllocationAssert.NoSteadyStateAllocations(() =>
+        {
+            table.OnScroll(ui, 1);
+            UiTestKit.Frame(ui, draw);
+        }, 20, "scrolling a 50,000-row directory");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FleetRowCentersCameraAndOpensIndividualWindow(bool rail)
+    {
+        var session = rail ? RailGame.Value : Game.Value;
+        var ui = UiTestKit.CreateContext();
+        var camera = new Talt.Client.Rendering.OrbitCamera { Target = new System.Numerics.Vector3(-1) };
+        var screen = new InGameScreen(new FakeHost(ui), session, camera, _ => false);
+        ui.Screen = screen.Root;
+        screen.OpenLines();
+        var tabs = Assert.IsType<TabControl>(ui.Windows.Front!.Content);
+        tabs.Select(1);
+        ui.Layout();
+        var row = Assert.Single(UiTestKit.Walk(tabs).OfType<VirtualTable>()).GetChild(0);
+        row.OnMouseDown(ui, Silk.NET.Input.MouseButton.Left, default);
+        row.OnMouseUp(ui, Silk.NET.Input.MouseButton.Left, default, true);
+        Assert.Equal(rail ? TrainWindow.Kind : VehicleWindow.Kind, ui.Windows.Front!.Kind);
+        Assert.InRange(camera.Target.X, 0, session.Construction.Map.Width);
+        Assert.InRange(camera.Target.Z, 0, session.Construction.Map.Depth);
+    }
+
+    [Fact]
+    public void LineDirectorySortsProfitAndRetainsEmptyLines()
+    {
+        var session = Start(new NewGameOptions(ChunksPerSide: 4, VehicleCount: 0, Seed: 2));
+        var ui = UiTestKit.CreateContext();
+        var owner = session.Construction.Player.Id;
+        var lines = session.RoadVehicles!.Lines;
+        var profit = lines.Create(owner, []);
+        var loss = lines.Create(owner, []);
+        lines.RecordProfit(profit, 100);
+        lines.RecordProfit(loss, -200);
+        var host = new FakeVehicleUi(session);
+        var window = ui.Windows.Open(LinesWindow.Create(host, (_, _) => { }));
+        var filters = UiTestKit.Walk(window.Content!).OfType<Dropdown>().ToArray();
+
+        void ClickFirst()
+        {
+            ui.Layout();
+            var row = UiTestKit.Walk(window.Content!).OfType<VirtualTable>().Single().GetChild(0);
+            Assert.True(row.Visible);
+            row.OnMouseDown(ui, Silk.NET.Input.MouseButton.Left, default);
+            row.OnMouseUp(ui, Silk.NET.Input.MouseButton.Left, default, true);
+        }
+
+        filters[2].OnSelected(2);
+        ClickFirst();
+        Assert.Equal(loss, host.OpenedLine);
+        filters[1].OnSelected(1);
+        ClickFirst();
+        Assert.Equal(profit, host.OpenedLine);
+
+        filters[0].OnSelected(2);
+        ui.Layout();
+        var table = UiTestKit.Walk(window.Content!).OfType<VirtualTable>().Single();
+        Assert.False(table.GetChild(0).Visible);
     }
 
     private static void AssertSteady(UiContext ui)
@@ -220,17 +336,17 @@ public class InfoWindowTests
         {
         }
 
-        public void OpenLine(int lineId)
-        {
-        }
+        public int OpenedLine { get; private set; }
+
+        public void OpenLine(int lineId) => OpenedLine = lineId;
 
         public void StartLineMode(int lineId, int vehicleId)
         {
         }
 
-        public void OpenTrain(int trainId)
-        {
-        }
+        public int OpenedTrain { get; private set; }
+
+        public void OpenTrain(int trainId) => OpenedTrain = trainId;
 
         public void OpenRailDepot(int depotId)
         {

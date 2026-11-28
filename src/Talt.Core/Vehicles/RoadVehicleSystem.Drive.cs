@@ -12,6 +12,10 @@ public sealed partial class RoadVehicleSystem
 {
     /// <summary>Most lanes a vehicle looks through ahead of it (look-ahead is also bounded by distance).</summary>
     private const int MaxScanLanes = 6;
+    internal Simulation.TrafficHistory? Traffic { get; set; }
+    private int[][] _crossedRoadLinks = [];
+    private int[] _crossedCount = [];
+    private bool[] _leftAcrossLaneEnd = [];
 
     /// <summary>Advances every vehicle by one tick (contracts/vehicles-api.md).</summary>
     /// <param name="tick">The simulation's tick number before this tick (for waiting keys and breakdown pulses).</param>
@@ -40,7 +44,30 @@ public sealed partial class RoadVehicleSystem
             }
         }
 
+        if (Traffic is { } traffic)
+        {
+            for (var b = 0; b < batches; b++)
+            {
+                for (var i = 0; i < _crossedCount[b]; i++)
+                {
+                    var lane = _crossedRoadLinks[b][i];
+                    if (lane >= 0)
+                    {
+                        traffic.RecordRoadLane(lane);
+                    }
+                    else
+                    {
+                        // A fast vehicle may cross an intermediate lane before it joins that lane's list.
+                        var key = ~lane;
+                        traffic.Record(key >> 3, _roads.FollowLink(key >> 3, key & 7), rail: false);
+                    }
+                }
+            }
+        }
+
         (_hot, _next) = (_next, _hot);
+
+        Lines.InvalidateOpenDistances();
 
         // Phase 2: lane lists. All leavers first, then all arrivals, so a list never holds a stale member while
         // another is inserted (research R7). Batches hold their slots in order, so this is slot order.
@@ -49,7 +76,13 @@ public sealed partial class RoadVehicleSystem
             var list = _batchLaneChanges[b];
             for (var i = 0; i < _batchLaneChangeCount[b]; i++)
             {
-                Unlink(list[i]);
+                var slot = list[i];
+                if (_leftAcrossLaneEnd[slot])
+                {
+                    Traffic?.RecordRoadLane(_laneOf[slot]);
+                }
+
+                Unlink(slot);
             }
         }
 
@@ -77,6 +110,7 @@ public sealed partial class RoadVehicleSystem
     private void DriveBatch(int batch)
     {
         var end = Math.Min((batch + 1) * BatchSize, Count);
+        _crossedCount[batch] = 0;
         long travelled = 0;
         var laneChanges = _batchLaneChanges[batch];
         var active = _batchActive[batch];
@@ -84,7 +118,13 @@ public sealed partial class RoadVehicleSystem
         var busy = 0;
         for (var v = batch * BatchSize; v < end; v++)
         {
-            travelled += Drive(v);
+            var distance = Drive(v);
+            travelled += distance;
+            if (distance != 0 && _targetKind[v] == VehicleTargetKind.Stop)
+            {
+                _unpostedDistance[v] += distance;
+            }
+
             ref readonly var n = ref _next[v];
             if ((n.Flags & RoadVehicleBits.LaneChanged) != 0)
             {
@@ -122,6 +162,8 @@ public sealed partial class RoadVehicleSystem
         if (_batchActive.Length < batches)
         {
             var old = _batchActive.Length;
+            Array.Resize(ref _crossedRoadLinks, batches);
+            Array.Resize(ref _crossedCount, batches);
             Array.Resize(ref _batchLaneChanges, batches);
             Array.Resize(ref _batchActive, batches);
             Array.Resize(ref _batchLaneChangeCount, batches);
@@ -130,12 +172,14 @@ public sealed partial class RoadVehicleSystem
             {
                 _batchLaneChanges[b] = new int[BatchSize];
                 _batchActive[b] = new int[BatchSize];
+                _crossedRoadLinks[b] = new int[BatchSize * (MaxScanLanes + 1)];
             }
         }
 
         if (_active.Length < batches * BatchSize)
         {
             _active = new int[batches * BatchSize];
+            _leftAcrossLaneEnd = new bool[batches * BatchSize];
         }
     }
 
@@ -177,12 +221,35 @@ public sealed partial class RoadVehicleSystem
         return (uint)type < (uint)_typeSpeed.Length ? _typeSpeed[type] : int.MaxValue;
     }
 
+    // Low bytes hold links and permitted exits. The third byte stores the plain continuation plus one.
+    private int LaneMasks(int tile, int arrival)
+    {
+        if (tile < 0)
+        {
+            return 0;
+        }
+
+        var links = _roads.LinksAt(tile);
+        var exits = _roads.ExitsAt(tile);
+        var other = links & ~(1 << Dir8.Opposite(arrival));
+        var plain = BitOperations.PopCount(links) == 2 && other != 0
+            ? BitOperations.TrailingZeroCount(other) : -1;
+        if (plain >= 0 && (exits & (1 << plain)) == 0)
+        {
+            plain = -1;
+        }
+
+        return links | (exits << 8) | ((plain + 1) << 16);
+    }
+
+    private static int PlainDirection(int masks) => (masks >> 16) - 1;
+
     /// <summary>
     /// The direction a vehicle takes when its front reaches the centre of <paramref name="tile"/> arriving along
-    /// <paramref name="arrival"/>, or −1 when its route no longer matches the road (research R6). Dead ends are handled
+    /// the incoming link, or −1 when its route no longer matches the road (research R6). Dead ends are handled
     /// by the caller. Read-only.
     /// </summary>
-    private int NextDirection(int slot, int tile, int arrival, byte links, byte exits, ref int routeIndex)
+    private int NextDirection(int slot, int tile, int masks, ref int routeIndex)
     {
         var route = _route[slot];
         var dir = -1;
@@ -196,14 +263,13 @@ public sealed partial class RoadVehicleSystem
             dir = _tailDir[slot];
             routeIndex++;
         }
-        else if (BitOperations.PopCount(links) == 2)
+        else
         {
-            // A plain road tile: the other link (geometry).
-            var other = links & ~(1 << Dir8.Opposite(arrival));
-            dir = other == 0 ? -1 : BitOperations.TrailingZeroCount(other);
+            return PlainDirection(masks);
         }
 
-        if (dir < 0 || (exits & (1 << dir)) == 0 || (links & (1 << dir)) == 0)
+        var allowedLinks = (byte)masks & (byte)(masks >> 8);
+        if (dir < 0 || (allowedLinks & (1 << dir)) == 0)
         {
             return -1;
         }
@@ -245,7 +311,7 @@ public sealed partial class RoadVehicleSystem
         ref var lc = ref _cache[v]; // Own slot only (read and written by this vehicle alone).
         if (lc.CacheVersion != _network.Version)
         {
-            CacheLane(v, nx.Lane); // Roads changed somewhere: the lane caches are refilled (a junction may have appeared ahead).
+            CacheLane(v, nx.Lane, _laneOf[v]); // Roads changed somewhere: the lane caches are refilled (a junction may have appeared ahead).
         }
 
         var lane = cur.Lane;
@@ -314,7 +380,7 @@ public sealed partial class RoadVehicleSystem
             {
                 sTo = _roads.FollowLink(sTile, sDir);
                 len = _roads.LinkLength(sTile, sDir);
-                masks = _roads.LinksAt(sTo) | (_roads.ExitsAt(sTo) << 8);
+                masks = LaneMasks(sTo, sDir);
             }
 
             var links = (byte)masks;
@@ -353,7 +419,7 @@ public sealed partial class RoadVehicleSystem
             }
 
             var ri = routeIndex;
-            var nextDir = NextDirection(v, sTo, sDir, links, (byte)(masks >> 8), ref ri);
+            var nextDir = NextDirection(v, sTo, masks, ref ri);
             if (nextDir < 0)
             {
                 var stopAt = count >= 3 ? len - radius - gap : len;
@@ -407,15 +473,25 @@ public sealed partial class RoadVehicleSystem
                 if (lc.NextKey != nextLane)
                 {
                     // Own slot only: a cache of the next lane for the following ticks on this lane.
-                    var nextTo = _roads.FollowLink(sTo, nextDir);
+                    lc.NextPlainIndex = -1;
                     lc.NextKey = nextLane;
-                    lc.NextIndex = -1;
-                    lc.NextTo = nextTo;
-                    lc.NextLength = _roads.LinkLength(sTo, nextDir);
-                    lc.NextMasks = nextTo < 0 ? 0 : _roads.LinksAt(nextTo) | (_roads.ExitsAt(nextTo) << 8);
+                    lc.NextIndex = FindLane(nextLane);
+                    if (lc.NextIndex >= 0 && _geometry[lc.NextIndex].Version == lc.CacheVersion)
+                    {
+                        ref readonly var next = ref _geometry[lc.NextIndex];
+                        lc.NextPlainIndex = next.SuccessorIndex;
+                        lc.NextTo = next.To;
+                        lc.NextLength = next.Length;
+                        lc.NextMasks = next.Masks;
+                    }
+                    else
+                    {
+                        lc.NextTo = _roads.FollowLink(sTo, nextDir);
+                        lc.NextLength = _roads.LinkLength(sTo, nextDir);
+                        lc.NextMasks = LaneMasks(lc.NextTo, nextDir);
+                    }
                 }
-
-                if (lc.NextIndex < 0)
+                else if (lc.NextIndex < 0)
                 {
                     lc.NextIndex = FindLane(nextLane); // Lanes keep their index once created, so a found index stays valid.
                 }
@@ -424,7 +500,12 @@ public sealed partial class RoadVehicleSystem
             }
             else
             {
-                var index = FindLane(nextLane);
+                var index = scanned == 1 && nextDir == PlainDirection(masks) ? lc.NextPlainIndex : -1;
+                if (index < 0)
+                {
+                    index = FindLane(nextLane);
+                }
+
                 tail = index < 0 ? -1 : _laneTail[index];
             }
 
@@ -471,6 +552,11 @@ public sealed partial class RoadVehicleSystem
         var pass = 0;
         while (pass < passes && s >= passEnd[pass])
         {
+            if (pass > 0 && Traffic is not null)
+            {
+                RecordRoadCrossing(v, ~lane);
+            }
+
             s = s - passEnd[pass] + passStart[pass];
             lane = passLane[pass];
             nx.RouteIndex = passRoute[pass];
@@ -479,9 +565,18 @@ public sealed partial class RoadVehicleSystem
 
         if (pass > 0)
         {
+            // Phase 2 already visits every vehicle that left its lane. Count its first physical
+            // crossing there, unless it had reached the endpoint earlier (for example at a bay).
+            _leftAcrossLaneEnd[v] = cur.S < passEnd[0];
             nx.Lane = lane;
             nx.Flags |= RoadVehicleBits.LaneChanged;
-            CacheLane(v, lane);
+            CacheLane(v, lane, lc.NextKey == lane ? lc.NextIndex : -1);
+        }
+
+        // At a terminus a vehicle crosses the centre while staying on its incoming lane.
+        if (s >= lc.LaneLength && chosen > 0 && (pass > 0 || cur.S < lc.LaneLength) && Traffic is not null)
+        {
+            RecordRoadCrossing(v, pass == 0 ? _laneOf[v] : ~lane);
         }
 
         nx.S = (int)s;
@@ -568,9 +663,35 @@ public sealed partial class RoadVehicleSystem
     }
 
     /// <summary>Fills the lane caches of a state after <see cref="RoadVehicleState.Lane"/> changed (reads only the road layer).</summary>
-    private void CacheLane(int slot, int laneKey)
+    private void CacheLane(int slot, int laneKey, int knownIndex = -1)
     {
         ref var h = ref _cache[slot];
+        h.Index = knownIndex;
+        h.NextKey = -1;
+        h.NextIndex = -1;
+        h.CacheVersion = _network.Version;
+        if (knownIndex >= 0 && _geometry[knownIndex].Version == h.CacheVersion)
+        {
+            ref readonly var geometry = ref _geometry[knownIndex];
+            h.To = geometry.To;
+            h.LaneLength = geometry.Length;
+            h.RoadCap = geometry.RoadCap;
+            h.ToMasks = geometry.Masks;
+            var successor = geometry.SuccessorIndex;
+            if (successor >= 0 && _geometry[successor].Version == h.CacheVersion)
+            {
+                ref readonly var next = ref _geometry[successor];
+                h.NextKey = _laneKey[successor];
+                h.NextIndex = successor;
+                h.NextPlainIndex = next.SuccessorIndex;
+                h.NextTo = next.To;
+                h.NextLength = next.Length;
+                h.NextMasks = next.Masks;
+            }
+
+            return;
+        }
+
         var tile = laneKey >> 3;
         var dir = laneKey & 7;
         var to = _roads.Follow(tile, dir);
@@ -584,10 +705,13 @@ public sealed partial class RoadVehicleSystem
         }
 
         h.RoadCap = cap;
-        h.ToMasks = to < 0 ? 0 : _roads.LinksAt(to) | (_roads.ExitsAt(to) << 8);
-        h.NextKey = -1;
-        h.NextIndex = -1;
-        h.CacheVersion = _network.Version;
+        h.ToMasks = LaneMasks(to, dir);
+    }
+
+    private void RecordRoadCrossing(int slot, int lane)
+    {
+        var batch = slot / BatchSize;
+        _crossedRoadLinks[batch][_crossedCount[batch]++] = lane;
     }
 
     private bool Fits(int v, long free, long budget, int braking) =>

@@ -73,11 +73,13 @@ internal sealed class MoneyFormatter
     {
         ArgumentNullException.ThrowIfNull(currency);
         ArgumentNullException.ThrowIfNull(culture);
-        var value = Math.Round(internalAmount * currency.Rate, currency.Decimals, MidpointRounding.AwayFromZero);
+        var value = DisplayAmount(internalAmount, currency);
         return value.ToString("C", FormatFor(currency, culture));
     }
 
-    private NumberFormatInfo FormatFor(Currency currency, CultureInfo culture)
+    internal static decimal DisplayAmount(long amount, Currency currency) => Math.Round(amount * currency.Rate, currency.Decimals, MidpointRounding.AwayFromZero);
+
+    internal NumberFormatInfo FormatFor(Currency currency, CultureInfo culture)
     {
         var key = (currency.Code, culture.Name);
         if (!_formats.TryGetValue(key, out var format))

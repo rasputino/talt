@@ -16,7 +16,8 @@ namespace Talt.Core.Tests.Determinism;
 public class RoadVehicleReplayTests
 {
     // Feature 013 changed it on purpose: passengers have destinations and travel by route (91E0F1189491671C before).
-    private const string ExpectedAtTick4000 = "396343F72649C68E";
+    // Feature 017 includes attributed line accounts, dispatch clocks, road passages, and company, station and town histories.
+    private const string ExpectedAtTick4000 = "8655A584910DDB71";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 12,
