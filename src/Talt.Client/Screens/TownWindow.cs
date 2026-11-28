@@ -72,6 +72,8 @@ internal static class TownWindow
             TextRef.Dynamic(version, s => InfoRows.Percent(s, towns.ServiceOf(town))),
             TextRef.Dynamic(version, s => Growth(s, towns, town)));
 
+        HistoryCharts.AddTown(content, towns, town, version);
+
         if (stations is not null)
         {
             // Feature 013: passengers and mail waiting at the player's stations here, + for their destinations.

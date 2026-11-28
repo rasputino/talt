@@ -19,7 +19,7 @@ public sealed class SaveWriter : IDisposable
     private readonly SaveBuffer _buffer;
     private readonly Dictionary<Type, Array> _sortBuffers = [];
 
-    private T[] SortBuffer<T>(int count)
+    internal T[] SortBuffer<T>(int count)
     {
         if (_sortBuffers.TryGetValue(typeof(T), out var array) && array.Length >= count)
         {

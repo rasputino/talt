@@ -18,7 +18,8 @@ public class RailReplayTests
     // Changed on purpose: feature 013, trains carry destination cargo (051623FE7E98467D before); then the seeder levels
     // sloping loops, so none is left open with its trains stuck in the depot (51B7F8F782F00DFE before).
     // Feature 016 extends the hashed road model rules and sale windows (A71D30A0AD70B669 before).
-    private const string ExpectedAtTick3000 = "91DDF5576E65F633";
+    // Feature 017 includes attributed line accounts, dispatch clocks, rail passages, and company, station and town histories.
+    private const string ExpectedAtTick3000 = "4EEC5CCF4CEE70FA";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 41,

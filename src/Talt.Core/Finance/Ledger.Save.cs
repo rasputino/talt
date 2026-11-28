@@ -7,6 +7,7 @@ public sealed partial class Ledger
     /// <summary>Writes the month ring and every year's totals with their calendar identity (feature 014).</summary>
     internal void WriteState(SaveWriter writer)
     {
+        writer.WriteLong(Version);
         writer.WriteInt(SlotCount);
         writer.WriteInt(_current);
         writer.WriteInt(MonthCount);
@@ -26,18 +27,29 @@ public sealed partial class Ledger
         }
     }
 
-    private static void ReadPeriod(SaveReader reader, long[] period, int savedSlots)
+    private void ReadPeriod(SaveReader reader, long[] period, int savedSlots, int version)
     {
-        reader.ReadInt(savedSlots, savedSlots);
+        var width = version == 1 ? savedSlots : (2 * savedSlots) - FixedSlots + 1;
+        reader.ReadInt(width, width);
         for (var i = 0; i < savedSlots; i++)
         {
             var slot = i < FixedSlots ? i : IncomeSlot(reader.Content.Map(ContentTable.Cargo, i - FixedSlots));
             period[slot] = reader.ReadLong();
         }
+        if (version >= 2)
+        {
+            for (var i = 0; i < savedSlots - FixedSlots; i++)
+            {
+                period[SlotCount + reader.Content.Map(ContentTable.Cargo, i)] = reader.ReadLong();
+            }
+
+            period[^1] = reader.ReadLong();
+        }
     }
 
-    internal void ReadState(SaveReader reader)
+    internal void ReadState(SaveReader reader, int version)
     {
+        Version = version >= 2 ? reader.ReadLong() : 0;
         var savedSlots = reader.ReadInt();
         if (savedSlots != FixedSlots + reader.Content.SavedCount(ContentTable.Cargo, SlotCount - FixedSlots))
         {
@@ -55,7 +67,7 @@ public sealed partial class Ledger
 
         foreach (var month in _months)
         {
-            ReadPeriod(reader, month, savedSlots);
+            ReadPeriod(reader, month, savedSlots, version);
         }
 
         reader.ReadListInto(_yearNumbers);
@@ -68,8 +80,8 @@ public sealed partial class Ledger
         _years.Clear();
         for (var i = 0; i < years; i++)
         {
-            var year = new long[SlotCount];
-            ReadPeriod(reader, year, savedSlots);
+            var year = new long[PeriodWidth];
+            ReadPeriod(reader, year, savedSlots, version);
 
             _years.Add(year);
         }

@@ -40,21 +40,21 @@ public class CompatibilityTests
         var result = SaveGame.Load(Fixture("rich-v1.talt"));
         Assert.Equal(SaveLoadStatus.LoadedWithChangedData, result.Status);
         Assert.Equal(0x57A77DB781A03625UL, result.Details!.Fingerprint);
-        Assert.Equal(0x0F7B71D994547B77UL, result.Simulation!.ComputeFingerprint());
+        Assert.Equal(0xDA0B510C8C35D3F4UL, result.Simulation!.ComputeFingerprint());
         Assert.Empty(result.Simulation.Construction!.Player.RailReplacements.Rules);
         for (var i = 0; i < 1000; i++)
         {
             result.Simulation.Tick();
         }
 
-        Assert.Equal(0xD8B2D20809F77FA6UL, result.Simulation.ComputeFingerprint());
+        Assert.Equal(0x9A9C94B230A2DFACUL, result.Simulation.ComputeFingerprint());
     }
 
     [Fact]
     public void Current_fixture_matches_its_original_and_continues()
     {
         var original = SaveTestGames.Rich();
-        var path = Fixture("rich-catalog.talt");
+        var path = Fixture("rich-statistics.talt");
         if (Environment.GetEnvironmentVariable("TALT_GENERATE_SAVE_FIXTURE") is { Length: > 0 } destination)
         {
             Assert.True(SaveGame.Save(original, destination, RoundTrip.Details with { IncludeFingerprint = true }).Succeeded);
@@ -66,6 +66,23 @@ public class CompatibilityTests
         Assert.Equal(result.Details!.Fingerprint, result.Simulation!.ComputeFingerprint());
         Assert.NotEmpty(result.Simulation.Construction!.Player.RoadReplacements.Rules);
         RoundTrip.AssertContinuesIdentically(original, result.Simulation, 1000);
+    }
+
+    [Fact]
+    public void First_stop_hold_restores_road_and_rail_release_ticks()
+    {
+        var game = SaveTestGames.Rich(ticks: 1800);
+        var lines = game.RoadVehicles!.Lines;
+        var id = lines.IdAt(0);
+        var stop = lines.StopAt(id, 0).StationId;
+        lines.SetIntervalDays(id, 5);
+        Assert.True(lines.TryDispatch(id, stop, game.CurrentTick - 25, rail: true));
+        Assert.True(lines.TryDispatch(id, stop, game.CurrentTick, rail: false));
+        var restored = RoundTrip.SaveAndLoad(game);
+        var copy = restored.RoadVehicles!.Lines;
+        Assert.False(copy.TryDispatch(id, stop, game.CurrentTick, rail: true));
+        Assert.False(copy.TryDispatch(id, stop, game.CurrentTick, rail: false));
+        RoundTrip.AssertContinuesIdentically(game, restored, 400, every: 1);
     }
 
     private static string Fixture(string name) => Path.Combine(AppContext.BaseDirectory, "Saves", "Fixtures", name);

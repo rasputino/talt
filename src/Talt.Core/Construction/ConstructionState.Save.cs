@@ -25,7 +25,7 @@ public sealed partial class ConstructionState
         Undo.WriteState(writer);
     }
 
-    internal void ReadState(SaveReader reader)
+    internal void ReadState(SaveReader reader, int version)
     {
         Year = reader.ReadInt();
         CostLevel = reader.ReadLong();
@@ -35,7 +35,7 @@ public sealed partial class ConstructionState
         var count = reader.ReadInt(1, 1);
         for (var i = 0; i < count; i++)
         {
-            _companies[i].ReadState(reader);
+            _companies[i].ReadState(reader, version);
         }
 
         Objects.ReadState(reader);
@@ -62,7 +62,7 @@ public sealed partial class Company
         Ledger?.WriteState(writer);
     }
 
-    internal void ReadState(SaveReader reader)
+    internal void ReadState(SaveReader reader, int version)
     {
         if (reader.ReadInt() != Id)
         {
@@ -85,7 +85,7 @@ public sealed partial class Company
             throw reader.Fail("company ledger presence differs from the game's");
         }
 
-        Ledger?.ReadState(reader);
+        Ledger?.ReadState(reader, version);
     }
 }
 

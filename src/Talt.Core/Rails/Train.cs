@@ -145,6 +145,10 @@ public sealed partial class Train
     /// <summary>Distance of the head from the start of its step, units.</summary>
     public int HeadOffset { get; internal set; }
 
+    // Scratch overwritten during movement and consumed before the sequential phase trims the tail.
+    internal int FirstCrossedStep { get; set; }
+    internal int EndCrossedStep { get; set; }
+
     /// <summary>The planned route beyond the authority and the next step to reserve.</summary>
     internal RailRoute Route { get; } = new();
 
@@ -159,6 +163,9 @@ public sealed partial class Train
     internal long LastPlanTick { get; set; } = long.MinValue / 2;
 
     public int AgeDays { get; internal set; }
+
+    // Per-tick movement scratch, consumed before loading or consist changes.
+    internal int ServiceDistance { get; set; }
 
     public int Reliability { get; internal set; }
 

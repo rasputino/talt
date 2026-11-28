@@ -77,6 +77,29 @@ public class FinanceClientTests
     }
 
     [Fact]
+    public void CompanyChartRevealsCargoSelectorAndCanSwitchBetweenYearsAndMonths()
+    {
+        var (_, session, host) = Create();
+        var ledger = session.Construction.Player.Ledger!;
+        var currentYear = session.Simulation.Date.Year;
+        ledger.AddDelivered(0, 10);
+        ledger.StartMonth(currentYear + 1, 1);
+        ledger.StartYear(currentYear + 1);
+        ledger.AddDelivered(0, 5);
+        var window = host.Ui.Windows.Open(FinanceWindow.Create(session, Money, () => { }));
+        var selectors = UiTestKit.Walk(window.Content!).OfType<Dropdown>().ToArray();
+        var chart = Assert.Single(UiTestKit.Walk(window.Content!).OfType<BarChart>());
+        host.Ui.Windows.Layout(host.Ui);
+        Assert.False(selectors[2].Visible);
+        selectors[1].OnSelected(2);
+        host.Ui.Windows.Layout(host.Ui);
+        Assert.True(selectors[2].Visible);
+        selectors[0].OnSelected(1);
+        Assert.Equal((10L, 0L), chart.Values(chart.Slots - 2));
+        Assert.Equal((5L, 0L), chart.Values(chart.Slots - 1));
+    }
+
+    [Fact]
     public void HudCoin_AndKey_OpenTheFinanceWindow_AndLoanButtonsSubmitCommands()
     {
         var (screen, session, host) = Create();

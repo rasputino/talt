@@ -8,6 +8,7 @@ using Talt.Client.Rendering;
 using Talt.Client.Ui;
 using Talt.Client.Ui.Widgets;
 using Talt.Core.Construction;
+using Talt.Core.Roads;
 using Talt.Core.Simulation;
 using Button = Talt.Client.Ui.Widgets.Button;
 
@@ -35,6 +36,8 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
     private readonly PickContext _pickContext;
     private readonly TownLabels? _labels;
     private readonly DemandOverlay? _demandOverlay;
+    private readonly NetworkOverlay? _networkOverlay;
+    private bool _showLayerControls;
     private readonly HighlightBox[] _highlights = new HighlightBox[2];
     private readonly StackPanel _messages = new(Orientation.Vertical) { Spacing = 4 };
     private readonly List<double> _messageExpiry = [];
@@ -94,6 +97,11 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
                 // Feature 013: unserved demand between towns, toggled from the HUD.
                 _demandOverlay = new DemandOverlay(towns, destinations, session.Heightmap, session.Simulation.Content.CargoIndex("mail"));
             }
+        }
+
+        if (session.Simulation.Stations is not null)
+        {
+            _networkOverlay = new NetworkOverlay(session.Simulation);
         }
 
         _moneyTexts = new MoneyTexts(session.Heightmap);
@@ -236,6 +244,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
 
         if (viewport.X >= 1 && viewport.Y >= 1)
         {
+            _networkOverlay?.Update(_camera.ViewProjection(viewport.X / viewport.Y), viewport);
             _moneyTexts.Update(_camera.ViewProjection(viewport.X / viewport.Y), viewport, _camera.Position, _camera.Distance * 2.5f, (float)_host.Ui.Time);
         }
 
@@ -772,6 +781,11 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
         var runner = _session.Runner;
         var simulation = _session.Simulation;
         var root = new Panel { Style = PanelStyle.None };
+        if (_networkOverlay is not null)
+        {
+            root.Add(_networkOverlay);
+        }
+
         if (_labels is not null)
         {
             root.Add(_labels); // Town plates under every other HUD element (feature 008).
@@ -806,6 +820,15 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
             Tooltip = TextRef.Of("hud.date.tooltip"),
         });
         bar.Add(new Spacer { Fill = true });
+        if (_networkOverlay is { } networkOverlay)
+        {
+            HudButtons.Add(bar.Add(new Button(TextRef.Of("map.layers"), () => _showLayerControls = !_showLayerControls)
+            {
+                IsSelected = () => _showLayerControls,
+                Tooltip = TextRef.Of("map.layers.tooltip"),
+            }));
+            AddLayerControls(root, networkOverlay);
+        }
         bar.Add(new Label(TextRef.Dynamic(() => (long)runner.Speed, s => s.FormatSpeed(runner.Speed))) { Color = TextColor.Muted, Margin = new Thickness(0, 0, 8, 0) });
         HudButtons.Add(bar.Add(new Button(null, () => HandleAction("pause", false), "pause")
         {
@@ -962,6 +985,82 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
         root.Add(_messages);
         root.Add(_cursorLabel);
         return root;
+    }
+
+    private void AddLayerControls(Panel root, NetworkOverlay overlay)
+    {
+        var panel = root.Add(new Panel
+        {
+            Style = PanelStyle.Panel, HorizontalAlignment = Alignment.End, VerticalAlignment = Alignment.Start,
+            Margin = new Thickness(0, _host.Ui.Theme.TopBarHeight + 8, 8, 0), Padding = new Thickness(8),
+            VisibleWhen = () => _showLayerControls || overlay.Traffic || overlay.Routes,
+        }).Add(new StackPanel { Spacing = 4 });
+        var buttons = panel.Add(new StackPanel { Spacing = 3, VisibleWhen = () => _showLayerControls });
+        buttons.Add(new Button(TextRef.Of("map.routes"), () => overlay.Routes = !overlay.Routes) { IsSelected = () => overlay.Routes });
+        buttons.Add(new Button(TextRef.Of("map.areas"), () => overlay.Areas = !overlay.Areas) { IsSelected = () => overlay.Areas });
+        buttons.Add(new Button(TextRef.Of("map.traffic"), () => overlay.Traffic = !overlay.Traffic) { IsSelected = () => overlay.Traffic });
+        panel.Add(new Label(TextRef.Of("map.routing"), TextSize.Small) { VisibleWhen = () => overlay.Routes && overlay.Routing });
+        panel.Add(new Label(TextRef.Of("map.routeGap"), TextSize.Small)
+        {
+            VisibleWhen = () => overlay.Routes && overlay.HasGaps, Color = TextColor.Negative,
+        });
+        panel.Add(new Label(TextRef.Of("map.routes.empty"), TextSize.Small)
+        {
+            VisibleWhen = () => overlay.Routes && !overlay.Routing && !overlay.HasLines,
+        });
+        panel.Add(new Label(TextRef.Of("map.routes.noPath"), TextSize.Small)
+        {
+            VisibleWhen = () => overlay.Routes && !overlay.Routing && overlay.HasLines && !overlay.RouteCentre.HasValue,
+        });
+        panel.Add(new Label(TextRef.Of("map.routes.offscreen"), TextSize.Small)
+        {
+            VisibleWhen = () => overlay.Routes && !overlay.Routing && overlay.RouteCentre.HasValue && !overlay.RoutesInView,
+        });
+        panel.Add(new Button(TextRef.Of("map.routes.locate"), () => CentreOnSegment(overlay.RouteCentre))
+        {
+            VisibleWhen = () => overlay.Routes && !overlay.Routing && overlay.RouteCentre.HasValue,
+        });
+        var history = _session.Simulation.Traffic!;
+        panel.Add(new Label(TextRef.Dynamic(() => history.Year * 12 + history.Month,
+            s => history.Month == 0 ? s.Get("map.traffic.unavailable") :
+                s.Format("map.traffic.period", ("month", s.Get($"month.{history.Month}")), ("year", history.Year.ToString(System.Globalization.CultureInfo.InvariantCulture)))), TextSize.Small)
+        {
+            VisibleWhen = () => overlay.Traffic,
+        });
+        panel.Add(new Label(TextRef.Of("map.traffic.empty"), TextSize.Small)
+        {
+            VisibleWhen = () => overlay.Traffic && history.Month > 0 && history.Completed.Count == 0,
+        });
+        panel.Add(new Label(TextRef.Of("map.traffic.offscreen"), TextSize.Small)
+        {
+            VisibleWhen = () => overlay.Traffic && overlay.TrafficCentre.HasValue && !overlay.TrafficInView,
+        });
+        panel.Add(new Button(TextRef.Of("map.traffic.locate"), () => CentreOnSegment(overlay.TrafficCentre))
+        {
+            VisibleWhen = () => overlay.Traffic && overlay.TrafficCentre.HasValue,
+        });
+        var bands = panel.Add(new StackPanel(Orientation.Horizontal)
+        {
+            Spacing = 4, VisibleWhen = () => overlay.Traffic && history.Completed.Count > 0,
+        });
+        for (var band = 0; band < NetworkOverlay.HeatColors.Length; band++)
+        {
+            var swatch = bands.Add(new Meter(() => 1f, MeterColoring.Fixed)
+            {
+                Width = 12, Height = 9, VerticalAlignment = Alignment.Center, FixedColor = NetworkOverlay.HeatColors[band],
+            });
+            swatch.Tooltip = TextRef.Of("map.traffic");
+            bands.Add(new Label(TextRef.Of($"map.traffic.band{band}"), TextSize.Small));
+        }
+    }
+
+    private void CentreOnSegment(Vector3? centre)
+    {
+        if (centre is { } position)
+        {
+            _camera.Target = position;
+            _camera.Distance = Math.Min(_camera.Distance, 65f);
+        }
     }
 
     /// <summary>The fast-forward button, shown only when fast forward is unlocked (US1-4).</summary>
@@ -1143,6 +1242,9 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
 
     GameSession IVehicleUi.Session => _session;
 
+    TableCell IVehicleUi.MoneyCell(long amount, Strings s) =>
+        new(null, MoneyFormatter.DisplayAmount(amount, _host.Currency), "C", _host.Money.FormatFor(_host.Currency, s.Culture));
+
     string IVehicleUi.Money(long amount, Strings s) => _host.Money.Format(amount, _host.Currency, s.Culture);
 
     /// <summary>Opens (or focuses) a road vehicle's window (feature 012).</summary>
@@ -1212,12 +1314,58 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
         }
     }
 
+    private void LocateFleetVehicle(bool rail, int id)
+    {
+        var tile = -1;
+        var offset = Vector2.Zero;
+        if (rail && _session.Simulation.Trains is { } trains && trains.Find(id) is { } train)
+        {
+            if (train.StepCount > 0)
+            {
+                tile = train.StepFrom(train.HeadStep);
+                offset = OffsetAlongLink(train.StepDir(train.HeadStep), train.HeadOffset);
+            }
+            else if (trains.Depots.IndexOf(train.Depot) is var depot && depot >= 0)
+            {
+                tile = trains.Depots.TileAt(depot);
+            }
+
+            OpenTrain(id);
+        }
+        else if (!rail && _session.RoadVehicles is { } vehicles && vehicles.SlotOf(id) is var slot && slot >= 0)
+        {
+            var state = vehicles.StateAt(slot);
+            if (state.Lane >= 0)
+            {
+                tile = state.Lane / 8;
+                offset = OffsetAlongLink(state.Lane & 7, state.S);
+            }
+            else if (vehicles.Depots.SlotOf(vehicles.DepotAt(slot)) is var depot && depot >= 0)
+            {
+                tile = vehicles.Depots.TileAt(depot);
+            }
+
+            OpenVehicle(id);
+        }
+
+        if (tile >= 0)
+        {
+            var width = _session.Construction.Map.Width;
+            var x = (tile % width) + 0.5f + offset.X;
+            var z = (tile / width) + 0.5f + offset.Y;
+            _camera.Target = new Vector3(x, _session.Heightmap.Get(x, z), z);
+        }
+    }
+
+    private static Vector2 OffsetAlongLink(int direction, int distance) =>
+        new Vector2(Dir8.OffsetX(direction), Dir8.OffsetZ(direction)) * (distance / (float)Dir8.StepLength(direction));
+
     /// <summary>Opens the list of lines (feature 012, key F4).</summary>
     public void OpenLines()
     {
         if (_session.RoadVehicles is not null)
         {
-            _host.Ui.Windows.Open(LinesWindow.Create(this));
+            _host.Ui.Windows.Open(LinesWindow.Create(this, LocateFleetVehicle));
         }
     }
 

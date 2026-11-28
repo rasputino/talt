@@ -11,14 +11,14 @@ simulation state.
 | `CORE` | Simulation (001) | 1 | settings, tick, clock, root random, pending commands, prototype fleet and network |
 | `CNTN` | Saves (014) | 1 | content ids per table, rules fingerprints |
 | `MAP_` | Maps (004) | 1 | map tiles and sites |
-| `CNST` | Construction (006) | 1 | companies, ledgers, objects and undo |
+| `CNST` | Construction (006) | 2 | companies, ledgers, objects and undo |
 | `ROAD` | Roads, Network (007) | 1 | road layer, road graph, road router cache |
 | `RAIL` | Rails (015) | 2 | rail layer, signals, blocks, rail depots |
 | `TOWN` | Towns (008) | 1 | towns and buildings |
 | `INDY` | Industries (009) | 1 | industries |
 | `STNS` | Stations (010, 013) | 1 | stations, groups, cargo, destination buckets |
 | `FINA` | Finance (011) | 1 | company accounts, loans, ledgers, running costs |
-| `RVEH` | Vehicles (012) | 1 | road vehicles, depots, lines and orders |
+| `RVEH` | Vehicles (012) | 2 | road vehicles, depots, lines and orders |
 | `TRAI` | Rails (015) | 2 | trains and their reservations |
 | `DMND` | Demand (013) | 1 | destination tables, cargo router |
 | `CATL` | Catalog (016) | 1 | company road and rail replacement policies, rail-part renewal notice flags; date-derived availability and introductions |

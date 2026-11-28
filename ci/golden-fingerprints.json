@@ -5,8 +5,9 @@
     { "name": "reference", "args": ["run", "--map", "4096", "--vehicles", "50000", "--ticks", "10000"], "fingerprint": "C0C656C5AB2D3302" }
   ],
   "saves": [
-    { "path": "tests/Talt.Core.Tests/Saves/Fixtures/rich-v1.talt", "ticks": 1000, "loaded": "0F7B71D994547B77", "continued": "D8B2D20809F77FA6" },
-    { "path": "tests/Talt.Core.Tests/Saves/Fixtures/rich-catalog.talt", "ticks": 1000, "loaded": "C90394B68BFB9BC6", "continued": "F47EB3106355E9F0" }
+    { "path": "tests/Talt.Core.Tests/Saves/Fixtures/rich-v1.talt", "ticks": 1000, "loaded": "DA0B510C8C35D3F4", "continued": "9A9C94B230A2DFAC" },
+    { "path": "tests/Talt.Core.Tests/Saves/Fixtures/rich-catalog.talt", "ticks": 1000, "loaded": "E3A29C376D19122B", "continued": "A83E4B3E297DDFC2" },
+    { "path": "tests/Talt.Core.Tests/Saves/Fixtures/rich-statistics.talt", "ticks": 1000, "loaded": "EBDA5D2A4160A76E", "continued": "DF319FA2DBA7386D" }
   ],
   "replays": [
     { "name": "windows-reference", "session": "ci/sessions/windows-reference.json" }

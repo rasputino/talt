@@ -103,6 +103,7 @@ public sealed class PaymentTests
         var result = kit.Stations.Unload(power, hold, UnloadMode.Normal);
 
         Assert.True(result.Delivered > 0);
+        Assert.Equal(result.Delivered, kit.Ledger().MonthDelivered(0, coal));
         kit.Stations.TryGetCentre(origin, out var ox, out var oz);
         kit.Stations.TryGetCentre(power, out var px, out var pz);
         var expected = kit.Finance().Quote(coal, result.Delivered, Math.Abs(px - ox) + Math.Abs(pz - oz), 3).Amount;
@@ -136,6 +137,7 @@ public sealed class PaymentTests
         var coal = kit.Cargo("coal");
         var debug = new CargoDelivery(Company.PlayerId, coal, 30, station, station, -1, 100, 104, DeliveryConsumer.DebugService, -1);
         var paid = kit.Finance().Pay(debug);
+        Assert.Equal(0, kit.Ledger().MonthDelivered(0, coal));
         Assert.Equal(pays ? kit.Finance().Quote(coal, 30, 40, 4).Amount : 0, paid);
     }
 

@@ -26,6 +26,8 @@ public sealed partial class RoadVehicleSystem
         writer.WriteArray(_hot);
         writer.WriteArray(_next);
         writer.WriteArray(_cache);
+        writer.WriteArray(_geometry);
+        writer.WriteArray(_unpostedDistance);
         writer.WriteArray(_id);
         writer.WriteArray(_owner);
         writer.WriteArray(_model);
@@ -114,7 +116,7 @@ public sealed partial class RoadVehicleSystem
         Lines.WriteState(writer);
     }
 
-    internal void ReadState(SaveReader reader)
+    internal void ReadState(SaveReader reader, int version)
     {
         if (reader.ReadULong() != _seed)
         {
@@ -131,7 +133,26 @@ public sealed partial class RoadVehicleSystem
 
         _hot = reader.ReadRequiredArray<RoadVehicleState>();
         _next = reader.ReadRequiredArray<RoadVehicleState>();
-        _cache = reader.ReadRequiredArray<LaneCache>();
+        if (version >= 2)
+        {
+            _cache = reader.ReadRequiredArray<LaneCache>();
+            _geometry = reader.ReadRequiredArray<LaneGeometry>();
+            _unpostedDistance = reader.ReadRequiredArray<long>();
+        }
+        else
+        {
+            // v1 cached ten integers per lane lookup. Rebuild from the network after restoring lane IDs.
+            var slots = reader.ReadInt(0, _hot.Length);
+            _cache = new LaneCache[slots];
+            for (var slot = 0; slot < slots; slot++)
+            {
+                for (var field = 0; field < 10; field++)
+                {
+                    reader.ReadInt();
+                }
+            }
+            _unpostedDistance = new long[_hot.Length];
+        }
         _id = reader.ReadRequiredArray<int>();
         _owner = reader.ReadRequiredArray<int>();
         _model = reader.ReadRequiredArray<int>();
@@ -180,6 +201,7 @@ public sealed partial class RoadVehicleSystem
         reader.Content.MapInPlace(ContentTable.RoadVehicleModel, _model.AsSpan(0, Count));
 
         _active = reader.ReadRequiredArray<int>();
+        _leftAcrossLaneEnd = new bool[_active.Length];
         _activeCount = reader.ReadInt(0, _active.Length);
         _noticeTicks = reader.ReadInt();
         _stopTable = reader.ReadRequiredArray<long>();
@@ -192,6 +214,31 @@ public sealed partial class RoadVehicleSystem
         _ahead = reader.ReadRequiredArray<int>();
         _behind = reader.ReadRequiredArray<int>();
 
+        if (version == 1)
+        {
+            _geometry = new LaneGeometry[_laneKey.Length];
+            for (var slot = 0; slot < Count; slot++)
+            {
+                if (_hot[slot].Lane >= 0)
+                {
+                    CacheLane(slot, _hot[slot].Lane);
+                    _cache[slot].Index = _laneOf[slot];
+                }
+            }
+        }
+
+        if (_cache.Length != capacity || _unpostedDistance.Length != capacity || _geometry.Length != _laneKey.Length)
+        {
+            throw reader.Fail("road geometry or vehicle capacity differs");
+        }
+
+        for (var lane = 0; lane < _laneCount; lane++)
+        {
+            var key = _laneKey[lane];
+            var end = version >= 2 ? _geometry[lane].To : _roads.Follow(key >> 3, key & 7);
+            Traffic?.RegisterRoadLane(lane, key >> 3, end);
+        }
+
         reader.ReadDictionaryInto(_holders);
         reader.ReadDictionaryInto(_requests);
         var cached = reader.ReadCount(8);
@@ -201,9 +248,9 @@ public sealed partial class RoadVehicleSystem
             var key = reader.ReadLong();
             var steps = reader.ReadRequiredArray<RouteStep>();
             var length = reader.ReadLong();
-            var version = reader.ReadInt();
+            var routeVersion = reader.ReadInt();
             var found = reader.ReadBool();
-            _routeCache.Add(key, new CachedRoute(steps, length, version, found));
+            _routeCache.Add(key, new CachedRoute(steps, length, routeVersion, found));
         }
 
         reader.ReadListInto(_nearDepots);

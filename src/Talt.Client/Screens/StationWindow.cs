@@ -101,6 +101,8 @@ internal static class StationWindow
         content.Add(new Label(TextRef.Of("info.station.cargo.none")) { Color = TextColor.Muted, VisibleWhen = () => !HasCargo(stations, stationId) });
         CargoRows.AddStation(content, stations, session.Simulation.Towns, stationId, Version);
 
+        HistoryCharts.AddStation(content, stations, stationId, Version);
+
         var buttons = content.Add(new StackPanel(Orientation.Horizontal) { Spacing = 6 });
         buttons.Add(new Button(TextRef.Of("info.station.catchment"), () => session.ToggleCatchment(stationId))
         {

@@ -1,6 +1,8 @@
 using Talt.Core.Construction;
 using Talt.Core.Rails;
 using Talt.Core.Roads;
+using Talt.Core.Simulation;
+using Talt.Core.Vehicles;
 
 namespace Talt.Core.Tests.Rails;
 
@@ -56,6 +58,36 @@ public sealed class TrainMovementTests
 
         Assert.True(visitedB, $"status {TrainSystem.StatusOf(train)}");
         Assert.True(backAtA, $"status {TrainSystem.StatusOf(train)}");
+    }
+
+    [Fact]
+    public void TrainWaitsOnFirstPlatformUntilItsIntervalElapses()
+    {
+        var (kit, a, b, depot) = Corridor();
+        var id = kit.Train(depot);
+        var line = kit.Line([a, b], id);
+        kit.Ok(new SetLineIntervalCommand(Company.PlayerId, line, 100));
+        var train = kit.Trains.Find(id)!;
+        long first = -1, next = -1;
+        var previous = 0;
+        kit.Ticks(6_000, each: () =>
+        {
+            if (previous == 0 && train.StopIndex == 1)
+            {
+                if (first < 0)
+                {
+                    first = kit.Simulation.CurrentTick;
+                }
+                else if (next < 0)
+                {
+                    next = kit.Simulation.CurrentTick;
+                }
+            }
+
+            previous = train.StopIndex;
+        });
+
+        Assert.True(first >= 0 && next >= first + (100 * GameClock.TicksPerDay));
     }
 
     [Fact]

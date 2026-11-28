@@ -1,4 +1,5 @@
 using System.Numerics;
+using MouseButton = Silk.NET.Input.MouseButton;
 
 namespace Talt.Client.Ui.Widgets;
 
@@ -22,6 +23,21 @@ internal sealed class BarChart : Widget
 
     /// <summary>Slot index (0 = oldest) → (income ≥ 0, expenses ≤ 0).</summary>
     public Func<int, (long Positive, long Negative)> Values { get; }
+
+    /// <summary>Optional period selection, used by historical charts to inspect an exact figure.</summary>
+    public Action<int>? SelectSlot { get; init; }
+
+    public override bool IsHitTestVisible => SelectSlot is not null;
+
+    public override bool OnMouseDown(UiContext ui, MouseButton button, Vector2 position) => SelectSlot is not null && button == MouseButton.Left;
+
+    public override void OnMouseUp(UiContext ui, MouseButton button, Vector2 position, bool inside)
+    {
+        if (inside && button == MouseButton.Left && Bounds.Width > 4)
+        {
+            SelectSlot?.Invoke(Math.Clamp((int)((position.X - Bounds.X - 2) * Slots / (Bounds.Width - 4)), 0, Slots - 1));
+        }
+    }
 
     /// <summary>The largest absolute value of the slots (the chart's scale), for tests.</summary>
     public long Scale()

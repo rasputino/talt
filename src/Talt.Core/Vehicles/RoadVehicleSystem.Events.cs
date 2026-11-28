@@ -496,6 +496,7 @@ public sealed partial class RoadVehicleSystem
 
     private void Arrive(int slot)
     {
+        PostDistance(slot); // The load may change at this stop.
         ref var h = ref _hot[slot];
         if (_targetKind[slot] == VehicleTargetKind.Depot)
         {
@@ -531,6 +532,7 @@ public sealed partial class RoadVehicleSystem
                 // Feature 013 (research R12): transfer credits move profit between the legs of a trip, never money.
                 var earned = _finance.TotalPaid - paidBefore - result.CreditDelivered + result.CreditEarned;
                 _profitThisYear[slot] = Money.Add(_profitThisYear[slot], earned);
+                Lines.RecordProfit(_line[slot], earned);
             }
 
             if (result.Delivered > 0)
@@ -572,6 +574,7 @@ public sealed partial class RoadVehicleSystem
         }
 
         var loaded = _stations.Load(_targetId[slot], _cargo[slot], Math.Min(model.LoadPerStep, space), _hold[slot], model.SpeedKmh, NextStopStation(slot));
+        Lines.RecordBoarding(_line[slot], loaded, _content.Cargo(_cargo[slot]).Category == Content.CargoCategory.Passenger);
         if (loaded > 0 || rule == StopRule.FullLoad)
         {
             _loadTimer[slot] = Rules.LoadIntervalTicks;
@@ -583,6 +586,11 @@ public sealed partial class RoadVehicleSystem
 
     private void Depart(int slot)
     {
+        if (_stopIndex[slot] == 0 && !Lines.TryDispatch(_line[slot], _targetId[slot], _tick, rail: false))
+        {
+            return;
+        }
+
         _hot[slot].Flags &= ~RoadVehicleBits.AtStop;
         if (_serviceInterval[slot] > 0 && _daysSinceService[slot] >= _serviceInterval[slot])
         {
@@ -667,6 +675,7 @@ public sealed partial class RoadVehicleSystem
 
         company.Book(LedgerCategory.VehiclePurchase, -cost);
         _finance?.RunningCosts.Replace(_runningHandle[slot], target.RunningCostPerYear, price);
+        PostDistance(slot); // Outstanding service distance belongs to the outgoing model capacity.
         _model[slot] = index;
         _purchaseDay[slot] = _stations.Today;
         _ageDays[slot] = 0;

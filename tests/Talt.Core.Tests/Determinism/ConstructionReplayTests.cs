@@ -21,7 +21,8 @@ namespace Talt.Core.Tests.Determinism;
 /// </remarks>
 public class ConstructionReplayTests
 {
-    private const string ExpectedAtTick600 = "24D3C031E49AE952";
+    // Feature 017 extends the active company ledger with delivered cargo and valuation slots, including the open month.
+    private const string ExpectedAtTick600 = "C03B9058C016351E";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 9,

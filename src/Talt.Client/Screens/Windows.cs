@@ -69,7 +69,7 @@ internal static class ObjectInfoWindow
             content.Add(new Label(TextRef.Of("info.height", ("height", pick.Height))));
         }
 
-        window.Content = content;
+        window.Content = pick.Kind is PickKind.Town or PickKind.Station ? new ScrollArea(content) { MaxHeight = 620 } : content;
         return window;
     }
 

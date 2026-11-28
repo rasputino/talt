@@ -10,6 +10,8 @@ public sealed partial class StationRegistry
     /// supply carries and totals, all verbatim. Content lookups (<c>_kindAccepts</c>, <c>_kindProduces</c>) are rebuilt
     /// at construction from the content.
     /// </summary>
+    internal StationHistory History => _history;
+
     internal void WriteState(SaveWriter writer)
     {
         writer.WriteInt(_cargoCount);
@@ -192,6 +194,11 @@ public sealed partial class StationRegistry
             throw reader.Fail("station arrays are inconsistent");
         }
 
+        for (var slot = 0; slot < _count; slot++)
+        {
+            _history.AddStation(slot, _id.Length);
+        }
+
         var cells = reader.ReadCount(8);
         _grid.Clear();
         for (var i = 0; i < cells; i++)
@@ -366,6 +373,11 @@ public sealed partial class CargoHold
         }
 
         Count = count;
+        Total = 0;
+        for (var i = 0; i < count; i++)
+        {
+            Total += _parts[i].Amount;
+        }
         if (!reader.Content.IsIdentityFor(ContentTable.Cargo))
         {
             for (var i = 0; i < count; i++)

@@ -18,7 +18,8 @@ namespace Talt.Core.Tests.Determinism;
 /// </remarks>
 public class RoadReplayTests
 {
-    private const string ExpectedAtTick400 = "9F3321082557F362";
+    // Feature 017 hashes delivery totals and company value alongside road construction bookings in the open ledger.
+    private const string ExpectedAtTick400 = "0A35F80D31E11D4E";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 21,

@@ -30,6 +30,7 @@ public class SaveFieldManifestTests
     /// <summary>Types whose fields the save must account for (the owners of every section).</summary>
     internal static readonly Type[] SavedTypes =
     [
+        typeof(TrafficHistory), typeof(MonthlyHistory<TownMonth>), typeof(StationHistory), typeof(StationHistory.Snapshot),
         typeof(GameSimulation), typeof(CommandInbox), typeof(VehicleFleet), typeof(TransportNetwork),
         typeof(MapData), typeof(ConstructionState), typeof(Company), typeof(ReplacementPolicy), typeof(TileObjects), typeof(UndoRecord), typeof(Ledger),
         typeof(RoadLayer), typeof(RoadNetwork), Nested(typeof(RoadNetwork), "Region"), typeof(RoadRouter),

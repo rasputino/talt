@@ -156,7 +156,7 @@
 
 ## Local acceptance record
 
-Windows x64 Release build, non-GPU tests and the local fingerprint gate passed. The gate covers both the pre-016 and current fixtures. A headless run saved at tick 6,000 and matched ten successive checkpoints through tick 16,000 (final fingerprint `A4A2CA0F0371E4C6`). The developer reported the Spanish save/load, quick slots and autosave hand test working. Performance measurements and the paired original/restored tick comparison are in `docs/ARCHITECTURE.md`. Feature 017 owns the reserved `LSTA` section and its integration tests when it lands.
+Windows x64 Release build, non-GPU tests and the local fingerprint gate passed. The gate covers both the pre-016 and current fixtures. A headless run saved at tick 6,000 and matched ten successive checkpoints through tick 16,000 (final fingerprint `A4A2CA0F0371E4C6`). The developer reported the Spanish save/load, quick slots and autosave hand test working. Performance measurements and the paired original/restored tick comparison are in `docs/ARCHITECTURE.md`. The main integration adds feature 017 statistics in `LSTA` and migrates the older ledger and road-vehicle layouts.
 
 ## Dependencies & execution order
 

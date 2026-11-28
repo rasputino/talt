@@ -112,7 +112,7 @@ public class TownClientTests
         var window = ObjectInfoWindow.Create(pick, session);
 
         Assert.Equal("town:0", window.Key);
-        var panel = Assert.IsType<StackPanel>(window.Content);
+        var panel = Assert.IsType<ScrollArea>(window.Content);
         Assert.True(Talt.Client.Tests.Ui.UiTestKit.Walk(panel).OfType<Meter>().Count() >= 4); // Passengers, mail, rating and growth gauges.
         foreach (var language in Strings.SupportedLanguages)
         {

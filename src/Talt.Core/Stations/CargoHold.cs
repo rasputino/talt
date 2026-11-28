@@ -31,19 +31,7 @@ public sealed partial class CargoHold : IStateHashable
     public HeldCargo this[int index] => (uint)index < (uint)Count ? _parts[index] : throw new ArgumentOutOfRangeException(nameof(index));
 
     /// <summary>Units of all cargo held.</summary>
-    public int Total
-    {
-        get
-        {
-            var total = 0;
-            for (var i = 0; i < Count; i++)
-            {
-                total += _parts[i].Amount;
-            }
-
-            return total;
-        }
-    }
+    public int Total { get; private set; }
 
     /// <summary>Units of one cargo held.</summary>
     public int AmountOf(int cargo)
@@ -61,7 +49,11 @@ public sealed partial class CargoHold : IStateHashable
     }
 
     /// <summary>Empties the hold (the held cargo is gone: callers account for it).</summary>
-    public void Clear() => Count = 0;
+    public void Clear()
+    {
+        Count = 0;
+        Total = 0;
+    }
 
     public void AppendTo(StateHasher hasher)
     {
@@ -94,6 +86,7 @@ public sealed partial class CargoHold : IStateHashable
                 && p.Destination == cargo.Destination && p.PickupDay == cargo.PickupDay)
             {
                 _parts[i] = p with { Amount = p.Amount + cargo.Amount, Credit = p.Credit + cargo.Credit };
+                Total += cargo.Amount;
                 return;
             }
         }
@@ -104,6 +97,7 @@ public sealed partial class CargoHold : IStateHashable
         }
 
         _parts[Count++] = cargo;
+        Total += cargo.Amount;
     }
 
     /// <summary>Sets a part's amount; zero removes it, keeping the order of the others. The credit shrinks in proportion.</summary>
@@ -116,6 +110,7 @@ public sealed partial class CargoHold : IStateHashable
     /// <summary>Sets a part's amount and credit; zero amount removes it, keeping the order of the others.</summary>
     internal void SetPart(int index, int amount, long credit)
     {
+        Total += Math.Max(0, amount) - _parts[index].Amount;
         if (amount > 0)
         {
             _parts[index] = _parts[index] with { Amount = amount, Credit = credit };

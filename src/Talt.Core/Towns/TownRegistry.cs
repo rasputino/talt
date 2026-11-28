@@ -5,6 +5,9 @@ using Talt.Core.Simulation;
 
 namespace Talt.Core.Towns;
 
+/// <summary>A town's passenger and mail counts and company rating at the close of one month.</summary>
+public readonly record struct TownMonth(int PassengersGenerated, int PassengersTransported, int MailGenerated, int MailTransported, int Rating);
+
 /// <summary>Street layout style of a town (research R6).</summary>
 public enum StreetPattern : byte
 {
@@ -56,6 +59,9 @@ public sealed partial class TownRegistry : IStateHashable
     private readonly int[] _mailTransportedThisMonth;
     private readonly int[] _passengersTransportedLastMonth;
     private readonly int[] _mailTransportedLastMonth;
+    /// <summary>Twelve completed months of generated and transported units and the player's rating, indexed by town.</summary>
+    public MonthlyHistory<TownMonth> History { get; }
+
     private readonly int[] _serviceLastMonth;
     private int[] _ratings;
     private int _companyCapacity;
@@ -71,6 +77,7 @@ public sealed partial class TownRegistry : IStateHashable
         Names = names;
         Buildings = new TownBuildings(rules, _map.Width);
         Count = townCount;
+        History = new MonthlyHistory<TownMonth>(townCount);
         _centreX = new int[townCount];
         _centreZ = new int[townCount];
         _siteIndex = new int[townCount];
@@ -300,9 +307,12 @@ public sealed partial class TownRegistry : IStateHashable
             }
         }
 
+        var observations = History.Close(date);
         _state.Year = date.Year;
         for (var town = 0; town < Count; town++)
         {
+            observations[town] = new TownMonth(_passengersGeneratedLastMonth[town], _passengersTransportedLastMonth[town],
+                _mailGeneratedLastMonth[town], _mailTransportedLastMonth[town], RatingOf(town, Company.PlayerId));
             GrowMonth(town);
         }
 
@@ -350,6 +360,11 @@ public sealed partial class TownRegistry : IStateHashable
         foreach (var stream in _townRandom)
         {
             hasher.Append(stream);
+        }
+
+        if (Count > 0 && History.Count > 0)
+        {
+            hasher.Append(History);
         }
 
         hasher.Append(Buildings);

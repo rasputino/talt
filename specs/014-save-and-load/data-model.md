@@ -94,7 +94,7 @@ One implementation per section id, registered in `SaveSections` in restore order
 | `DMND` | Demand | `DestinationTables` (rule tables, cursor), `CargoRouter` schedule, current tables, pending result (`_nextPool`), in-progress `RoutingProblem`s and `LinkCollector` when `_buildStage > 0`. |
 | `CAMR` | Client (opaque to Core) | Camera target, distance, yaw, pitch. |
 
-`CATL` stores feature 016 renewal policies and notification state. Older saves receive empty policies. `LSTA` is reserved for feature 017. See the sections contract.
+`CATL` stores feature 016 renewal policies and notification state. Older saves receive empty policies. `LSTA` stores feature 017 service histories, line regulation and traffic. See the sections contract.
 
 ## ContentMap
 

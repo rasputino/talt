@@ -109,6 +109,32 @@ internal sealed class UiDrawList
         AddRect(rect, fill, radius);
     }
 
+    /// <summary>A filled projected tile or line in screen coordinates, using the existing UI geometry pass.</summary>
+    public void AddPolygon(Vector2 a, Vector2 b, Vector2 c, Vector2 d, UiColor color)
+    {
+        var min = Vector2.Min(Vector2.Min(a, b), Vector2.Min(c, d));
+        var max = Vector2.Max(Vector2.Max(a, b), Vector2.Max(c, d));
+        if (max.X <= _clip.X || min.X >= _clip.Right || max.Y <= _clip.Y || min.Y >= _clip.Bottom)
+        {
+            return;
+        }
+
+        if ((_quads + 1) * 4 > _vertices.Length)
+        {
+            Array.Resize(ref _vertices, _vertices.Length * 2);
+        }
+
+        var i = _quads++ * 4;
+        var vertex = new UiVertex { Color = color.Packed, Shape = new Vector4(1, 1, 0, ModeRect), Position = a };
+        _vertices[i] = vertex;
+        vertex.Position = b;
+        _vertices[i + 1] = vertex;
+        vertex.Position = c;
+        _vertices[i + 2] = vertex;
+        vertex.Position = d;
+        _vertices[i + 3] = vertex;
+    }
+
     /// <summary>An icon stretched over <paramref name="rect"/>, multiplied by <paramref name="tint"/>.</summary>
     public void AddIcon(IconImage icon, RectF rect, UiColor tint)
     {

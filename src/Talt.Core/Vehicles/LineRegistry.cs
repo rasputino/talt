@@ -169,6 +169,12 @@ public sealed partial class LineRegistry : IStateHashable
             hasher.Append(line.Color);
             hasher.Append(line.Name ?? string.Empty);
             hasher.Append(line.Stops.Count);
+            CurrentYear(line.Id).AppendTo(hasher);
+            line.Previous.AppendTo(hasher);
+            hasher.Append(line.HasPreviousYear ? 1 : 0);
+            hasher.Append(line.IntervalDays);
+            hasher.Append(line.LastRoadDeparture);
+            hasher.Append(line.LastRailDeparture);
             foreach (var stop in line.Stops)
             {
                 hasher.Append(stop.StationId);
@@ -196,6 +202,16 @@ public sealed partial class LineRegistry : IStateHashable
 
     private sealed class Line(int id, int owner, int number, int color)
     {
+        public LineYearStatistics Current;
+        public LineYearStatistics Previous;
+        // Derived from road vehicles still travelling with the same line and load.
+        public long OpenOccupied;
+        public long OpenOffered;
+        public bool HasPreviousYear;
+        public int IntervalDays;
+        public long LastRoadDeparture = -1;
+        public long LastRailDeparture = -1;
+
         public int Id { get; } = id;
 
         public int Owner { get; } = owner;

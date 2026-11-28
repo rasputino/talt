@@ -10,7 +10,7 @@ internal static class SaveSystemSections
 {
     public static IReadOnlyList<SaveSection> Create() =>
     [
-        new("CNST", 1, s => s.Construction is not null, (s, w) => s.Construction!.WriteState(w), (s, r, _) => s.Construction!.ReadState(r)),
+        new("CNST", 2, s => s.Construction is not null, (s, w) => s.Construction!.WriteState(w), (s, r, version) => s.Construction!.ReadState(r, version)),
         new("ROAD", 1, s => s.Construction is not null,
             (s, w) =>
             {
@@ -41,7 +41,7 @@ internal static class SaveSystemSections
         new("INDY", 1, _ => true, (s, w) => s.Industries.WriteState(w), (s, r, _) => s.Industries.ReadState(r)),
         new("STNS", 1, s => s.Stations is not null, (s, w) => s.Stations!.WriteState(w), (s, r, _) => s.Stations!.ReadState(r)),
         new("FINA", 1, s => s.Finance is not null, (s, w) => s.Finance!.WriteState(w), (s, r, _) => s.Finance!.ReadState(r)),
-        new("RVEH", 1, s => s.RoadVehicles is not null, (s, w) => s.RoadVehicles!.WriteState(w), (s, r, _) => s.RoadVehicles!.ReadState(r)),
+        new("RVEH", 2, s => s.RoadVehicles is not null, (s, w) => s.RoadVehicles!.WriteState(w), (s, r, version) => s.RoadVehicles!.ReadState(r, version)),
         new("TRAI", 2, s => s.Trains is not null, (s, w) => s.Trains!.WriteState(w), (s, r, version) => s.Trains!.ReadState(r, version)),
         new("CATL", 1, s => s.Trains is not null, (s, w) =>
         {
@@ -74,6 +74,19 @@ internal static class SaveSystemSections
                     part.RenewalNotified = r.ReadBool();
                 }
             }
+        }),
+        new("LSTA", 1, s => s.Traffic is not null, (s, w) =>
+        {
+            s.RoadVehicles!.Lines.WriteStatistics(w);
+            s.Towns!.History.WriteState(w);
+            s.Stations!.History.WriteState(w);
+            s.Traffic!.WriteState(w);
+        }, (s, r, _) =>
+        {
+            s.RoadVehicles!.Lines.ReadStatistics(r);
+            s.Towns!.History.ReadState(r);
+            s.Stations!.History.ReadState(r);
+            s.Traffic!.ReadState(r);
         }),
         new("DMND", 1, s => s.Router is not null, (s, w) => s.Router!.WriteState(w), (s, r, _) => s.Router!.ReadState(r)),
     ];

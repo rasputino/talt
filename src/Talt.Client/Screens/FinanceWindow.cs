@@ -89,9 +89,8 @@ internal static class FinanceWindow
         });
         InfiniteMoneyWatch(window, infinite, company, visibleWhenInfinite: false);
 
-        content.Add(new Label(TextRef.Of("finance.chart")) { Color = TextColor.Muted });
-        content.Add(new BarChart(Ledger.MonthsKept, slot => ChartValues(ledger, slot)) { Width = 540 });
-        window.Content = content;
+        HistoryCharts.AddCompany(content, simulation, company, money, Version);
+        window.Content = new ScrollArea(content) { MaxHeight = 620 };
         return window;
     }
 

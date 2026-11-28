@@ -106,6 +106,10 @@ public sealed partial class GameSimulation : IStateHashable
             var demandRules = ReferenceEquals(content, GameContent.Default) ? DemandRules.Default : DemandRules.FromJson(DemandRules.ReadResource(), content);
             Destinations = new DestinationTables(demandRules, new GameDemandWorld(Towns, Industries));
             Router = new CargoRouter(demandRules, Stations, Destinations);
+            Traffic = new TrafficHistory();
+            RoadVehicles.Traffic = Traffic;
+            Trains.Traffic = Traffic;
+            Events.OnMonthEnded(simulation => simulation.Traffic!.CloseMonth(simulation.Date));
             Router.AddSource(RoadVehicles);
             Router.AddSource(Trains); // Feature 015's trains carry destination cargo through the same stations.
             Stations.AttachDemand(demandRules, Destinations, Router);
@@ -195,6 +199,10 @@ public sealed partial class GameSimulation : IStateHashable
 
     /// <summary>Routes of destination cargo over every mode's lines (feature 013); null without a map.</summary>
     public CargoRouter? Router { get; }
+
+    /// <summary>Road and rail passages by link for games with a map.</summary>
+    public TrafficHistory? Traffic { get; }
+
     /// <summary>Trains and rail depots of a game with a map (feature 015); null for map-less scenarios.</summary>
     public TrainSystem? Trains { get; }
 
@@ -360,6 +368,7 @@ public sealed partial class GameSimulation : IStateHashable
             hasher.Append(Trains); // Appends nothing until a train was bought (feature 015, research R15).
         }
 
+        Traffic?.AppendTo(hasher);
         if (Router is not null)
         {
             hasher.Append(Router); // Appends nothing until a line carried destination cargo (feature 013, FR-026).

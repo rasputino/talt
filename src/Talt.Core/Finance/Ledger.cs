@@ -48,18 +48,23 @@ public sealed partial class Ledger : IStateHashable
         _months = new long[MonthsKept][];
         for (var i = 0; i < MonthsKept; i++)
         {
-            _months[i] = new long[SlotCount];
+            _months[i] = new long[PeriodWidth];
         }
 
         _monthYear[0] = year;
         _monthNumber[0] = month;
         MonthCount = 1;
-        _years.Add(new long[SlotCount]);
+        _years.Add(new long[PeriodWidth]);
         _yearNumbers.Add(year);
     }
 
+    /// <summary>Changes whenever the figures displayed by the client change, including cashless bookings.</summary>
+    public long Version { get; private set; }
+
     /// <summary>Fixed categories plus one income slot per cargo.</summary>
     public int SlotCount { get; }
+
+    private int PeriodWidth => (2 * SlotCount) - FixedSlots + 1;
 
     /// <summary>Months recorded (the current one included), at most <see cref="MonthsKept"/>.</summary>
     public int MonthCount { get; private set; }
@@ -74,7 +79,7 @@ public sealed partial class Ledger : IStateHashable
         {
             foreach (var year in _years)
             {
-                foreach (var value in year)
+                foreach (var value in year.AsSpan(0, SlotCount))
                 {
                     if (value != 0)
                     {
@@ -109,14 +114,14 @@ public sealed partial class Ledger : IStateHashable
     public int YearNumber(int back) => back < _years.Count ? _yearNumbers[_years.Count - 1 - back] : 0;
 
     /// <summary>Income (positive slots) of a month.</summary>
-    public long MonthIncome(int back) => back < MonthCount ? Positive(_months[Ring(back)]) : 0;
+    public long MonthIncome(int back) => back < MonthCount ? Positive(_months[Ring(back)].AsSpan(0, SlotCount)) : 0;
 
     /// <summary>Expenses (negative slots, as a negative number) of a month.</summary>
-    public long MonthExpenses(int back) => back < MonthCount ? Negative(_months[Ring(back)]) : 0;
+    public long MonthExpenses(int back) => back < MonthCount ? Negative(_months[Ring(back)].AsSpan(0, SlotCount)) : 0;
 
-    public long YearIncome(int back) => back < _years.Count ? Positive(_years[_years.Count - 1 - back]) : 0;
+    public long YearIncome(int back) => back < _years.Count ? Positive(_years[_years.Count - 1 - back].AsSpan(0, SlotCount)) : 0;
 
-    public long YearExpenses(int back) => back < _years.Count ? Negative(_years[_years.Count - 1 - back]) : 0;
+    public long YearExpenses(int back) => back < _years.Count ? Negative(_years[_years.Count - 1 - back].AsSpan(0, SlotCount)) : 0;
 
     /// <summary>Sum of every slot of a year: the change in cash for that year, loan movements apart.</summary>
     public long YearTotal(int back)
@@ -127,12 +132,33 @@ public sealed partial class Ledger : IStateHashable
         }
 
         long total = 0;
-        foreach (var value in _years[_years.Count - 1 - back])
+        foreach (var value in _years[_years.Count - 1 - back].AsSpan(0, SlotCount))
         {
             total = Money.Add(total, value);
         }
 
         return total;
+    }
+
+    /// <summary>Final physical deliveries of one cargo in a month, newest first.</summary>
+    public long MonthDelivered(int back, int cargo) => Month(back, SlotCount + cargo);
+
+    /// <summary>Final physical deliveries of one cargo in a year, newest first.</summary>
+    public long YearDelivered(int back, int cargo) => Year(back, SlotCount + cargo);
+
+    /// <summary>Latest valuation for the month, or the final valuation at its close.</summary>
+    public long MonthValue(int back) => Month(back, PeriodWidth - 1);
+
+    /// <summary>Latest valuation for the year, or its December closing value.</summary>
+    public long YearValue(int back) => Year(back, PeriodWidth - 1);
+
+    internal void AddDelivered(int cargo, int units) => Add(SlotCount + cargo, units);
+
+    internal void SetPeriodValue(long value)
+    {
+        Version++;
+        _months[_current][^1] = value;
+        _years[^1][^1] = value;
     }
 
     internal void Add(int slot, long amount)
@@ -142,6 +168,7 @@ public sealed partial class Ledger : IStateHashable
             return;
         }
 
+        Version++;
         var month = _months[_current];
         month[slot] = Money.Add(month[slot], amount);
         var year = _years[^1];
@@ -161,7 +188,7 @@ public sealed partial class Ledger : IStateHashable
     /// <summary>Starts a new year (allocates one array per game year).</summary>
     internal void StartYear(int year)
     {
-        _years.Add(new long[SlotCount]);
+        _years.Add(new long[PeriodWidth]);
         _yearNumbers.Add(year);
     }
 
@@ -187,7 +214,7 @@ public sealed partial class Ledger : IStateHashable
 
     private int Ring(int back) => ((_current - back) % MonthsKept + MonthsKept) % MonthsKept;
 
-    private static long Positive(long[] slots)
+    private static long Positive(ReadOnlySpan<long> slots)
     {
         long total = 0;
         foreach (var value in slots)
@@ -201,7 +228,7 @@ public sealed partial class Ledger : IStateHashable
         return total;
     }
 
-    private static long Negative(long[] slots)
+    private static long Negative(ReadOnlySpan<long> slots)
     {
         long total = 0;
         foreach (var value in slots)

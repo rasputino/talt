@@ -131,7 +131,7 @@ public class StationClientTests
         var pick = new PickResult(PickKind.Station, 0, 0, 0, VoxelMaterial.Air, -1, -1, default, default, 1, StationId: id);
         var window = ObjectInfoWindow.Create(pick, session);
         Assert.Equal($"station:{id}", window.Key);
-        Assert.IsType<StackPanel>(window.Content);
+        Assert.IsType<ScrollArea>(window.Content);
         foreach (var language in Strings.SupportedLanguages)
         {
             var s = Strings.Load(language);
