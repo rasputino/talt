@@ -11,6 +11,13 @@ public sealed partial class RoadVehicleSystem
     private int[] _laneKey = new int[256];
     private int[] _laneHead = new int[256]; // Front-most vehicle slot, or −1.
     private int[] _laneTail = new int[256]; // Rear-most vehicle slot, or −1.
+    // Published only by the sequential lane phase. Workers can read these records without locks.
+    internal struct LaneGeometry
+    {
+        internal int Version, To, Length, RoadCap, Masks, SuccessorIndex;
+    }
+
+    private LaneGeometry[] _geometry = new LaneGeometry[256];
     private int _laneCount;
 
     // Per vehicle slot: the lane index it is listed in (−1 none) and its neighbours in the list.
@@ -58,6 +65,7 @@ public sealed partial class RoadVehicleSystem
         {
             var size = _laneCount * 2;
             Array.Resize(ref _laneKey, size);
+            Array.Resize(ref _geometry, size);
             Array.Resize(ref _laneHead, size);
             Array.Resize(ref _laneTail, size);
         }
@@ -116,7 +124,35 @@ public sealed partial class RoadVehicleSystem
             return;
         }
 
-        var lane = LaneFor(key);
+        var lane = _cache[slot].Index;
+        if (lane < 0)
+        {
+            lane = LaneFor(key);
+            _cache[slot].Index = lane;
+        }
+
+        ref readonly var cache = ref _cache[slot];
+        ref var geometry = ref _geometry[lane];
+        if (geometry.Length == 0 || geometry.Version != cache.CacheVersion)
+        {
+            geometry = new LaneGeometry
+            {
+                Version = cache.CacheVersion,
+                To = cache.To,
+                Length = cache.LaneLength,
+                RoadCap = cache.RoadCap,
+                Masks = cache.ToMasks,
+                SuccessorIndex = -1,
+            };
+        }
+
+        var direction = PlainDirection(geometry.Masks);
+        if (direction >= 0 && geometry.SuccessorIndex < 0)
+        {
+            geometry.SuccessorIndex = FindLane((geometry.To * 8) + direction);
+        }
+
+        Traffic?.RegisterRoadLane(lane, key >> 3, _cache[slot].To);
         var s = _hot[slot].S;
         var id = _id[slot];
 

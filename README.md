@@ -62,7 +62,7 @@ money on) and `--check-overlaps` (debug: checks after every tick that no two veh
 pauses with a message, the headless runner stops with exit code 1). The headless runner also takes `--road-grid
 <spacing>` and prints a vehicle summary and the average tick of the run's second half.
 In game: build a depot (J) beside a road, open it to buy a bus or truck, press "New line" in the vehicle window and
-click your stations in order (Esc ends); the vehicle starts. F4 lists the lines.
+click your stations in order (Esc ends); the vehicle starts. F4 opens the line and fleet directory. Sort lines by profit or load factor, open a line to set the departure interval, or select a fleet row to locate its vehicle. The Map layers button shows physical routes, station catchments and traffic from the last complete month. The heatmap first becomes available on February 1 in a new game.
 
 Railways (feature 015): `--seed-trains <n>` (debug: racetrack loops with two stations, one-way path signals, a depot
 and up to eight trains each, levelling sloping land under a loop first; turns infinite money on; cannot be combined with

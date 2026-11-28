@@ -43,6 +43,7 @@ public static class CommandSerializer
         [Vehicles.CreateLineCommand.Type] = Vehicles.CreateLineCommand.Read,
         [Vehicles.DeleteLineCommand.Type] = Vehicles.DeleteLineCommand.Read,
         [Vehicles.RenameLineCommand.Type] = Vehicles.RenameLineCommand.Read,
+        [Vehicles.SetLineIntervalCommand.Type] = Vehicles.SetLineIntervalCommand.Read,
         [Vehicles.EditLineStopsCommand.Type] = Vehicles.EditLineStopsCommand.Read,
         [Vehicles.AssignLineCommand.Type] = Vehicles.AssignLineCommand.Read,
         [Rails.BuildRailCommand.Type] = Rails.BuildRailCommand.Read,

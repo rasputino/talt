@@ -28,6 +28,7 @@ public sealed partial class RoadVehicleSystem
             // Running cost as a per-vehicle statistic (finance charges the company total itself).
             var carry = _runningCarry[slot] + model.RunningCostPerYear;
             _profitThisYear[slot] = Money.Add(_profitThisYear[slot], -(carry / 365));
+            Lines.RecordProfit(_line[slot], -(carry / 365));
             _runningCarry[slot] = carry % 365;
 
             ref var h = ref _hot[slot];
@@ -84,9 +85,12 @@ public sealed partial class RoadVehicleSystem
         _ = date;
         for (var slot = 0; slot < Count; slot++)
         {
+            PostDistance(slot);
             _profitLastYear[slot] = _profitThisYear[slot];
             _profitThisYear[slot] = 0;
         }
+
+        Lines.CloseYear(); // Shared by both modes; the road system owns the registry.
     }
 
     /// <summary>0–999 999 from the vehicle id and the day: the same everywhere, no shared random stream (research R7).</summary>

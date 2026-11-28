@@ -30,7 +30,17 @@ public class StationBenchmarks
     private int _previewIndex;
     private GameDate _day;
 
-    [GlobalSetup]
+    // Monthly collection only needs the ungrouped reference map.
+    [GlobalSetup(Target = nameof(MonthlyUpdate))]
+    public void SetupMonthly()
+    {
+        _plain = Create(warehouses: false);
+        _stations = _plain.Stations!;
+        _day = new GameDate(1950, 2, 1, new DateOnly(1950, 2, 1).DayNumber);
+        Console.WriteLine($"// Monthly capture: {_stations.Count} stations, {_stations.GroupCount} groups.");
+    }
+
+    [GlobalSetup(Targets = [nameof(DailyUpdate), nameof(DailyUpdateWithGroups), nameof(CatchmentPreview)])]
     public void Setup()
     {
         _plain = Create(warehouses: false);

@@ -8,6 +8,9 @@ using Talt.Core.Towns;
 
 namespace Talt.Core.Stations;
 
+/// <summary>Closing group stock, monthly pickups and final deliveries, and closing rating (−1 for unserved cargo).</summary>
+public readonly record struct StationCargoMonth(int Waiting, int PickedUp, int Delivered, int Rating);
+
 /// <summary>Road station (bus/truck pieces) or warehouse.</summary>
 public enum StationKind : byte
 {
@@ -90,6 +93,7 @@ public sealed partial class StationRegistry : IStateHashable, IProductionSink
     private readonly Dictionary<int, int> _removedCentre = [];
 
     // Stations by slot.
+    private readonly StationHistory _history;
     private int[] _id = new int[InitialCapacity];
     private int[] _owner = new int[InitialCapacity];
     private byte[] _kind = new byte[InitialCapacity];
@@ -128,6 +132,7 @@ public sealed partial class StationRegistry : IStateHashable, IProductionSink
         _settings = settings;
         _today = today;
         _cargoCount = content.CargoCount;
+        _history = new StationHistory(_cargoCount);
         _cargoCategory = new CargoCategory[_cargoCount];
         for (var c = 0; c < _cargoCount; c++)
         {
@@ -354,9 +359,17 @@ public sealed partial class StationRegistry : IStateHashable, IProductionSink
     /// <summary>Rotates the monthly statistics of every group and cargo.</summary>
     public void AdvanceMonth(GameDate date)
     {
-        _ = date;
+        _history.Close(date, _group.AsSpan(0, _count), _groupCount, _waiting, _pickedUpThis, _deliveredThis, _rating, _served);
+
         RotateStatistics();
     }
+
+    /// <summary>Monthly group statistics as observed at this station. Closed periods follow the station through regrouping.</summary>
+    public bool TryGetMonth(int stationId, int back, int cargo, out StationCargoMonth sample) =>
+        _history.TryGet(SlotOf(stationId), back, cargo, out sample);
+
+    /// <summary>Year and month of a station observation, newest first. Absent periods have year zero.</summary>
+    public (int Year, int Month) HistoryDate(int stationId, int back) => _history.Date(SlotOf(stationId), back);
 
     public void AppendTo(StateHasher hasher)
     {
@@ -388,6 +401,8 @@ public sealed partial class StationRegistry : IStateHashable, IProductionSink
             hasher.Append(_categories[slot]);
             hasher.Append(_radius[slot]);
             hasher.Append(_group[slot]);
+            _history.AppendStation(hasher, slot);
+
             var tiles = _tiles[slot];
             hasher.Append(tiles.Count);
             foreach (var tile in tiles)

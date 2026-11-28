@@ -17,7 +17,8 @@ namespace Talt.Core.Tests.Determinism;
 /// <remarks>Regenerate the golden only when finance rules or their data file change on purpose (or anything 010's golden depends on).</remarks>
 public class FinanceReplayTests
 {
-    private const string ExpectedAtTick6000 = "721E05596FDEE387";
+    // Feature 017 includes period valuations, physical cargo delivery totals, and closed station and town histories.
+    private const string ExpectedAtTick6000 = "B6FA665A5A3DB0DA";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 33,

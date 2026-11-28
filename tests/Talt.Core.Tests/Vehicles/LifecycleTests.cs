@@ -160,6 +160,40 @@ public sealed class LifecycleTests
     }
 
     [Fact]
+    public void WarmLaneGeometry_RespectsOneWayEditAndRestoredExit()
+    {
+        var kit = VehicleKit.Flat();
+        var (west, east, depot) = kit.Corridor();
+        var slot = kit.Slot(kit.Buy(depot));
+        kit.Line([west, east], kit.Vehicles.IdAt(slot));
+        var tile = kit.State.Map.Index(18, 20);
+        var westbound = (tile * 8) + 6;
+        bool DrivesWest() => kit.Vehicles.StateAt(slot).Lane == westbound;
+        bool AtEastStop() => kit.Vehicles.StatusAt(slot) == RoadVehicleStatus.Loading && kit.Vehicles.TargetIdAt(slot) == east;
+        bool Observe(Func<bool> condition)
+        {
+            for (var i = 0; i < 4000; i++)
+            {
+                kit.Ticks(1);
+                if (condition())
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        Assert.True(Observe(DrivesWest));
+        Assert.True(Observe(AtEastStop));
+        var edit = new SetOneWayCommand(Company.PlayerId, 18, 20);
+        Assert.True(kit.Run(edit).Succeeded);
+        Assert.False(Observe(DrivesWest));
+        Assert.True(kit.Run(edit).Succeeded); // The next setting permits westbound travel.
+        Assert.True(Observe(DrivesWest));
+    }
+
+    [Fact]
     public void RemovingARoadOnTheRoute_MakesTheVehicleTakeAnotherOne()
     {
         // Two parallel roads between the ends: z = 20 and z = 26, joined at x = 12 and x = 44.
@@ -213,6 +247,7 @@ public sealed class LifecycleTests
             new SellVehicleCommand(0, 5), new CloneVehicleCommand(0, 5), new StartVehicleCommand(0, 5, true), new SendToDepotCommand(0, 5),
             new SetVehicleCargoCommand(0, 5, "goods"), new SetServiceIntervalCommand(0, 5, 90), new CreateLineCommand(0, [1, 2, 3], 7),
             new DeleteLineCommand(0, 2), new RenameLineCommand(0, 2, "Harbour run"),
+            new SetLineIntervalCommand(0, 2, 3),
             new EditLineStopsCommand(0, 2, LineStopEdit.Move, 1, 4, 0, StopRule.UnloadOnly), new AssignLineCommand(0, 5, -1),
         ];
         foreach (var command in commands)

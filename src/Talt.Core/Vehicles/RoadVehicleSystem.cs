@@ -111,6 +111,7 @@ public sealed partial class RoadVehicleSystem : IStateHashable, IVehicleOccupanc
     private TargetForm[] _targetForm = new TargetForm[64];
     private VehicleOrders[] _orders = new VehicleOrders[64];
     private CargoHold[] _hold = new CargoHold[64];
+    private long[] _unpostedDistance = new long[64];
     private int[] _loadTimer = new int[64];
     private int[] _loadedThisStep = new int[64];
     private RouteStep[][] _route = new RouteStep[64][];
@@ -153,7 +154,7 @@ public sealed partial class RoadVehicleSystem : IStateHashable, IVehicleOccupanc
         }
 
         Depots = new DepotRegistry();
-        Lines = new LineRegistry();
+        Lines = new LineRegistry { CollectOpenDistances = CollectOpenDistances };
         state.AttachDepots(Depots);
         state.Occupancy = this;
         InitLanes();
@@ -434,6 +435,7 @@ public sealed partial class RoadVehicleSystem : IStateHashable, IVehicleOccupanc
         _id[slot] = id;
         _owner[slot] = ownerId;
         _model[slot] = modelIndex;
+        _unpostedDistance[slot] = 0;
         _cargo[slot] = cargo;
         _homeDepot[slot] = depotId;
         _line[slot] = -1;
@@ -490,6 +492,7 @@ public sealed partial class RoadVehicleSystem : IStateHashable, IVehicleOccupanc
             _finance?.RunningCosts.Unregister(_runningHandle[slot]);
         }
 
+        PostDistance(slot);
         var last = Count - 1;
         if (slot != last)
         {
@@ -508,6 +511,7 @@ public sealed partial class RoadVehicleSystem : IStateHashable, IVehicleOccupanc
         _id[to] = _id[from];
         _owner[to] = _owner[from];
         _model[to] = _model[from];
+        _unpostedDistance[to] = _unpostedDistance[from];
         _cargo[to] = _cargo[from];
         _homeDepot[to] = _homeDepot[from];
         _line[to] = _line[from];
@@ -559,6 +563,7 @@ public sealed partial class RoadVehicleSystem : IStateHashable, IVehicleOccupanc
         Array.Resize(ref _targetForm, size);
         Array.Resize(ref _orders, size);
         Array.Resize(ref _hold, size);
+        Array.Resize(ref _unpostedDistance, size);
         Array.Resize(ref _loadTimer, size);
         Array.Resize(ref _loadedThisStep, size);
         Array.Resize(ref _route, size);
@@ -594,15 +599,40 @@ public sealed partial class RoadVehicleSystem : IStateHashable, IVehicleOccupanc
 
     internal void SetCargo(int slot, int cargo)
     {
+        PostDistance(slot);
         _cargo[slot] = cargo;
         _linkChanges++;
     }
 
     internal void SetServiceInterval(int slot, int days) => _serviceInterval[slot] = days;
 
+    private void PostDistance(int slot)
+    {
+        var distance = _unpostedDistance[slot];
+        if (distance > 0)
+        {
+            Lines.RecordDistance(_line[slot], distance, _hold[slot].Total, ModelAt(slot).Capacity);
+            _unpostedDistance[slot] = 0;
+            Lines.InvalidateOpenDistances();
+        }
+    }
+
+    private void CollectOpenDistances()
+    {
+        for (var slot = 0; slot < Count; slot++)
+        {
+            var distance = _unpostedDistance[slot];
+            if (distance > 0)
+            {
+                Lines.AddOpenDistance(_line[slot], distance, _hold[slot].Total, ModelAt(slot).Capacity);
+            }
+        }
+    }
+
     /// <summary>Assigns a line (−1 none); the vehicle restarts from the line's first stop.</summary>
     internal void AssignLine(int slot, int lineId)
     {
+        PostDistance(slot);
         _line[slot] = lineId;
         _linkChanges++;
         _stopIndex[slot] = 0;
@@ -649,6 +679,8 @@ public sealed partial class RoadVehicleSystem : IStateHashable, IVehicleOccupanc
 
             if (deleted)
             {
+                _unpostedDistance[slot] = 0;
+                Lines.InvalidateOpenDistances();
                 _line[slot] = -1;
                 if (_targetKind[slot] == VehicleTargetKind.Stop)
                 {

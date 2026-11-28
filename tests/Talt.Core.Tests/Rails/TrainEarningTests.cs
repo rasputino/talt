@@ -66,6 +66,11 @@ public sealed class TrainEarningTests
 
             Assert.True(trains.Deliveries > 0, $"no delivery; train {TrainSystem.StatusOf(trains.Find(id)!)}");
             Assert.True(trains.Find(id)!.ProfitThisYear != 0);
+            var totals = trains.Lines.CurrentYear(trains.Find(id)!.Line);
+            Assert.True(totals.OccupiedDistance > 0 && totals.OccupiedDistance <= totals.CapacityDistance);
+            Assert.True(totals.Passengers > 0);
+            Assert.Equal(0, totals.Freight);
+            Assert.Equal(trains.Find(id)!.ProfitThisYear, totals.Profit);
             return;
         }
 

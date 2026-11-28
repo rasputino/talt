@@ -1723,3 +1723,50 @@ Companies own separate road and rail replacement policies keyed by stable model 
 
 On the Windows Ryzen 7 160 host, .NET 10.0.15, BenchmarkDotNet ShortRun measured the 29-model availability scan at 45.27 ns (1.085 ns standard deviation), with no managed allocation. AllocationAssert also exercises depot rule evaluation. Introducing models and changing their sale windows changes the road-rules hash included by the active road and rail fixtures. The tick-4000 road replay now yields `B5F11DB067C4CF95` and the tick-3000 rail replay yields `91DDF5576E65F633`; the headless CI reference inputs retain their prior fingerprints.
 The CI headless reference (50,000 independent vehicles, 10,000 ticks, zero road tiles) averaged 1.901 ms per tick and produced C0C656C5AB2D3302. This run measures the reference fleet loop; depot behavior is exercised separately by the road and rail replay fixtures.
+
+## Line management and statistics (feature 017)
+
+F4 opens one directory with line and fleet tabs. The line index aggregates assignments for both modes, filters by mode and operating profit, and sorts with a stable ID tie-break. Fleet rows identify a vehicle by mode and stable ID. Operating status, loss and age remain independent. Selecting a row resolves that ID again before opening its individual window and moving the camera. Directory controls belong to 017; vehicle inspection, model eligibility and replacement remain with the individual vehicle and catalog features.
+
+The retained table binds ten physical rows to the visible slice. The wheel and the scrollbar move over the full logical index. Numeric cells format into stack storage. A press followed by a row rebind cannot activate the replacement vehicle. Index refreshes follow structural changes and a one-second simulation reporting cadence.
+
+### Simulation and reporting
+
+- LineRegistry owns this year's and last year's operating profit, boardings and two occupancy accumulators. Each service movement contributes actual fixed-point distance multiplied by load and capacity before the stop can change its load. Road vehicles accumulate only fixed-point service distance while moving. Before a load, assignment or year change the serial phase posts the distance products to the original line. A query or fingerprint includes open journeys through one cached pass per revision across the fleet. Train movement posts the head distance once for the whole consist. Annual rotation preserves attribution across reassignment and sale.
+- A replayable line command sets the target interval in game days. A ready vehicle at the first stop checks its mode's last release tick. A train and a road vehicle may leave together. Physical road occupancy, reservations and signals still govern departure movement.
+- Company reporting uses the finance ledger's 24 monthly periods and all annual periods. Deliveries count final units by cargo, including deliveries with zero payment. Transfers keep their existing per-leg vehicle credits. Company value is a closing observation. Town and station charts show the latest twelve completed months, with a dated value available for each bar.
+- Traffic collection counts actual completed road links and train-head traversals in canonical endpoint order, separately by mode. Road passages use compact counters indexed by lane, preserving the old endpoints when infrastructure changes. A month boundary advances the reporting period and exchanges the sparse maps. The first heatmap read combines the completed road and rail counts into canonical segments and caches the result. It computes route geometry from directed road links and rail routing with independent search state, marks interruptions at the endpoints, and draws the station simulation's catchment tiles. These layers draw under the HUD and cull geometry in 32-tile groups. The map panel shows off-screen and missing-data states and can centre a routed segment or the busiest segment. When both layers are enabled, a narrow route stripe runs over a wider heat ribbon.
+- [Persistence contract for 014](../specs/017-line-management-statistics/contracts/persistence.md) lists the open and closed reporting state, dispatch clocks and stable segment identities. Render geometry, widget rows and sorting indices are derived.
+
+### Measurements
+
+BenchmarkDotNet, Windows x64, AMD Ryzen 7 160, .NET 10.0.15, Release. Fleet, traffic and 32-station measurements use ShortRun. The 5,000-station benchmark uses its configured 10 measured iterations. The table timings measure layout and draw-list construction on the CPU.
+
+| Operation | Scale | Mean | Managed allocation |
+| --- | --- | ---: | ---: |
+| Open fleet tab and draw first frame | 50,000 service vehicles | 0.532 ms | 1.07 MiB per opening |
+| Scroll, lay out and draw fleet tab | 50,000 service vehicles | 12.08 µs | 0 B |
+| Collect station month | 32 station groups, 512² | 246.7 ns | 0 B |
+| Collect station month | 5,000 stations and groups, 4096² | 122.4 µs | 0 B |
+| Record mixed road/rail passages and close month | 50,000 links | 117.3 µs | 0 B |
+| Record, close and first read of heatmap | 50,000 links | 585.2 µs | 0 B |
+
+Station history stores group membership and five group-by-cargo columns in contiguous monthly blocks. A close uses bulk copies, so grouped stations share their observations and a later membership change preserves their past. The previous 5,000-station close rotated counters in 35 µs. The latest measurement including all observations fits the 2 ms station budget.
+
+The six command-driven map replay fixtures include new authoritative history. Projecting those fields out of the fingerprint reproduced each old golden under both sequential and parallel ticking. The default, sequential, reference-load and Windows replay checks in the CI gate kept their existing values.
+
+On the 4096² road reference network (50,000 buses, 7,722 lines and 8,422 depots), the pre-optimization feature measured 5.738 ms per tick with the client closed. The starting revision before feature 017 measured 5.259 ms on the same machine. A subsequent instrumented run of 2,400 ticks after 2,400 warm-up ticks attributed 2.53 ms to driving, 0.82 ms to lane removals and insertions, and 1.03 ms to serial vehicle events.
+
+The drive phase passes a known stable lane index to the sequential insertion phase when a vehicle crosses into the lane it inspected. Each used directed lane has a 24-byte geometry record indexed by that same index. Insertion publishes its endpoint, length, speed cap, connection masks, and the index of a permitted plain continuation. A worker can copy this geometry and its successor into its vehicle-local cache while the shared records are read-only. The road-network version invalidates stale records, and an unknown successor falls back to the normal lookup. An explicit route or tail instruction still takes precedence. Occupancy, junction grants and level-crossing ownership are read live. These caches are derived and excluded from fingerprints and saves.
+
+To separate the changes from variation between BenchmarkDotNet processes, each stage also ran the identical reference world from tick 2,400 through tick 4,800 in a fresh process. The six launches used reverse orders (both, index only, baseline, then baseline, index only, both). Times are elapsed milliseconds per tick over the full 2,400-tick window, including day and month boundaries.
+
+| Stage | First window | Second window | Mean |
+| --- | ---: | ---: | ---: |
+| Before the lane changes | 4.445 ms | 4.400 ms | 4.423 ms |
+| Carry the stable arrival lane index | 4.250 ms | 4.523 ms | 4.386 ms |
+| Also share geometry and cache the plain successor index | 3.636 ms | 3.529 ms | 3.583 ms |
+
+The small observed change from index reuse alone is within run-to-run variation. Adding the geometry and continuation cache reduced the two-run mean by 0.804 ms relative to index reuse alone. All six runs ended with the same full-state fingerprint at tick 4,800 (`5BF55B9EC4F1DF19`).
+
+The official Release road benchmark uses 40 ticks per iteration after warming the fleet. Its successive means were 7.632 ms before these changes, 4.149 ms with index reuse, and 6.829 ms with an initial geometry implementation that still read the shared continuation during look-ahead. Copying the continuation into the private vehicle cache on entry gave 3.514 ms. The final confirmation measured 3.921 ms (0.406 ms standard deviation, 7.62 KiB managed per tick including parallel scheduling). Both final means met the 4 ms average budget on this host. The confirmation has 0.079 ms of headroom. Neither the long-window timings nor the benchmark's iteration averages establish a worst-case per-tick bound.

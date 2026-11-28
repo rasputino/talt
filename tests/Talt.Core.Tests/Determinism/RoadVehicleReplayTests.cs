@@ -17,7 +17,8 @@ public class RoadVehicleReplayTests
 {
     // Feature 013 changed it on purpose: passengers have destinations and travel by route (91E0F1189491671C before).
     // Feature 016 extends the hashed road model rules and sale windows (396343F72649C68E before).
-    private const string ExpectedAtTick4000 = "B5F11DB067C4CF95";
+    // Feature 017 includes attributed line accounts, dispatch clocks, road passages, and company, station and town histories.
+    private const string ExpectedAtTick4000 = "714275DFB5749C00";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 12,

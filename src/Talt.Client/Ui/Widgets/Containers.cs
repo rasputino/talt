@@ -92,6 +92,12 @@ internal class StackPanel : Panel
         for (var i = 0; i < ChildCount; i++)
         {
             var child = GetChild(i);
+            // A conditional child may have become visible since the previous layout.
+            if (!child.Visible && child.VisibleWhen is null)
+            {
+                continue;
+            }
+
             var remaining = vertical ? new Vector2(inner.X, MathF.Max(0, inner.Y - along)) : new Vector2(MathF.Max(0, inner.X - along), inner.Y);
             var size = child.Measure(ui, remaining);
             if (!child.Visible)

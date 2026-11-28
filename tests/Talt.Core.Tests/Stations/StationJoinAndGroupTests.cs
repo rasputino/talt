@@ -75,7 +75,15 @@ public sealed class StationJoinAndGroupTests
         var b = kit.StationAt(30, 21);
         Assert.NotEqual(kit.Stations.GroupOf(a), kit.Stations.GroupOf(b));
 
+        var waitingCargo = kit.Cargo("coal");
+        Transfer(kit, a, waitingCargo, 7);
+        kit.Stations.AdvanceMonth(new Talt.Core.Simulation.GameDate(1950, 2, 1, 0));
+        Assert.Equal(7, kit.Stations.Load(a, waitingCargo, 7, new CargoHold(), 50));
         Assert.True(kit.Warehouse("medium", 19, 21).Succeeded, kit.Last.ReasonCode);
+        Assert.True(kit.Stations.TryGetMonth(a, 0, waitingCargo, out var previousA));
+        Assert.True(kit.Stations.TryGetMonth(b, 0, waitingCargo, out var previousB));
+        Assert.Equal(7, previousA.Waiting);
+        Assert.Equal(0, previousB.Waiting);
 
         Assert.Equal(kit.Stations.GroupOf(a), kit.Stations.GroupOf(b));
         var coal = kit.Cargo("coal");

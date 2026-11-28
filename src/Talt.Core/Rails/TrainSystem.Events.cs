@@ -785,7 +785,9 @@ public sealed partial class TrainSystem
             if (_finance is not null)
             {
                 // Feature 013 (research R12): transfer credits move profit between the legs of a trip, never money.
-                train.ProfitThisYear = Money.Add(train.ProfitThisYear, _finance.TotalPaid - paidBefore - result.CreditDelivered + result.CreditEarned);
+                var earned = _finance.TotalPaid - paidBefore - result.CreditDelivered + result.CreditEarned;
+                train.ProfitThisYear = Money.Add(train.ProfitThisYear, earned);
+                Lines.RecordProfit(train.Line, earned);
             }
 
             if (result.Delivered > 0)
@@ -842,6 +844,7 @@ public sealed partial class TrainSystem
             }
 
             var amount = _stations.Load(station, part.Cargo, Math.Min(model.LoadPerStep, space), part.Hold, Rules.KmhFromSpeed(train.MaxSpeed), NextStopStation(train));
+            Lines.RecordBoarding(train.Line, amount, _content.Cargo(part.Cargo).Category == Content.CargoCategory.Passenger);
             if (amount > 0)
             {
                 loaded += amount;
@@ -963,6 +966,11 @@ public sealed partial class TrainSystem
 
     private void Depart(Train train)
     {
+        if (train.StopIndex == 0 && !Lines.TryDispatch(train.Line, train.TargetId, _tick, rail: true))
+        {
+            return;
+        }
+
         train.Mode = TrainMode.Running;
         train.ServedMask = 0;
         if (train.ServiceInterval > 0 && train.DaysSinceService >= train.ServiceInterval)

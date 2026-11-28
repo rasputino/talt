@@ -57,6 +57,7 @@ public sealed class FinanceSystem : IStateHashable, IDeliveryListener, ITransfer
         {
             company.AttachLedger(new Ledger(content.CargoCount, date.Year, date.Month));
             company.Value = company.Balance;
+            company.Ledger!.SetPeriodValue(company.Value);
             if (rules.StartLoan > 0)
             {
                 company.Borrow(rules.StartLoan);
@@ -169,6 +170,12 @@ public sealed class FinanceSystem : IStateHashable, IDeliveryListener, ITransfer
             return 0;
         }
 
+        if (delivery.ConsumerKind != DeliveryConsumer.DebugService)
+        {
+            company.Ledger!.AddDelivered(delivery.Cargo, delivery.Amount);
+            _active = true;
+        }
+
         int distance;
         int x = -1, z = -1;
         _stations?.TryGetCentre(delivery.DestinationStation, out x, out z);
@@ -248,7 +255,9 @@ public sealed class FinanceSystem : IStateHashable, IDeliveryListener, ITransfer
             var company = _state.Companies[c];
             company.Value = Money.Add(Money.Add(company.Balance, -company.Loan), PropertyValue(company.Id));
             UpdateBankruptcy(company, maxLoan);
-            company.Ledger!.StartMonth(date.Year, date.Month);
+            company.Ledger!.SetPeriodValue(company.Value);
+            company.Ledger.StartMonth(date.Year, date.Month);
+            company.Ledger.SetPeriodValue(company.Value);
         }
     }
 
@@ -259,6 +268,7 @@ public sealed class FinanceSystem : IStateHashable, IDeliveryListener, ITransfer
         {
             var company = _state.Companies[c];
             company.Ledger!.StartYear(date.Year);
+            company.Ledger.SetPeriodValue(company.Value);
         }
     }
 
