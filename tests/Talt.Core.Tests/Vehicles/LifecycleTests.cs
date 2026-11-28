@@ -11,6 +11,28 @@ namespace Talt.Core.Tests.Vehicles;
 public sealed class LifecycleTests
 {
     [Fact]
+    public void ReplacementAppliesOnDepotEntryAndPreservesLineAndIdentity()
+    {
+        var kit = VehicleKit.Flat();
+        var (west, east, depot) = kit.Corridor();
+        var bus = kit.Buy(depot);
+        var line = kit.Line([west, east], bus);
+        kit.Days(10);
+        Assert.True(kit.Run(new SetReplacementCommand(Company.PlayerId, false, "bus-townsman", "bus-voltline", false, false)).Succeeded);
+        Assert.True(kit.Run(new SendToDepotCommand(Company.PlayerId, bus)).Succeeded);
+        for (var day = 0; day < 40 && kit.Vehicles.DepotAt(kit.Slot(bus)) < 0; day++)
+        {
+            kit.Days(1);
+        }
+
+        var slot = kit.Slot(bus);
+        Assert.Equal("bus-voltline", kit.Vehicles.ModelAt(slot).Id);
+        Assert.Equal(line, kit.Vehicles.LineAt(slot));
+        Assert.Equal(1, kit.Simulation.Finance!.RunningCosts.ActiveCount);
+        Assert.Equal(kit.Vehicles.ModelAt(slot).RunningCostPerYear, kit.Simulation.Finance.RunningCosts.YearlyTotal(Company.PlayerId));
+    }
+
+    [Fact]
     public void SendToDepot_ThenSell_RefundsTheValue_AndStopsRunningCosts()
     {
         var kit = VehicleKit.Flat();
@@ -187,6 +209,7 @@ public sealed class LifecycleTests
         ISimulationCommand[] commands =
         [
             new BuildDepotCommand(0, 3, 4), new RemoveDepotCommand(0, 3, 4), new BuyVehicleCommand(0, 2, "truck-box", "mail"),
+            new SetReplacementCommand(0, true, "wagon-hopper", "wagon-deepwell", true, false),
             new SellVehicleCommand(0, 5), new CloneVehicleCommand(0, 5), new StartVehicleCommand(0, 5, true), new SendToDepotCommand(0, 5),
             new SetVehicleCargoCommand(0, 5, "goods"), new SetServiceIntervalCommand(0, 5, 90), new CreateLineCommand(0, [1, 2, 3], 7),
             new DeleteLineCommand(0, 2), new RenameLineCommand(0, 2, "Harbour run"),

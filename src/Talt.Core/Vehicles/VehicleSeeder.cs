@@ -34,6 +34,7 @@ public static class VehicleSeeder
             commands.Add(new EnableInfiniteMoneyCommand(companyId));
         }
 
+        var bus = system.Rules.Models.First(m => m.CargoCategory == "passengers" && m.AvailableIn(simulation.Date.Year));
         var map = state.Map;
         var plan = new ConstructionPlan();
         var bay = stations.Rules.FindPiece("bus-bay");
@@ -140,7 +141,7 @@ public static class VehicleSeeder
         for (var v = 0; v < vehicles; v++)
         {
             var line = v % lines.Count;
-            commands.Add(new BuyVehicleCommand(companyId, lines[line].Depot, "bus-townsman"));
+            commands.Add(new BuyVehicleCommand(companyId, lines[line].Depot, bus.Id));
             assignments.Add((nextVehicle++, nextLine + line));
         }
 

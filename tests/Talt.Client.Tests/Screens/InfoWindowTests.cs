@@ -187,6 +187,46 @@ public class InfoWindowTests
         Assert.Contains(UiTestKit.Walk(line.Content!), w => w is Button b && b.Text is { } t && t.Resolve(ui).Contains(TrainTexts.Name(ui.Strings, trains, train.Id), StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void DepotCatalogShowsSelectedVoxelModelWithoutFrameAllocations()
+    {
+        var session = RailGame.Value;
+        session.UseModels(Talt.Client.Rendering.ModelLibrary.LoadShipped());
+        var train = session.Simulation.Trains!.TrainAt(0);
+        var ui = UiTestKit.CreateContext();
+        var window = ui.Windows.Open(RailDepotWindow.Create(new FakeVehicleUi(session), train.HomeDepot));
+        AssertSteady(ui);
+        Assert.Single(UiTestKit.Walk(window.Content!).OfType<CatalogPreview>());
+    }
+
+    [Fact]
+    public void ChoosingClearviewRevealsTimingInTheOpenDepot()
+    {
+        var session = Start(new NewGameOptions(ChunksPerSide: 8, VehicleCount: 0, Seed: 3, StartYear: 1985, SeedTrains: 2));
+        var ui = UiTestKit.CreateContext("es");
+        var depot = session.Simulation.Trains!.TrainAt(0).HomeDepot;
+        var window = ui.Windows.Open(RailDepotWindow.Create(new FakeVehicleUi(session), depot));
+        UiTestKit.Frame(ui);
+        var source = UiTestKit.Walk(window.Content!).OfType<Dropdown>().First();
+        source.OnSelected(source.Choices.ToList().FindIndex(c => c.Text.Resolve(ui) == ui.Strings.Get("rail.model.wagon-coach")));
+        UiTestKit.Frame(ui);
+        var target = UiTestKit.Walk(window.Content!).OfType<Dropdown>().Single(d => d.Choices.Any(c => Equals(c.Value, "wagon-clearview")));
+        var timing = UiTestKit.Walk(window.Content!).OfType<Checkbox>().Single(c => c.Text.Resolve(ui) == ui.Strings.Get("catalog.defer"));
+        Assert.False(timing.Visible);
+        target.OnSelected(target.Choices.ToList().FindIndex(c => Equals(c.Value, "wagon-clearview")));
+        session.Simulation.Tick();
+        UiTestKit.Frame(ui);
+        Assert.True(timing.Visible);
+        Assert.False(timing.IsChecked());
+        timing.OnChanged(true);
+        session.Simulation.Tick();
+        Assert.True(timing.IsChecked());
+        target.OnSelected(0);
+        session.Simulation.Tick();
+        UiTestKit.Frame(ui);
+        Assert.False(timing.Visible);
+    }
+
     private static void AssertSteady(UiContext ui)
     {
         var list = new UiDrawList();

@@ -6,7 +6,7 @@ using Talt.Core.Towns;
 namespace Talt.Core.Rails;
 
 /// <summary>A track type (contracts/data-files.md trackTypes).</summary>
-public sealed record RailType(string Id, string NameKey, long BuildCost, long RemoveCost, int SpeedKmh, bool Electrified, int Color, long MaintenancePerTile);
+public sealed record RailType(string Id, string NameKey, long BuildCost, long RemoveCost, int SpeedKmh, bool Electrified, int Color, long MaintenancePerTile, int FirstYear);
 
 /// <summary>Locomotive or wagon.</summary>
 public enum RollingStockKind : byte
@@ -55,7 +55,8 @@ public sealed record RollingStockModel(
     int FirstYear,
     int LastYear,
     int LoadPerStep,
-    int Color)
+    int Color,
+    string SoundId)
 {
     public bool AvailableIn(int year) => year >= FirstYear && year <= LastYear;
 
@@ -242,7 +243,7 @@ public sealed class RailRules
         foreach (var e in j.ArrayOf(root, "trackTypes", "").EnumerateArray())
         {
             var p = $"trackTypes[{n++}].";
-            j.Known(e, p, "id", "nameKey", "buildCost", "removeCost", "speedKmh", "electrified", "color");
+            j.Known(e, p, "id", "nameKey", "buildCost", "removeCost", "speedKmh", "electrified", "color", "firstYear");
             var id = j.String(e, "id", p);
             if (types.Exists(t => t.Id == id))
             {
@@ -255,7 +256,7 @@ public sealed class RailRules
             }
 
             types.Add(new RailType(id, j.String(e, "nameKey", p), j.Int(e, "buildCost", p, 0, 10_000_000), j.Int(e, "removeCost", p, 0, 10_000_000),
-                j.Int(e, "speedKmh", p, 10, 1000), el.GetBoolean(), j.Color(e, "color", p), j.Int(maintenance, id, "maintenancePerTile.", 0, 10_000_000)));
+                j.Int(e, "speedKmh", p, 10, 1000), el.GetBoolean(), j.Color(e, "color", p), j.Int(maintenance, id, "maintenancePerTile.", 0, 10_000_000), j.Int(e, "firstYear", p, 1, 9000)));
         }
 
         if (types.Count > 250)
@@ -318,7 +319,7 @@ public sealed class RailRules
         {
             var p = $"rollingStock[{n++}].";
             j.Known(e, p, "id", "nameKey", "kind", "power", "powerKw", "tractiveEffortKn", "massTonnes", "lengthMilliTiles", "speedKmh",
-                "category", "capacity", "loadPerStep", "price", "runningCostPerYear", "lifeYears", "reliabilityPerMille", "firstYear", "lastYear", "color");
+                "category", "capacity", "loadPerStep", "price", "runningCostPerYear", "lifeYears", "reliabilityPerMille", "firstYear", "lastYear", "color", "soundId");
             var id = j.String(e, "id", p);
             if (models.Exists(m => m.Id == id))
             {
@@ -378,7 +379,7 @@ public sealed class RailRules
                 j.Int(e, "massTonnes", p, 1, 10_000), MilliTiles(j.Int(e, "lengthMilliTiles", p, 250, 3000)), speedKmh,
                 (int)((long)speedKmh * FixedMath.UnitsPerTile / ((long)kmhPerTileSecond * FixedMath.TicksPerSecond)),
                 j.Int(e, "price", p, 0, 100_000_000), j.Int(e, "runningCostPerYear", p, 0, 100_000_000), j.Int(e, "lifeYears", p, 1, 200),
-                j.Int(e, "reliabilityPerMille", p, 1, 1000), first, last, loadPerStep, j.Color(e, "color", p)));
+                j.Int(e, "reliabilityPerMille", p, 1, 1000), first, last, loadPerStep, j.Color(e, "color", p), j.String(e, "soundId", p)));
         }
 
         if (!models.Exists(m => m.Kind == RollingStockKind.Locomotive && m.Power != RailPower.Electric && m.FirstYear <= 1850))

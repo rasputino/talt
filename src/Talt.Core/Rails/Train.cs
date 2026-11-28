@@ -70,19 +70,21 @@ public sealed class TrainPart
         Price = price;
     }
 
-    public int Model { get; }
+    public int Model { get; internal set; }
 
     /// <summary>Cargo index it carries, or −1.</summary>
     public int Cargo { get; internal set; }
+
+    public bool RenewalNotified { get; internal set; }
 
     public CargoHold Hold { get; } = new();
 
     internal int RunningHandle { get; set; }
 
-    public int PurchaseDay { get; }
+    public int PurchaseDay { get; internal set; }
 
     /// <summary>Price paid (inflated), the base of its value.</summary>
-    public long Price { get; }
+    public long Price { get; internal set; }
 }
 
 /// <summary>
@@ -349,6 +351,10 @@ public sealed class Train
             h.Append(part.Cargo);
             h.Append(part.PurchaseDay);
             h.Append(part.Price);
+            if (part.RenewalNotified)
+            {
+                h.Append("renewal-notified");
+            }
             h.Append(part.Hold);
         }
 

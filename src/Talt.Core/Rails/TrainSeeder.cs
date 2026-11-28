@@ -37,6 +37,10 @@ public static class TrainSeeder
             return commands;
         }
 
+        var year = simulation.Date.Year;
+        var locomotive = system.Rules.Models.FirstOrDefault(m => m.Id == "loco-meridian" && m.AvailableIn(year))
+            ?? system.Rules.Models.First(m => m.Kind == RollingStockKind.Locomotive && m.Power != RailPower.Electric && m.AvailableIn(year));
+
         if (!state.Player.HasInfiniteMoney)
         {
             commands.Add(new EnableInfiniteMoneyCommand(companyId));
@@ -91,7 +95,7 @@ public static class TrainSeeder
                 for (var t = 0; t < count; t++)
                 {
                     ids[t] = nextTrain++;
-                    commands.Add(new BuyRailVehicleCommand(companyId, depot, "loco-meridian"));
+                    commands.Add(new BuyRailVehicleCommand(companyId, depot, locomotive.Id));
                     commands.Add(new BuyRailVehicleCommand(companyId, depot, "wagon-coach", "", ids[t]));
                     commands.Add(new BuyRailVehicleCommand(companyId, depot, "wagon-coach", "", ids[t]));
                 }

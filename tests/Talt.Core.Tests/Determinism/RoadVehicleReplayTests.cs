@@ -16,7 +16,8 @@ namespace Talt.Core.Tests.Determinism;
 public class RoadVehicleReplayTests
 {
     // Feature 013 changed it on purpose: passengers have destinations and travel by route (91E0F1189491671C before).
-    private const string ExpectedAtTick4000 = "396343F72649C68E";
+    // Feature 016 extends the hashed road model rules and sale windows (396343F72649C68E before).
+    private const string ExpectedAtTick4000 = "B5F11DB067C4CF95";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 12,
@@ -65,7 +66,8 @@ public class RoadVehicleReplayTests
 
             if (simulation.CurrentTick == 1500 && simulation.RoadVehicles!.Count > 0)
             {
-                // A player action mid-game: send the first bus to its depot.
+                // The recorded model IDs and policy timing must resolve identically on replay.
+                simulation.Submit(new SetReplacementCommand(0, false, "bus-townsman", "bus-copperfin", false, false));
                 simulation.Submit(new SendToDepotCommand(0, simulation.RoadVehicles.IdAt(0)));
             }
         }
@@ -73,6 +75,8 @@ public class RoadVehicleReplayTests
         var replay = SessionReplayer.Replay(RecordedSession.FromJson(recorder.Session.ToJson()));
 
         Assert.True(replay.Succeeded, replay.FailureReason);
+        Assert.True(replay.Simulation.Construction!.Player.RoadReplacements.TryGet("bus-townsman", out var rule));
+        Assert.Equal(new ReplacementRule("bus-copperfin", false, false), rule);
         Assert.All(replay.Checkpoints, c => Assert.True(c.Matches));
         Assert.Equal(simulation.ComputeFingerprint(), replay.Simulation.ComputeFingerprint());
     }

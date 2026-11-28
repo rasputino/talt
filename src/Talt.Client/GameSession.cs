@@ -235,6 +235,8 @@ internal sealed class GameSession
         AppendBreakdownEffects();
     }
 
+    internal ModelLibrary? CatalogModels { get; private set; }
+
     /// <summary>Whether vehicles are drawn as models (then their placeholder boxes are not uploaded).</summary>
     public bool HasVehicleModels => _vehicleModel is not null;
 
@@ -244,6 +246,7 @@ internal sealed class GameSession
     /// </summary>
     public void UseModels(ModelLibrary? library)
     {
+        CatalogModels = library;
         _vehicleModel = library is not null && library.TryGet("vehicle", out var vehicle) ? vehicle : null;
         // Feature 012: a model per road vehicle model ("vehicle:<id>"), falling back to the generic one.
         var vehicleModels = Simulation.RoadVehicles?.Rules.Models;

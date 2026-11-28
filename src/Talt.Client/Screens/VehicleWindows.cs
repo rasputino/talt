@@ -268,46 +268,41 @@ internal static class DepotWindow
         }));
 
         content.Add(new Label(TextRef.Of("depot.buy"), TextSize.Title) { Margin = new Thickness(0, 6, 0, 0) });
-        content.Add(new RebuildingPanel(() => session.Simulation.Date.Year, panel =>
+        DepotCatalog.Add(content, session, false, (panel, m) =>
         {
-            var rules = vehicles.Rules;
-            for (var m = 0; m < rules.Models.Count; m++)
+            var model = vehicles.Rules.Models[m];
+            var row = panel.Add(new StackPanel(Orientation.Vertical) { Spacing = 2 });
+            row.Add(new Label(TextRef.Dynamic(() => 0, s => s.Format("depot.model", ("name", VehicleTexts.ModelName(s, model)),
+                ("price", ui.Money(session.Simulation.Finance?.Inflate(model.Price) ?? model.Price, s)),
+                ("capacity", model.Capacity.ToString(CultureInfo.InvariantCulture)),
+                ("speed", model.SpeedKmh.ToString(CultureInfo.InvariantCulture)),
+                ("running", ui.Money(session.Simulation.Finance?.Inflate(model.RunningCostPerYear) ?? model.RunningCostPerYear, s)),
+                ("life", model.LifeYears.ToString(CultureInfo.InvariantCulture)),
+                ("reliability", (model.Reliability / 10).ToString(CultureInfo.InvariantCulture))))) { Wrap = true, Width = 360 });
+            var cargos = new List<DropdownChoice>();
+            for (var c = 0; c < session.Simulation.Content.CargoCount; c++)
             {
-                var model = rules.Models[m];
-                if (!model.AvailableIn(session.Simulation.Date.Year))
+                if (model.Carries(c))
                 {
-                    continue;
+                    var cargo = c;
+                    cargos.Add(new DropdownChoice(TextRef.Dynamic(() => 0, s => VehicleTexts.CargoName(s, session, cargo)), session.Simulation.Content.Cargo(c).Id));
                 }
-
-                var row = panel.Add(new StackPanel(Orientation.Vertical) { Spacing = 2 });
-                row.Add(new Label(TextRef.Dynamic(() => 0, s => s.Format("depot.model", ("name", VehicleTexts.ModelName(s, model)),
-                    ("price", ui.Money(session.Simulation.Finance?.Inflate(model.Price) ?? model.Price, s)),
-                    ("capacity", model.Capacity.ToString(CultureInfo.InvariantCulture)),
-                    ("speed", model.SpeedKmh.ToString(CultureInfo.InvariantCulture)),
-                    ("running", ui.Money(model.RunningCostPerYear, s)),
-                    ("reliability", (model.Reliability / 10).ToString(CultureInfo.InvariantCulture))))) { Wrap = true, Width = 360 });
-                var cargos = new List<DropdownChoice>();
-                for (var c = 0; c < session.Simulation.Content.CargoCount; c++)
-                {
-                    if (model.Carries(c))
-                    {
-                        var cargo = c;
-                        cargos.Add(new DropdownChoice(TextRef.Dynamic(() => 0, s => VehicleTexts.CargoName(s, session, cargo)), session.Simulation.Content.Cargo(c).Id));
-                    }
-                }
-
-                var chosen = 0;
-                var buy = row.Add(new StackPanel(Orientation.Horizontal) { Spacing = 6 });
-                if (cargos.Count > 1)
-                {
-                    buy.Add(new Dropdown(cargos, () => chosen, index => chosen = index));
-                }
-
-                buy.Add(new Button(TextRef.Of("depot.buyButton"), () =>
-                    session.Submit(new BuyVehicleCommand(company, depotId, model.Id, (string)cargos[Math.Min(chosen, cargos.Count - 1)].Value))));
             }
-        }));
-        window.Content = content;
+
+            row.Add(new Label(TextRef.Dynamic(() => 0, s => s.Format("catalog.cargo",
+                ("cargo", cargos.Count == 0 ? s.Get("catalog.none") : string.Join(", ", Enumerable.Range(0, session.Simulation.Content.CargoCount)
+                    .Where(model.Carries).Select(c => VehicleTexts.CargoName(s, session, c))))))) { Wrap = true, Width = 360 });
+            var chosen = 0;
+            var buy = row.Add(new StackPanel(Orientation.Horizontal) { Spacing = 6 });
+            if (cargos.Count > 1)
+            {
+                buy.Add(new Dropdown(cargos, () => chosen, index => chosen = index));
+            }
+
+            buy.Add(new Button(TextRef.Of("depot.buyButton"), () =>
+                session.Submit(new BuyVehicleCommand(company, depotId, model.Id, (string)cargos[Math.Min(chosen, cargos.Count - 1)].Value))));
+        });
+        window.Content = new ScrollArea(content) { MaxHeight = 420 };
         return window;
     }
 }

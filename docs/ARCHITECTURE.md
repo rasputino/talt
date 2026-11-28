@@ -1714,3 +1714,12 @@ scripts in `ci/` that also run locally (`pwsh ci/check-fingerprints.ps1`).
 - **Verified on GitHub (2026-11-22):** the `publish` jobs produce self-contained builds that pass
   `verify-publish.ps1` for win-x64, linux-x64 and osx-arm64 (about 35-40 MB each), and the release
   step replaces the prerelease `nightly` assets.
+
+## Vehicle catalog and eras (016)
+
+The validated road and rolling-stock catalogs span 1950–2050 with ten road models, twelve powered rail models and seven wagons. Each permanent model ID identifies a localized purchase entry and an original voxel body. The client builds a side elevation from that body at selection time. A calendar-year change refreshes the selection and announces introductions. The rail planner checks track availability for track, bridges, tunnels and conversions.
+
+Companies own separate road and rail replacement policies keyed by stable model IDs. The command serializer records settings and timing. A depot visit prices the trade against current resale value and validates capacity and company funds before booking it. Trains check the combined cost and length before changing any part. Parts keep their positions, running-cost registrations and cargo holds. The rail purchase day and road age determine end of life. The one-shot missing-successor flag is part of the vehicle fingerprint. Feature 014's serialization fields and compatibility defaults are described in [the persistence contract](../specs/016-vehicle-catalog-eras/contracts/persistence.md).
+
+On the Windows Ryzen 7 160 host, .NET 10.0.15, BenchmarkDotNet ShortRun measured the 29-model availability scan at 45.27 ns (1.085 ns standard deviation), with no managed allocation. AllocationAssert also exercises depot rule evaluation. Introducing models and changing their sale windows changes the road-rules hash included by the active road and rail fixtures. The tick-4000 road replay now yields `B5F11DB067C4CF95` and the tick-3000 rail replay yields `91DDF5576E65F633`; the headless CI reference inputs retain their prior fingerprints.
+The CI headless reference (50,000 independent vehicles, 10,000 ticks, zero road tiles) averaged 1.901 ms per tick and produced C0C656C5AB2D3302. This run measures the reference fleet loop; depot behavior is exercised separately by the road and rail replay fixtures.

@@ -77,6 +77,15 @@ public sealed class RunningCosts : IStateHashable
         ActiveCount--;
     }
 
+    /// <summary>Updates a replacement in its existing registration without releasing the handle.</summary>
+    internal void Replace(int handle, long yearlyCost, long value)
+    {
+        SetValue(handle, value);
+        var company = _company[handle];
+        _yearlyByCompany[company] = Money.Add(_yearlyByCompany[company], yearlyCost - _yearlyCost[handle]);
+        _yearlyCost[handle] = yearlyCost;
+    }
+
     /// <summary>Changes the value of a registration (vehicles lose value with age, feature 012).</summary>
     public void SetValue(int handle, long value)
     {

@@ -59,34 +59,129 @@
   },
   "models": [
     {
-      "id": "bus-townsman", "nameKey": "vehicle.model.bus-townsman", "kind": "bus", "cargoCategory": "passengers",
+      "id": "bus-townsman", "nameKey": "vehicle.model.bus-townsman", "soundId": "vehicleEngine", "kind": "bus", "cargoCategory": "passengers",
       "capacity": 30, "speedKmh": 56, "accelerationMilli": 1200, "lengthMilliTiles": 450,
       "price": 14000, "runningCostPerYear": 1500, "lifeYears": 12, "reliabilityPerMille": 850,
-      "firstYear": 1850, "lastYear": 2100, "power": "combustion", "loadPerStep": 5, "color": "#C8402E"
+      "firstYear": 1850, "lastYear": 1978, "power": "combustion", "loadPerStep": 5, "color": "#C8402E"
     },
     {
-      "id": "bus-voltline", "nameKey": "vehicle.model.bus-voltline", "kind": "bus", "cargoCategory": "passengers",
+      "id": "bus-voltline", "nameKey": "vehicle.model.bus-voltline", "soundId": "vehicleEngine", "kind": "bus", "cargoCategory": "passengers",
       "capacity": 36, "speedKmh": 64, "accelerationMilli": 1500, "lengthMilliTiles": 450,
       "price": 21000, "runningCostPerYear": 1800, "lifeYears": 15, "reliabilityPerMille": 900,
       "firstYear": 1930, "lastYear": 2100, "power": "electric", "loadPerStep": 6, "color": "#2E77C8"
     },
     {
-      "id": "truck-tipper", "nameKey": "vehicle.model.truck-tipper", "kind": "truck", "cargoCategory": "bulk",
+      "id": "truck-tipper", "nameKey": "vehicle.model.truck-tipper", "soundId": "vehicleEngine", "kind": "truck", "cargoCategory": "bulk",
       "capacity": 20, "speedKmh": 48, "accelerationMilli": 1000, "lengthMilliTiles": 450,
       "price": 16000, "runningCostPerYear": 1700, "lifeYears": 14, "reliabilityPerMille": 840,
-      "firstYear": 1850, "lastYear": 2100, "power": "combustion", "loadPerStep": 4, "color": "#D8A32B"
+      "firstYear": 1850, "lastYear": 1990, "power": "combustion", "loadPerStep": 4, "color": "#D8A32B"
     },
     {
-      "id": "truck-tanker", "nameKey": "vehicle.model.truck-tanker", "kind": "truck", "cargoCategory": "tanker",
+      "id": "truck-tanker", "nameKey": "vehicle.model.truck-tanker", "soundId": "vehicleEngine", "kind": "truck", "cargoCategory": "tanker",
       "capacity": 20, "speedKmh": 48, "accelerationMilli": 1000, "lengthMilliTiles": 450,
       "price": 17500, "runningCostPerYear": 1800, "lifeYears": 14, "reliabilityPerMille": 830,
-      "firstYear": 1850, "lastYear": 2100, "power": "combustion", "loadPerStep": 4, "color": "#9AA3AC"
+      "firstYear": 1850, "lastYear": 2010, "power": "combustion", "loadPerStep": 4, "color": "#9AA3AC"
     },
     {
-      "id": "truck-box", "nameKey": "vehicle.model.truck-box", "kind": "truck", "cargoCategory": "box",
+      "id": "truck-box", "nameKey": "vehicle.model.truck-box", "soundId": "vehicleEngine", "kind": "truck", "cargoCategory": "box",
       "capacity": 16, "speedKmh": 56, "accelerationMilli": 1100, "lengthMilliTiles": 450,
       "price": 15000, "runningCostPerYear": 1600, "lifeYears": 13, "reliabilityPerMille": 850,
-      "firstYear": 1850, "lastYear": 2100, "power": "combustion", "loadPerStep": 4, "color": "#4E8F4A"
+      "firstYear": 1850, "lastYear": 2035, "power": "combustion", "loadPerStep": 4, "color": "#4E8F4A"
+    },
+    {
+      "id": "bus-copperfin",
+      "nameKey": "vehicle.model.bus-copperfin", "soundId": "vehicleEngine",
+      "kind": "bus",
+      "cargoCategory": "passengers",
+      "capacity": 42,
+      "speedKmh": 76,
+      "accelerationMilli": 1200,
+      "lengthMilliTiles": 450,
+      "price": 17500,
+      "runningCostPerYear": 1695,
+      "lifeYears": 12,
+      "reliabilityPerMille": 875,
+      "firstYear": 1952,
+      "lastYear": 1994,
+      "power": "combustion",
+      "loadPerStep": 5,
+      "color": "#317368"
+    },
+    {
+      "id": "truck-ridgewell",
+      "nameKey": "vehicle.model.truck-ridgewell", "soundId": "vehicleEngine",
+      "kind": "truck",
+      "cargoCategory": "bulk",
+      "capacity": 32,
+      "speedKmh": 78,
+      "accelerationMilli": 1000,
+      "lengthMilliTiles": 450,
+      "price": 21920,
+      "runningCostPerYear": 1989,
+      "lifeYears": 14,
+      "reliabilityPerMille": 869,
+      "firstYear": 1972,
+      "lastYear": 2100,
+      "power": "combustion",
+      "loadPerStep": 4,
+      "color": "#B75C32"
+    },
+    {
+      "id": "truck-tidewell",
+      "nameKey": "vehicle.model.truck-tidewell", "soundId": "vehicleEngine",
+      "kind": "truck",
+      "cargoCategory": "tanker",
+      "capacity": 34,
+      "speedKmh": 85,
+      "accelerationMilli": 1000,
+      "lengthMilliTiles": 450,
+      "price": 26075,
+      "runningCostPerYear": 2178,
+      "lifeYears": 14,
+      "reliabilityPerMille": 863,
+      "firstYear": 1992,
+      "lastYear": 2100,
+      "power": "combustion",
+      "loadPerStep": 4,
+      "color": "#3A5F8C"
+    },
+    {
+      "id": "truck-bracken",
+      "nameKey": "vehicle.model.truck-bracken", "soundId": "vehicleEngine",
+      "kind": "truck",
+      "cargoCategory": "box",
+      "capacity": 38,
+      "speedKmh": 92,
+      "accelerationMilli": 1100,
+      "lengthMilliTiles": 450,
+      "price": 24150,
+      "runningCostPerYear": 2000,
+      "lifeYears": 13,
+      "reliabilityPerMille": 887,
+      "firstYear": 2012,
+      "lastYear": 2100,
+      "power": "combustion",
+      "loadPerStep": 4,
+      "color": "#938348"
+    },
+    {
+      "id": "bus-glasswing",
+      "nameKey": "vehicle.model.bus-glasswing", "soundId": "vehicleEngine",
+      "kind": "bus",
+      "cargoCategory": "passengers",
+      "capacity": 64,
+      "speedKmh": 104,
+      "accelerationMilli": 1500,
+      "lengthMilliTiles": 450,
+      "price": 36330,
+      "runningCostPerYear": 2322,
+      "lifeYears": 15,
+      "reliabilityPerMille": 941,
+      "firstYear": 2035,
+      "lastYear": 2100,
+      "power": "electric",
+      "loadPerStep": 6,
+      "color": "#9A435C"
     }
   ]
 }

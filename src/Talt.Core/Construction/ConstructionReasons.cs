@@ -46,6 +46,7 @@ public static class ConstructionReasons
     public const string NoRail = "no-rail";
     public const string TurnTooSharp = "turn-too-sharp";
     public const string SignalPlace = "signal-place";
+    public const string RailTypeUnavailable = "rail-type-unavailable";
     public const string UnknownRailType = "unknown-rail-type";
     public const string NoTrain = "no-train";
     public const string TrainTooLong = "train-too-long";
@@ -168,6 +169,7 @@ public static class ConstructionReasons
         NoRail => "There is no track here.",
         TurnTooSharp => "Track may turn at most 45 degrees per tile.",
         SignalPlace => "Signals go on plain straight or diagonal track.",
+        RailTypeUnavailable => "This track type is not available this year.",
         UnknownRailType => "Unknown track type.",
         NoTrain => "The train does not exist.",
         TrainTooLong => "The train would be too long.",
@@ -190,6 +192,6 @@ public static class ConstructionReasons
         NoDepot, UnknownModel, ModelNotAvailable, CargoNotAllowed, NoVehicle, NotInDepot, NoDepotReachable, HoldNotEmpty,
         NoLine, InvalidIndex, TooManyStops, LastStop, WrongKind, VehicleInTheWay, InvalidValue, DepotRoad, UseDepotTool,
         TooManyVehicles,
-        TrainInTheWay, NoRail, TurnTooSharp, SignalPlace, UnknownRailType, NoTrain, TrainTooLong, NeedsLocomotive, RailStationTrack, TrackLoop,
+        TrainInTheWay, NoRail, TurnTooSharp, SignalPlace, RailTypeUnavailable, UnknownRailType, NoTrain, TrainTooLong, NeedsLocomotive, RailStationTrack, TrackLoop,
     ];
 }

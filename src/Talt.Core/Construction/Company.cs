@@ -23,6 +23,11 @@ public sealed class Company
 
     public int Id { get; }
 
+    public Vehicles.ReplacementPolicy RoadReplacements { get; } = new();
+
+    public Vehicles.ReplacementPolicy RailReplacements { get; } = new();
+
+
     /// <summary>Cash in internal units (1 = one US dollar); shown converted to the display currency. May be negative.</summary>
     public long Balance { get; private set; }
 

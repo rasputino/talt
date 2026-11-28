@@ -20,12 +20,50 @@ internal static class Vehicles
         Bus(catalog);
         Truck(catalog);
         RoadVehicleModels(catalog);
+        EraVehicles(catalog);
     }
 
     /// <summary>
-    /// Feature 012: compact models of the starter vehicles (vehicles.json), four voxels (half a tile) long like their
-    /// simulated length, three wide to fit one lane, keyed <c>vehicle:&lt;model id&gt;</c>.
+    /// Catalog generations use the same lane width, with new bodywork for each model.
     /// </summary>
+    private static void EraVehicles(ModelCatalog catalog)
+    {
+        foreach (var id in (string[])["bus-copperfin", "bus-glasswing", "truck-ridgewell", "truck-tidewell", "truck-bracken"])
+        {
+            var body = new VoxelCanvas(3, 5, 4);
+            var paint = body.Reserve(0xD5D4C8);
+            SmallWheels(body);
+            body.Box(0, 1, 0, 3, 2, 4, paint);
+            body.Box(0, 2, 3, 3, 3, 4, body.Color(Glass));
+            switch (id)
+            {
+                case "bus-copperfin":
+                    body.Box(0, 2, 0, 3, 3, 3, body.Color(Glass));
+                    body.Box(0, 3, 0, 3, 4, 3, paint);
+                    body.Box(0, 2, 1, 3, 3, 2, paint);
+                    break;
+                case "bus-glasswing":
+                    body.Box(0, 2, 0, 3, 4, 3, body.Color(Glass));
+                    body.Box(0, 4, 0, 3, 5, 2, body.Color(0x96B8BA));
+                    break;
+                case "truck-ridgewell":
+                    body.Box(0, 2, 0, 3, 4, 3, paint);
+                    body.Clear(1, 3, 0, 2, 4, 3);
+                    break;
+                case "truck-tidewell":
+                    body.Box(0, 2, 0, 3, 3, 3, body.Color(0xB6C8C9));
+                    body.Box(1, 3, 0, 2, 4, 3, paint);
+                    break;
+                case "truck-bracken":
+                    body.Box(0, 2, 0, 3, 4, 3, body.Color(0xE5DCC6));
+                    body.Box(0, 3, 1, 3, 4, 2, paint);
+                    break;
+            }
+            body.Set(1, 1, 3, body.Color(HeadLight));
+            catalog.Add("vehicle:" + id, id + ".vox", body, paint: [paint]);
+        }
+    }
+
     private static void RoadVehicleModels(ModelCatalog catalog)
     {
         // Townsman bus: a box with a window band and a light roof.

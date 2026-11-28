@@ -15,6 +15,7 @@ internal static class Trains
 
     public static void AddAll(ModelCatalog catalog)
     {
+        AddEraStock(catalog);
         // Ironhorse: a steam engine, boiler in front, cab at the back, a chimney.
         var steam = Body(8, 5, out var paint);
         var black = steam.Color(0x22262A);
@@ -73,6 +74,40 @@ internal static class Trains
         boxcar.Box(0, 2, 0, 3, 4, 6, paint);
         boxcar.Paint(0, 2, 2, 3, 3, 4, boxcar.Color(0x3E2A18)); // Sliding door.
         catalog.Add("train:wagon-boxcar", "train-wagon-boxcar.vox", boxcar, paint: [paint]);
+    }
+
+    private static void AddEraStock(ModelCatalog catalog)
+    {
+        // Cab and equipment placement give each generation its own side profile at tile scale.
+        (string Id, int Length, int Cab, int Equipment, bool Windows)[] designs =
+        [
+            ("loco-fellward", 8, 2, 5, false),
+            ("railcar-finchmere", 7, 5, 2, true),
+            ("loco-ridgeforge", 8, 1, 4, false),
+            ("loco-sunspoke", 8, 6, 3, false),
+            ("railcar-silverfen", 7, 1, 4, true),
+            ("loco-velarium", 8, 5, 1, false),
+            ("loco-stonewake", 8, 3, 6, false),
+            ("loco-lightwell", 8, 6, 2, false),
+        ];
+        foreach (var (id, length, cab, equipment, windows) in designs)
+        {
+            var c = Body(length, 5, out var paint);
+            c.Box(0, 2, 0, 3, 3, length, paint);
+            c.Box(0, 3, 1, 3, 4, length - 1, windows ? c.Color(Glass) : paint);
+            c.Box(0, 3, cab, 3, 4, cab + 1, c.Color(Glass));
+            c.Box(1, 4, equipment, 2, 5, equipment + 2, c.Color(Roof));
+            c.Set(1, 2, length - 1, c.Color(HeadLight));
+            catalog.Add("train:" + id, id + ".vox", c, paint: [paint]);
+        }
+
+        var hopper = Body(5, 5, out var bodyPaint);
+        hopper.Box(0, 2, 0, 3, 5, 5, bodyPaint);
+        hopper.Clear(1, 3, 1, 2, 5, 4);
+        catalog.Add("train:wagon-deepwell", "wagon-deepwell.vox", hopper, paint: [bodyPaint]);
+        var coach = Coach(7, out bodyPaint);
+        coach.Paint(0, 3, 1, 3, 4, 6, coach.Color(Glass));
+        catalog.Add("train:wagon-clearview", "wagon-clearview.vox", coach, paint: [bodyPaint]);
     }
 
     /// <summary>A coach: a painted box with windows along both sides and a grey roof.</summary>

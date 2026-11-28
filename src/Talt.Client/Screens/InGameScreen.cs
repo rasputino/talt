@@ -63,6 +63,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
 
     // Line-building mode (feature 012, FR-036): clicked stations go to a line (existing, or new on Esc).
     private readonly List<int> _lineModeStations = [];
+    private int _catalogYear;
     private bool _lineMode;
     private int _lineModeLine = -1;
     private int _lineModeVehicle = -1;
@@ -83,6 +84,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
             Stations = session.Simulation.Stations,
             Depots = session.Simulation.RoadVehicles?.Depots,
         };
+        _catalogYear = session.Simulation.Date.Year;
         _session.Message += ShowMessage;
         if (session.Simulation.Towns is { Count: > 0 } towns)
         {
@@ -198,6 +200,7 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
 
         FollowTerrain(dt);
         DrainMoneyEvents();
+        AnnounceIntroductions();
         DrainVehicleNotices();
         ExpireMessages();
     }
@@ -1326,7 +1329,42 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
         _lineModeStations.Clear();
     }
 
-    /// <summary>Stuck vehicles, missing routes and skipped stops of the player's vehicles become messages (FR-013, FR-022).</summary>
+    /// <summary>Announce releases crossed since the last frame, including during fast forward.</summary>
+    private void AnnounceIntroductions()
+    {
+        var year = _session.Simulation.Date.Year;
+        if (year == _catalogYear)
+        {
+            return;
+        }
+
+        void Announce(int firstYear, string nameKey)
+        {
+            if (firstYear > _catalogYear && firstYear <= year)
+            {
+                ShowMessage(TextRef.Dynamic(() => 0, s => s.Format("catalog.introduced", ("name", s.Get(nameKey)))));
+            }
+        }
+
+        if (_session.RoadVehicles is { } roads)
+        {
+            for (var i = 0; i < roads.Rules.Models.Count; i++)
+            {
+                var model = roads.Rules.Models[i];
+                Announce(model.FirstYear, model.NameKey);
+            }
+        }
+        if (_session.Simulation.Trains is { } trains)
+        {
+            for (var i = 0; i < trains.Rules.Models.Count; i++)
+            {
+                var model = trains.Rules.Models[i];
+                Announce(model.FirstYear, model.NameKey);
+            }
+        }
+        _catalogYear = year;
+    }
+
     private void DrainVehicleNotices()
     {
         if (_session.RoadVehicles is not { } vehicles)
@@ -1335,11 +1373,21 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
         }
 
         var player = _session.Construction.Player.Id;
+        if (_session.Simulation.Trains is { } trains)
+        {
+            while (trains.Notices.TryDequeue(out var railNotice))
+            {
+                if (railNotice.CompanyId == player && railNotice.Kind == Talt.Core.Vehicles.VehicleNoticeKind.RenewalDue)
+                {
+                    ShowTrainRenewalNotice(trains, railNotice.VehicleId);
+                }
+            }
+        }
         var shown = 0;
         while (vehicles.Notices.TryDequeue(out var notice))
         {
             if (notice.CompanyId != player || notice.Kind is Talt.Core.Vehicles.VehicleNoticeKind.Serviced or Talt.Core.Vehicles.VehicleNoticeKind.BrokenDown
-                || shown >= 2)
+                || (shown >= 2 && notice.Kind != Talt.Core.Vehicles.VehicleNoticeKind.RenewalDue))
             {
                 continue; // Breakdowns and services show on the vehicle itself; at most two messages a frame.
             }
@@ -1353,6 +1401,9 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
                 ("z", n.Z.ToString(System.Globalization.CultureInfo.InvariantCulture)))));
         }
     }
+
+    private void ShowTrainRenewalNotice(Talt.Core.Rails.TrainSystem trains, int id) =>
+        ShowMessage(TextRef.Dynamic(() => 0, s => s.Format("vehicle.notice.renewaldue", ("vehicle", TrainTexts.Name(s, trains, id)))));
 
     /// <summary>Opens (or focuses) the finance window (feature 011, US4).</summary>
     public void OpenFinance()

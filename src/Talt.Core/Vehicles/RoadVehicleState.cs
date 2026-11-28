@@ -8,6 +8,7 @@ namespace Talt.Core.Vehicles;
 public enum RoadVehicleBits
 {
     None = 0,
+    RenewalNotified = 1 << 20,
 
     /// <summary>Holds <see cref="RoadVehicleState.HeldJunction"/>.</summary>
     HoldsJunction = 1 << 0,
