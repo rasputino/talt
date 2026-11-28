@@ -13,7 +13,7 @@ public readonly record struct TileSnapshot(byte Height, byte Terrain, byte Flags
 /// research R10): the company, the tick, the cost and, for every tile the action touched (changed
 /// tiles and neighbours whose flags were recomputed), the values before and after. Buffers are reused.
 /// </summary>
-public sealed class UndoRecord : IStateHashable
+public sealed partial class UndoRecord : IStateHashable
 {
     private int[] _tiles = new int[256];
     private TileSnapshot[] _before = new TileSnapshot[256];

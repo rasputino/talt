@@ -1,3 +1,4 @@
+using Talt.Core.Saves;
 using Talt.Core.Determinism;
 
 namespace Talt.Core.Simulation;
@@ -57,6 +58,22 @@ public sealed class MonthlyHistory<T>(int width) : IStateHashable where T : unma
             hasher.Append(_months[slot]);
             hasher.Append<T>(_values.AsSpan(slot * width, width));
         }
+    }
+
+    internal void WriteState(SaveWriter writer)
+    {
+        writer.WriteInt(Count);
+        writer.WriteInt(_latest);
+        writer.WriteArray(_months);
+        writer.WriteArray(_values);
+    }
+
+    internal void ReadState(SaveReader reader)
+    {
+        Count = reader.ReadInt(0, MonthsKept);
+        _latest = reader.ReadInt(0, MonthsKept - 1);
+        reader.ReadInto<int>(_months);
+        reader.ReadInto<T>(_values);
     }
 
     private int Slot(int back) => (_latest + MonthsKept - back) % MonthsKept;

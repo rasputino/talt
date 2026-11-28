@@ -1,10 +1,29 @@
+using Talt.Core.Saves;
 using System.Runtime.InteropServices;
 using Talt.Core.Determinism;
 
 namespace Talt.Core.Simulation;
 
 /// <summary>Physical link between two tile centres. Opposite directions share a count; modes do not.</summary>
-public readonly record struct TrafficSegment(int First, int Last, bool Rail);
+public readonly record struct TrafficSegment(int First, int Last, bool Rail) : IComparable<TrafficSegment>
+{
+    public static bool operator <(TrafficSegment left, TrafficSegment right) => left.CompareTo(right) < 0;
+    public static bool operator <=(TrafficSegment left, TrafficSegment right) => left.CompareTo(right) <= 0;
+    public static bool operator >(TrafficSegment left, TrafficSegment right) => left.CompareTo(right) > 0;
+    public static bool operator >=(TrafficSegment left, TrafficSegment right) => left.CompareTo(right) >= 0;
+
+    public int CompareTo(TrafficSegment other)
+    {
+        var order = Rail.CompareTo(other.Rail);
+        if (order != 0)
+        {
+            return order;
+        }
+
+        order = First.CompareTo(other.First);
+        return order != 0 ? order : Last.CompareTo(other.Last);
+    }
+}
 
 /// <summary>Actual crossings during the open month and the most recently completed calendar month.</summary>
 public sealed class TrafficHistory : IStateHashable
@@ -104,6 +123,54 @@ public sealed class TrafficHistory : IStateHashable
         hasher.Append(Month);
         AppendCounts(hasher, closed);
         AppendCounts(hasher, open);
+    }
+
+    internal void WriteState(SaveWriter writer)
+    {
+        writer.WriteInt(Year);
+        writer.WriteInt(Month);
+        BuildView(_openView, closed: false);
+        WriteCounts(writer, _openView);
+        WriteCounts(writer, ClosedView());
+    }
+
+    private static void WriteCounts(SaveWriter writer, Dictionary<TrafficSegment, int> counts)
+    {
+        // Traffic uses unordered endpoints. Write fields separately to exclude struct padding.
+        writer.WriteInt(counts.Count);
+        var keys = writer.SortBuffer<TrafficSegment>(counts.Count);
+        counts.Keys.CopyTo(keys, 0);
+        Array.Sort(keys, 0, counts.Count);
+        for (var i = 0; i < counts.Count; i++)
+        {
+            var key = keys[i];
+            writer.WriteInt(key.First);
+            writer.WriteInt(key.Last);
+            writer.WriteBool(key.Rail);
+            writer.WriteInt(counts[key]);
+        }
+    }
+
+    internal void ReadState(SaveReader reader)
+    {
+        Year = reader.ReadInt();
+        Month = reader.ReadInt(0, 12);
+        ReadCounts(reader, _open);
+        ReadCounts(reader, _closed);
+        _closedViewDirty = true;
+    }
+
+    private static void ReadCounts(SaveReader reader, Dictionary<TrafficSegment, int> counts)
+    {
+        var size = reader.ReadCount(13);
+        for (var i = 0; i < size; i++)
+        {
+            var segment = new TrafficSegment(reader.ReadInt(), reader.ReadInt(), reader.ReadBool());
+            if (segment.First > segment.Last || !counts.TryAdd(segment, reader.ReadInt(1, int.MaxValue)))
+            {
+                throw reader.Fail("invalid traffic segment");
+            }
+        }
     }
 
     private Dictionary<TrafficSegment, int> ClosedView()

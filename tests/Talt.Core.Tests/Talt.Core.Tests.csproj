@@ -21,4 +21,10 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Feature 014: the save field manifest and fixture saves written by earlier format versions. -->
+    <None Include="Saves\SaveFieldManifest.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Saves\Fixtures\*.talt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

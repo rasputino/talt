@@ -27,7 +27,7 @@ public interface IProductionSink
 /// the fleet's own forked <see cref="DeterministicRandom"/>, so parallel and sequential simulations
 /// produce the same industries. An empty fleet contributes nothing to the state fingerprint.
 /// </remarks>
-public sealed class IndustryFleet : IStateHashable
+public sealed partial class IndustryFleet : IStateHashable
 {
     private const int InitialCapacity = 64;
 
@@ -150,6 +150,14 @@ public sealed class IndustryFleet : IStateHashable
         var fleet = new IndustryFleet(content, sites, towns, map.Width, map.Depth, random);
         fleet.PlaceInitial(startYear, initialOccupancyPerMille);
         return fleet;
+    }
+
+    /// <summary>The fleet of <paramref name="map"/> before any industry is placed; a save fills it in (feature 014).</summary>
+    internal static IndustryFleet CreateForRestore(GameContent content, MapData map, DeterministicRandom random)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(map);
+        return new IndustryFleet(content, map.IndustrySites.ToArray(), map.TownSites.Take(TownLimit).ToArray(), map.Width, map.Depth, random);
     }
 
     /// <summary>A fleet without industries, used by map-less scenarios (replays and tests).</summary>

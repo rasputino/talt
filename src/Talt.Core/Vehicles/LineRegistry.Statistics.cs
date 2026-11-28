@@ -1,3 +1,4 @@
+using Talt.Core.Saves;
 using Talt.Core.Determinism;
 using Talt.Core.Finance;
 using Talt.Core.Simulation;
@@ -110,6 +111,38 @@ public sealed partial class LineRegistry
             line.HasPreviousYear = true;
             line.Current = default;
         }
+    }
+
+    internal void WriteStatistics(SaveWriter writer)
+    {
+        writer.WriteInt(_lines.Count);
+        foreach (var line in _lines)
+        {
+            writer.WriteInt(line.Id);
+            writer.Write(line.Current);
+            writer.Write(line.Previous);
+            writer.WriteBool(line.HasPreviousYear);
+            writer.WriteInt(line.IntervalDays);
+            writer.WriteLong(line.LastRoadDeparture);
+            writer.WriteLong(line.LastRailDeparture);
+        }
+    }
+
+    internal void ReadStatistics(SaveReader reader)
+    {
+        reader.ReadInt(_lines.Count, _lines.Count);
+        foreach (var line in _lines)
+        {
+            reader.ReadInt(line.Id, line.Id);
+            line.Current = reader.Read<LineYearStatistics>();
+            line.Previous = reader.Read<LineYearStatistics>();
+            line.HasPreviousYear = reader.ReadBool();
+            line.IntervalDays = reader.ReadInt(0, int.MaxValue);
+            line.LastRoadDeparture = reader.ReadLong();
+            line.LastRailDeparture = reader.ReadLong();
+        }
+
+        InvalidateOpenDistances();
     }
 
     internal void SetIntervalDays(int lineId, int days)

@@ -8,7 +8,7 @@ namespace Talt.Core.Construction;
 /// by category and period, company value and the bankruptcy state. Every change of cash goes through
 /// <see cref="Book"/> (with a category) or the loan methods, so ledger totals always match the cash.
 /// </summary>
-public sealed class Company
+public sealed partial class Company
 {
     /// <summary>Id of the player's company.</summary>
     public const int PlayerId = 0;

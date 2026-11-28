@@ -32,10 +32,21 @@ public class RoadVehicleBenchmarks
     }
 
     /// <summary>A seeded reference game after its vehicles left the depots (also used by tools and tests).</summary>
-    internal static GameSimulation Create(int vehicles, int warmupTicks = 2400)
+    internal static GameSimulation Create(int vehicles, int warmupTicks = 2400, int trains = 0, MapGenerationTuning? tuning = null)
     {
         var map = MapSettings.TryParse("T2-4096x4096-s7-r50-h28-w25-l7", out var settings, out _) ? settings : null;
-        var simulation = GameSimulation.Create(new ScenarioSettings(Seed: 7, VehicleCount: 0, MapSizeTiles: 4096, Map: map));
+        var data = tuning is null ? null : MapGenerator.Generate(map!, tuning: tuning);
+        var simulation = GameSimulation.Create(new ScenarioSettings(Seed: 7, VehicleCount: 0, MapSizeTiles: 4096, Map: map), data);
+        if (trains > 0)
+        {
+            foreach (var command in Talt.Core.Rails.TrainSeeder.Plan(simulation, trains))
+            {
+                simulation.Submit(command);
+            }
+
+            simulation.Tick();
+        }
+
         simulation.Construction!.SeedDebugGrid(16);
         foreach (var command in VehicleSeeder.Plan(simulation, vehicles))
         {

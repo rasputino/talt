@@ -21,7 +21,7 @@ public readonly record struct HeldCargo(int Cargo, int Amount, int Origin, int S
 /// day are merged. Grows only when it holds more distinct parts than ever before (no allocation in steady
 /// state).
 /// </summary>
-public sealed class CargoHold : IStateHashable
+public sealed partial class CargoHold : IStateHashable
 {
     private HeldCargo[] _parts = new HeldCargo[4];
 

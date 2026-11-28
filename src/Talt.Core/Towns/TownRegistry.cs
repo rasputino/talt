@@ -152,6 +152,23 @@ public sealed partial class TownRegistry : IStateHashable
         return registry;
     }
 
+    /// <summary>The registry of the map's town sites before any town is founded; a save fills it in (feature 014).</summary>
+    internal static TownRegistry CreateForRestore(ConstructionState state, TownSettings? settings, DeterministicRandom random)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        settings ??= TownSettings.Default;
+        var count = 0;
+        foreach (var site in state.Map.Sites)
+        {
+            if (site.Kind == SiteKind.Town && count <= TileOwner.MaxIndex)
+            {
+                count++;
+            }
+        }
+
+        return new TownRegistry(state, settings, random, TownRules.Default, TownNames.Default, count);
+    }
+
     public string NameOf(int town) => _names[town];
 
     public (int X, int Z) CentreOf(int town) => (_centreX[town], _centreZ[town]);

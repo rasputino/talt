@@ -32,7 +32,7 @@ namespace Talt.Core.Simulation;
 /// same <see cref="ComputeFingerprint"/> at every tick, on every platform.
 /// </para>
 /// </remarks>
-public sealed class GameSimulation : IStateHashable
+public sealed partial class GameSimulation : IStateHashable
 {
     private readonly CommandInbox _commands = new();
     private SessionRecorder? _recorder;
@@ -44,7 +44,8 @@ public sealed class GameSimulation : IStateHashable
         VehicleFleet vehicles,
         GameContent content,
         MapData? map,
-        ConstructionState? construction)
+        ConstructionState? construction,
+        bool restoring = false)
     {
         Settings = settings;
         Content = content;
@@ -53,20 +54,33 @@ public sealed class GameSimulation : IStateHashable
         Construction = construction;
         Clock = new GameClock(settings.StartYear);
         Random = new DeterministicRandom(unchecked((ulong)settings.Seed)).Fork(streamId: 0x51_4D);
+        // Restoring a save (feature 014, research R9): the same systems and wiring, without generating anything;
+        // every saved field is overwritten by the save sections afterwards.
         Industries = map is null
             ? IndustryFleet.CreateEmpty(content, settings.MapSizeTiles, settings.MapSizeTiles)
-            : IndustryFleet.Create(content, map, settings.StartYear, Random.Fork(0x1D_05));
+            : restoring
+                ? IndustryFleet.CreateForRestore(content, map, Random.Fork(0x1D_05))
+                : IndustryFleet.Create(content, map, settings.StartYear, Random.Fork(0x1D_05));
         if (construction is not null)
         {
             // Feature 007: town streets on the town sites (after industries, which they avoid), then the
             // routing graph; later industry openings skip tiles with objects or bridges.
             construction.Year = Date.Year;
             construction.AttachIndustries(Industries);
-            RoadSeeder.SeedTowns(construction);
+            if (!restoring)
+            {
+                RoadSeeder.SeedTowns(construction);
+            }
+
             // Feature 008: a town on every town site, grown to its starting size on those streets.
-            Towns = TownRegistry.Found(construction, settings.EffectiveTowns, Random.Fork(0x70_57_4E), Date.Year);
+            Towns = restoring
+                ? TownRegistry.CreateForRestore(construction, settings.EffectiveTowns, Random.Fork(0x70_57_4E))
+                : TownRegistry.Found(construction, settings.EffectiveTowns, Random.Fork(0x70_57_4E), Date.Year);
             construction.AttachTowns(Towns);
-            construction.RebuildNetwork();
+            if (!restoring)
+            {
+                construction.RebuildNetwork(); // Restoring reads the road graph verbatim (research R1).
+            }
             Industries.TileBlocked = tile => construction.Objects.KindAt(tile) != TileObjectKind.None
                 || (construction.Roads.FlagsAt(tile) & RoadFeatures.Passing) != 0;
             // Feature 010: stations collect cargo from industries and towns and hand it to vehicles.
@@ -249,6 +263,20 @@ public sealed class GameSimulation : IStateHashable
         }
 
         return new GameSimulation(settings, network, fleet, content, map, construction);
+    }
+
+    /// <summary>
+    /// An empty game wired exactly like <see cref="Create"/> for <paramref name="settings"/> on <paramref name="map"/>,
+    /// without generating industries, towns or streets (feature 014, research R9). Only the save loader uses it: it
+    /// overwrites every saved field right after.
+    /// </summary>
+    internal static GameSimulation CreateForRestore(ScenarioSettings settings, MapData? map, GameContent content, ConstructionRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        settings.Validate();
+        var (network, fleet) = ScenarioBuilder.Build(settings);
+        var construction = map is null || settings.Map is null ? null : new ConstructionState(rules, map);
+        return new GameSimulation(settings, network, fleet, content, map, construction, restoring: true);
     }
 
     /// <summary>Queues a command; it is processed at the start of the next tick.</summary>

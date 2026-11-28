@@ -12,7 +12,7 @@ namespace Talt.Core.Demand;
 /// inline when it is sequential. The result is applied at exactly start tick + <see cref="DemandRules.ApplyDelayDays"/>
 /// (the main thread waits for the worker if needed), so the simulation never depends on thread timing.
 /// </summary>
-public sealed class CargoRouter : IStateHashable, IThreadPoolWorkItem
+public sealed partial class CargoRouter : IStateHashable, IThreadPoolWorkItem
 {
     private readonly DemandRules _rules;
     private readonly StationRegistry _stations;

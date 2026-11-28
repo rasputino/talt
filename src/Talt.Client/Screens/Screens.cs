@@ -44,6 +44,12 @@ internal interface IScreenHost
     /// <summary>Saves the settings and applies them at once (language, scale, display...).</summary>
     void ApplySettings();
 
+    /// <summary>Opens the save window (feature 014; only while a game runs).</summary>
+    void OpenSaveWindow();
+
+    /// <summary>Opens the load window (feature 014).</summary>
+    void OpenLoadWindow();
+
     void Quit();
 }
 
@@ -63,7 +69,7 @@ internal interface IScreen
     bool HandleAction(string actionId, bool shift);
 }
 
-/// <summary>The first screen: New game, Load game (disabled), Settings, Quit (FR-001, FR-003).</summary>
+/// <summary>The first screen: New game, Load game, Settings, Quit (FR-001, FR-003).</summary>
 internal sealed class MainMenuScreen : IScreen
 {
     private readonly IScreenHost _host;
@@ -109,7 +115,7 @@ internal sealed class MainMenuScreen : IScreen
         column.Add(new Label(TextRef.Of("app.title"), TextSize.Heading) { HorizontalAlignment = Alignment.Center, Color = TextColor.Accent });
         column.Add(new Label(TextRef.Of("menu.subtitle")) { HorizontalAlignment = Alignment.Center, Color = TextColor.Muted, Margin = new Thickness(0, 0, 0, 24) });
         Buttons.Add(column.Add(MenuButton(new Button(TextRef.Of("menu.newGame"), _host.ShowNewGame))));
-        Buttons.Add(column.Add(MenuButton(new Button(TextRef.Of("menu.loadGame")) { Enabled = false, Tooltip = TextRef.Of("menu.loadGame.tooltip") })));
+        Buttons.Add(column.Add(MenuButton(new Button(TextRef.Of("menu.loadGame"), _host.OpenLoadWindow) { Tooltip = TextRef.Of("menu.loadGame.tooltip") })));
         Buttons.Add(column.Add(MenuButton(new Button(TextRef.Of("menu.settings"), _host.OpenSettings) { ShortcutAction = "settings", Tooltip = TextRef.Of("menu.settings.tooltip") })));
         Buttons.Add(column.Add(MenuButton(new Button(TextRef.Of("menu.quit"), _host.Quit))));
         root.Add(new Label(TextRef.Of("menu.footer"), TextSize.Small)

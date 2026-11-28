@@ -72,7 +72,7 @@ internal sealed class UiContext
     /// <summary>Full-screen layer above the screen and below windows (pause menu).</summary>
     public Widget? Overlay { get; set; }
 
-    public WindowManager Windows { get; } = new();
+    public WindowManager Windows { get; internal set; } = new();
 
     /// <summary>Temporary layer above everything (open drop-down list); closed by any click outside it.</summary>
     public Widget? Popup { get; private set; }

@@ -89,7 +89,7 @@ public static class RailSignal
 /// Owned by <see cref="Construction.ConstructionState"/>, changed only by construction commands; appended to the fingerprint
 /// only once a rail tile ever existed, so games without rail keep their fingerprints (research R15).
 /// </summary>
-public sealed class RailLayer : IStateHashable
+public sealed partial class RailLayer : IStateHashable
 {
     private readonly byte[] _links;
     private readonly byte[] _types;

@@ -13,6 +13,16 @@ thousands of simulated vehicles, using WebGPU.
 - [Architecture](docs/ARCHITECTURE.md): how the code is organized.
 - [Spec Kit guide](docs/SPECKIT_GUIDE.md): roadmap and prompts to implement the full game with Spec Kit.
 
+## Save and load
+
+Open the pause menu with Esc to save or load a named game. F5 writes the quick save and F9 restores it. A loaded game opens paused at the saved camera. Autosaves count real minutes of unpaused play. Set the interval and number of slots in Settings. The load menu lists saves in the player's application data folder under `TALT/saves`.
+
+```sh
+dotnet run --project src/Talt.Client -c Release -- --load game.talt
+dotnet run --project tools/Talt.Headless -c Release -- run --map-text T2-256x256-s7-r50-h28-w25-l7 --ticks 6000 --save game.talt
+dotnet run --project tools/Talt.Headless -c Release -- load game.talt --ticks 1000 --checkpoint-every 100 --save continued.talt
+```
+
 ## Building and running
 
 Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download) and a GPU with Vulkan,

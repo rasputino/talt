@@ -1724,6 +1724,31 @@ Companies own separate road and rail replacement policies keyed by stable model 
 On the Windows Ryzen 7 160 host, .NET 10.0.15, BenchmarkDotNet ShortRun measured the 29-model availability scan at 45.27 ns (1.085 ns standard deviation), with no managed allocation. AllocationAssert also exercises depot rule evaluation. Introducing models and changing their sale windows changes the road-rules hash included by the active road and rail fixtures. The tick-4000 road replay now yields `B5F11DB067C4CF95` and the tick-3000 rail replay yields `91DDF5576E65F633`; the headless CI reference inputs retain their prior fingerprints.
 The CI headless reference (50,000 independent vehicles, 10,000 ticks, zero road tiles) averaged 1.901 ms per tick and produced C0C656C5AB2D3302. This run measures the reference fleet loop; depot behavior is exercised separately by the road and rail replay fixtures.
 
+## Save and load (014)
+
+`Talt.Core/Saves` captures a simulation between ticks. A save has a little-endian `TALTSAVE` header, JSON listing details, a 256 × 256 RGB map overview, separately compressed 4 MiB blocks, and a section directory. XxHash3 covers the header, details, compressed thumbnail, directory and every compressed block. Listing reads the header, details and thumbnail. Loading verifies the payloads, constructs the simulation on the saved map without generating a new world, then restores system state in registry order. The client builds render voxels and restores the optional camera after loading succeeds. Headless can resume client saves.
+
+The partial `*.Save.cs` files next to each system own its binary layout. They preserve IDs, queued commands, financial periods, PRNG streams, ordering and route work already in progress. Stable content IDs in `CNTN` resolve indices against the installed catalogs. Unknown sections and newer versions produce an explicit load status. `RAIL` and `TRAI` v2 encode uniform track, signal-block and ownership pages compactly and read dense v1 pages. The field-manifest test requires a persistence classification when a subsystem gains a field.
+
+The client's `SaveController` owns a reusable snapshot. Large games reserve capture buffers during setup. The next tick waits only for capture, including any pending routing job. Large maps copy independent sections on workers into separate buffers while the caller copies the map. Once capture joins, a background writer compresses, flushes and atomically replaces the destination from a unique temporary file in the same directory. Real unpaused time drives autosave. The load screen keeps the active simulation until its replacement is ready.
+
+**Feature integration.** The catalog section introduced with 016 carries each company's two replacement policies in permanent model-ID order and each rail part's one-shot renewal flag. Purchase dates, rail consist order and road renewal bits travel with the units. A pre-catalog save starts with empty policies and clear flags. Era announcements derive from the restored date. CI resumes both the pre-016 and catalog fixtures for 1,000 ticks on each platform. The unchanged-data round trip also checks every section byte and continues for 10,000 ticks.
+
+Feature 017 statistics use the `LSTA` section for posted line totals, both modal dispatch clocks, dated station and town histories, and sorted traffic counts by endpoints and mode. Loading restores open and closed traffic into sparse maps and starts per-lane counts at zero. `RVEH` v2 stores unposted road distance alongside vehicle slots and their stable IDs. `CNST` v2 stores the ledger's aligned delivery and valuation columns. Earlier saves start with unavailable historical samples and unregulated dispatch. The fixture gate loads all three save generations and advances each by 1,000 ticks; the continuation suite also covers first-stop hold and the year boundary.
+
+
+**Reference measurements before feature 017 integration.** BenchmarkDotNet 0.15.8 on Windows x64, Ryzen 7 160, .NET 10.0.15. The 4096² reference seeder produced 50,000 buses, 100 trains, 8,448 stations, 538 towns and 1,378 industries. The capture contained 320,336,240 section bytes and wrote a 32,782,866-byte Deflate file. Budget comparison uses a warmed simulation and filesystem. Client voxel generation is outside the Core load time.
+
+| Operation | Mean |
+|---|---:|
+| Capture at the tick boundary | 67.28 ms, 0 B allocated (five measured iterations, maximum 71.18 ms) |
+| Deflate write including flush | 125.48 ms |
+| Brotli quality 1 write including flush | 129.90 ms |
+| Full Core load | 348.22 ms |
+| Parallel tick, original game | 3.727 ms |
+| Parallel tick, restored game | 4.725 ms |
+
+Capture plus write averaged 193 ms against the 3 s target. A cold setup sample took 69.8 ms to read, verify and decompress and 420.5 ms to restore. The independent tick jobs differed by 26.8%. To control for process and calendar differences, `--compare-save-ticks` alternates original and restored days in one process after eight warmup days. Over 1,600 ticks each, the means were 3.897 ms original and 3.990 ms restored (+2.4%), with identical final fingerprints. The client listed and drew 200 saves in 339 ms, reading metadata in parallel and fetching the thumbnail on selection. The sequential steady-state allocation regression also runs on a loaded game. See the [section contract](../specs/014-save-and-load/contracts/save-sections.md) and [verification commands](../specs/014-save-and-load/quickstart.md).
 ## Line management and statistics (feature 017)
 
 F4 opens one directory with line and fleet tabs. The line index aggregates assignments for both modes, filters by mode and operating profit, and sorts with a stable ID tie-break. Fleet rows identify a vehicle by mode and stable ID. Operating status, loss and age remain independent. Selecting a row resolves that ID again before opening its individual window and moving the camera. Directory controls belong to 017; vehicle inspection, model eligibility and replacement remain with the individual vehicle and catalog features.

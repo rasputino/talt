@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "comment": "Colours of the save thumbnail, a top-down overview of the whole map (feature 014, research R14). RGB 0-255.",
+  "background": [24, 28, 34],
+  "grass": [92, 140, 70],
+  "beach": [214, 200, 150],
+  "rock": [128, 124, 118],
+  "snow": [236, 240, 244],
+  "water": [52, 104, 168],
+  "road": [70, 70, 74],
+  "rail": [150, 92, 60],
+  "town": [196, 120, 96],
+  "industry": [214, 172, 60],
+  "station": [240, 240, 240],
+  "shadeMinPercent": 75,
+  "shadeMaxPercent": 120
+}

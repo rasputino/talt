@@ -15,6 +15,8 @@ public class KeyBindingsTests
     [InlineData(Key.F, "fastForward")]
     [InlineData(Key.N, "addVehicle")]
     [InlineData(Key.Delete, "removeVehicle")]
+    [InlineData(Key.F5, "quickSave")]
+    [InlineData(Key.F9, "quickLoad")]
     [InlineData(Key.F3, "statistics")]
     [InlineData(Key.PageUp, "toolRaise")]
     [InlineData(Key.L, "toolLevel")]

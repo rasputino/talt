@@ -8,7 +8,7 @@ namespace Talt.Core.Towns;
 /// tile → building map for the rare queries (demolition, picking, replacement). Only
 /// <see cref="TownRegistry"/> changes it, on the simulation thread.
 /// </summary>
-public sealed class TownBuildings : IStateHashable
+public sealed partial class TownBuildings : IStateHashable
 {
     private const int InitialCapacity = 256;
 

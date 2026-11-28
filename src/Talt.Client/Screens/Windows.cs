@@ -398,6 +398,24 @@ internal static class SettingsWindow
             Tooltip = TextRef.Of("settings.scale.tooltip"),
         });
 
+        var intervals = PlayerSettings.AutosaveChoices;
+        Row(form, "settings.autosave", new Dropdown(
+            intervals.Select(n => new DropdownChoice(n == 0 ? TextRef.Of("settings.autosave.off") : TextRef.Of("settings.autosave.minutes", ("minutes", n)), n)).ToList(),
+            () => Array.IndexOf(intervals, settings.AutosaveMinutes),
+            index =>
+            {
+                settings.AutosaveMinutes = intervals[index];
+                host.ApplySettings();
+            }));
+        Row(form, "settings.autosaveKeep", new Dropdown(
+            Enumerable.Range(1, 10).Select(n => new DropdownChoice(TextRef.Of("settings.autosave.count", ("count", n)), n)).ToList(),
+            () => settings.AutosaveKeep - 1,
+            index =>
+            {
+                settings.AutosaveKeep = index + 1;
+                host.ApplySettings();
+            }));
+
         GraphicsSection(form, host);
 
         form.Add(new Label(TextRef.Of("settings.audio"), TextSize.Title) { Color = TextColor.Accent, Margin = new Thickness(0, 8, 0, 0) });

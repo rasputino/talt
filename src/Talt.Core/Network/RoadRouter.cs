@@ -17,7 +17,7 @@ public readonly record struct RouteStep(int FromTile, int FirstDirection, int To
 /// reused (a visit stamp avoids clearing them); a search allocates nothing once they have grown to the
 /// network's size. Not thread safe: one instance per thread.
 /// </remarks>
-public sealed class RoadRouter
+public sealed partial class RoadRouter
 {
     /// <summary>Most routes kept by the cache.</summary>
     public const int CacheCapacity = 4096;

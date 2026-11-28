@@ -88,7 +88,7 @@ public readonly record struct TileOwner(ushort Raw)
 /// owner per tile, indexed like <see cref="Maps.MapData"/> (<c>x + z * width</c>). An empty tile has
 /// kind <see cref="TileObjectKind.None"/> and owner <see cref="TileOwner.None"/>.
 /// </summary>
-public sealed class TileObjects : IStateHashable
+public sealed partial class TileObjects : IStateHashable
 {
     private readonly byte[] _kinds;
     private readonly ushort[] _owners;

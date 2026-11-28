@@ -1,3 +1,4 @@
+using Talt.Core.Saves;
 using Talt.Core.Determinism;
 using Talt.Core.Simulation;
 
@@ -119,6 +120,49 @@ internal sealed class StationHistory(int cargoCount)
             }
 
             hasher.Append<StationCargoMonth>(observations);
+        }
+    }
+
+    internal void WriteState(SaveWriter writer)
+    {
+        writer.WriteInt(_closed);
+        writer.WriteArray(_founded);
+        for (var i = 0; i < Math.Min(_closed, Months); i++)
+        {
+            var month = _snapshots[i];
+            writer.WriteInt(month.Ordinal);
+            writer.WriteArray(month.Group);
+            writer.WriteArray(month.Waiting);
+            writer.WriteArray(month.PickedUp);
+            writer.WriteArray(month.Delivered);
+            writer.WriteArray(month.Rating);
+            writer.WriteArray(month.Served);
+        }
+    }
+
+    internal void ReadState(SaveReader reader)
+    {
+        _closed = reader.ReadInt(0, int.MaxValue);
+        _founded = reader.ReadRequiredArray<int>();
+        if (_founded.Length > 0 && _snapshots[0] is null)
+        {
+            for (var i = 0; i < Months; i++)
+            {
+                _snapshots[i] = new Snapshot();
+                _snapshots[i].EnsureCapacity(_founded.Length, cargoCount);
+            }
+        }
+
+        for (var i = 0; i < Math.Min(_closed, Months); i++)
+        {
+            var month = _snapshots[i];
+            month.Ordinal = reader.ReadInt();
+            month.Group = reader.ReadRequiredArray<int>();
+            month.Waiting = reader.Content.Rows(ContentTable.Cargo, reader.ReadRequiredArray<int>());
+            month.PickedUp = reader.Content.Rows(ContentTable.Cargo, reader.ReadRequiredArray<int>());
+            month.Delivered = reader.Content.Rows(ContentTable.Cargo, reader.ReadRequiredArray<int>());
+            month.Rating = reader.Content.Rows(ContentTable.Cargo, reader.ReadRequiredArray<int>());
+            month.Served = reader.Content.Rows(ContentTable.Cargo, reader.ReadRequiredArray<byte>());
         }
     }
 

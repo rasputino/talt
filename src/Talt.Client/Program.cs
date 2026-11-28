@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using Talt.Client;
 using Talt.Core.Maps;
 
@@ -49,6 +49,7 @@ var positional = new List<int>();
 var startYear = 1950;
 string? language = null;
 bool? unlockFastForward = null;
+string? loadPath = null;
 string? recordPath = null;
 long? printFingerprintAt = null;
 var exitAfterFingerprint = false;
@@ -151,6 +152,15 @@ for (var i = 0; i < args.Length; i++)
             break;
         case "--lock-fast-forward":
             unlockFastForward = false;
+            break;
+        case "--load":
+            if (++i >= args.Length || args[i].StartsWith("--", StringComparison.Ordinal))
+            {
+                Console.Error.WriteLine("--load requires a save file.");
+                return 2;
+            }
+
+            loadPath = args[i];
             break;
         case "--record":
             recordPath = i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal)
@@ -314,6 +324,7 @@ using var window = new GameWindow(new ClientOptions(
     TimeOfDayStart: timeOfDay,
     MeasureEffectsSeconds: measureEffects,
     UiTestWindows: uiTestWindows,
-    NoAudio: noAudio));
+    NoAudio: noAudio,
+    LoadPath: loadPath));
 window.Run();
 return 0;

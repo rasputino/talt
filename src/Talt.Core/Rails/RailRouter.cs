@@ -20,7 +20,7 @@ public enum RouteGoalKind : byte
 }
 
 /// <summary>A route: steps (from tile, direction) from the start tile to the goal; buffers reused per train.</summary>
-public sealed class RailRoute
+public sealed partial class RailRoute
 {
     private int[] _from = new int[64];
     private byte[] _dir = new byte[64];

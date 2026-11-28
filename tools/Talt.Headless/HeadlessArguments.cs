@@ -8,6 +8,9 @@ internal enum HeadlessCommand
 {
     Run,
     Replay,
+
+    /// <summary>Loads a save and continues it (feature 014).</summary>
+    Load,
 }
 
 /// <summary>Parsed command line (contracts/headless-cli.md).</summary>
@@ -23,7 +26,8 @@ internal sealed record HeadlessOptions(
     int SeedVehicles = 0,
     int? RoadGrid = null,
     bool CheckOverlaps = false,
-    int SeedTrains = 0);
+    int SeedTrains = 0,
+    string? SavePath = null);
 
 /// <summary>Parses the headless runner's arguments without side effects (unit-testable).</summary>
 internal static class HeadlessArguments
@@ -38,6 +42,8 @@ internal static class HeadlessArguments
                             [--road-grid <spacing>] [--seed-vehicles <n>] [--seed-trains <n>] [--check-overlaps]
                             [--sandbox] [--inflation] [--infinite-money] [--station-service-pays]
           Talt.Headless replay <session.json> [--ticks <int>] [--checkpoint-every <int>] [--sequential]
+          Talt.Headless load <save.talt> [--ticks <int>] [--checkpoint-every <int>] [--sequential] [--save <file.talt>]
+        run also takes [--checkpoint-every <int>] and [--save <file.talt>] (feature 014).
         """;
 
     public static bool TryParse(string[] args, out HeadlessOptions? options, out string? error)
@@ -48,7 +54,7 @@ internal static class HeadlessArguments
 
         if (args.Length == 0)
         {
-            error = "Missing command (run or replay).";
+            error = "Missing command (run, replay or load).";
             return false;
         }
 
@@ -56,6 +62,7 @@ internal static class HeadlessArguments
         {
             "run" => HeadlessCommand.Run,
             "replay" => HeadlessCommand.Replay,
+            "load" => HeadlessCommand.Load,
             _ => (HeadlessCommand?)null,
         };
         if (command is null)
@@ -73,6 +80,7 @@ internal static class HeadlessArguments
         var checkpointEvery = 0;
         string? record = null;
         string? session = null;
+        string? save = null;
         string? mapText = null;
         var towns = Talt.Core.Towns.TownSettings.Default;
         var stationService = 0;
@@ -98,6 +106,7 @@ internal static class HeadlessArguments
                     case "--checkpoint-every": checkpointEvery = ParseInt(args, ref i); break;
                     case "--sequential": sequential = true; break;
                     case "--record": record = Next(args, ref i); break;
+                    case "--save": save = Next(args, ref i); break;
                     case "--map-text": mapText = Next(args, ref i); break;
                     case "--town-names":
                         towns = towns with
@@ -127,7 +136,7 @@ internal static class HeadlessArguments
                     case "--infinite-money": finance = finance with { InfiniteMoney = true }; break;
                     case "--station-service-pays": finance = finance with { DebugServicePays = true }; break;
                     default:
-                        if (command == HeadlessCommand.Replay && session is null && !args[i].StartsWith("--", StringComparison.Ordinal))
+                        if (command is HeadlessCommand.Replay or HeadlessCommand.Load && session is null && !args[i].StartsWith("--", StringComparison.Ordinal))
                         {
                             session = args[i];
                             break;
@@ -191,7 +200,7 @@ internal static class HeadlessArguments
         }
         else if (session is null)
         {
-            error = "replay requires a session file.";
+            error = command == HeadlessCommand.Load ? "load requires a save file." : "replay requires a session file.";
             return false;
         }
 
@@ -214,7 +223,7 @@ internal static class HeadlessArguments
             return false;
         }
 
-        options = new HeadlessOptions(command.Value, settings, ticks, sequential, record, session, checkpointEvery, seedStations, seedVehicles, roadGrid, checkOverlaps, seedTrains);
+        options = new HeadlessOptions(command.Value, settings, ticks, sequential, record, session, checkpointEvery, seedStations, seedVehicles, roadGrid, checkOverlaps, seedTrains, save);
         return true;
     }
 

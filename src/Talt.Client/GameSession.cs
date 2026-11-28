@@ -417,8 +417,24 @@ internal sealed class GameSession
         CommandFeedback = null;
     }
 
+    /// <summary>Commands processed since the game started or was loaded (unsaved progress, feature 014).</summary>
+    public long ProcessedCommandCount { get; private set; }
+
+    /// <summary>The tick and command count at the last save or load (feature 014).</summary>
+    private (long Tick, long Commands) _savedAt;
+
+    /// <summary>True when ticks ran or commands were processed since the game was saved or loaded (FR-006).</summary>
+    public bool HasUnsavedProgress => _savedAt != (Simulation.CurrentTick, ProcessedCommandCount) || Simulation.PendingCommandCount > 0;
+
+    /// <summary>Marks the current state as saved (after a save was written, or right after loading).</summary>
+    public void MarkSaved(long tick) => _savedAt = (tick, ProcessedCommandCount);
+
+    /// <summary>Shows a message in the game's notifications.</summary>
+    public void Notify(TextRef message) => Message?.Invoke(message);
+
     private void OnCommandProcessed(CommandProcessed processed)
     {
+        ProcessedCommandCount++;
         if (processed.Result.Succeeded && processed.Command is AddVehicleCommand)
         {
             _playerAddedVehicles.Push(Simulation.Vehicles.LastCreatedVehicleId);

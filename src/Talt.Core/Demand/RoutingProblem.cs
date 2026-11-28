@@ -7,7 +7,7 @@ namespace Talt.Core.Demand;
 /// production at each node per source table and a copy of those destination tables. Built on the main thread by
 /// <see cref="CargoRouter"/> (or by tests) and then only read by the job.
 /// </summary>
-public sealed class RoutingProblem
+public sealed partial class RoutingProblem
 {
     private readonly List<(int From, int To, int Ticks, int Capacity)> _rawEdges = [];
     private long[] _pairs = new long[16];

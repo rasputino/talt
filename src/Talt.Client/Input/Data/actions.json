@@ -58,6 +58,8 @@
     { "id": "trains", "label": "action.trains", "category": "tools", "kind": "press", "keys": ["Z"] },
     { "id": "lines", "label": "action.lines", "category": "game", "kind": "press", "keys": ["F4"] },
     { "id": "demandOverlay", "label": "action.demandOverlay", "category": "game", "kind": "press", "keys": ["V"] },
+    { "id": "quickSave", "label": "action.quickSave", "category": "game", "kind": "press", "keys": ["F5"] },
+    { "id": "quickLoad", "label": "action.quickLoad", "category": "game", "kind": "press", "keys": ["F9"] },
     { "id": "statistics", "label": "action.statistics", "category": "debug", "kind": "press", "keys": ["F3"] }
   ]
 }

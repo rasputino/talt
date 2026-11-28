@@ -1232,6 +1232,8 @@ internal sealed class InGameScreen : IScreen, IWorldInput, ITrainUi
         var column = panel.Add(new StackPanel(Orientation.Vertical) { Spacing = 10 });
         column.Add(new Label(TextRef.Of("pause.title"), TextSize.Heading) { TextAlignment = Alignment.Center });
         column.Add(new Button(TextRef.Of("pause.resume"), ClosePauseMenu) { Style = ButtonStyle.Menu, TextSize = TextSize.Title, ShortcutAction = "back", Tooltip = TextRef.Of("pause.resume.tooltip") });
+        column.Add(new Button(TextRef.Of("pause.save"), _host.OpenSaveWindow) { Style = ButtonStyle.Menu, TextSize = TextSize.Title });
+        column.Add(new Button(TextRef.Of("pause.load"), _host.OpenLoadWindow) { Style = ButtonStyle.Menu, TextSize = TextSize.Title });
         column.Add(new Button(TextRef.Of("pause.settings"), _host.OpenSettings) { Style = ButtonStyle.Menu, TextSize = TextSize.Title });
         column.Add(new Button(TextRef.Of("pause.mainMenu"), _host.ShowMainMenu) { Style = ButtonStyle.Menu, TextSize = TextSize.Title, Tooltip = TextRef.Of("pause.mainMenu.tooltip") });
         column.Add(new Button(TextRef.Of("pause.quit"), _host.Quit) { Style = ButtonStyle.Menu, TextSize = TextSize.Title });
