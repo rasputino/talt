@@ -201,6 +201,13 @@ internal static class HeadlessArguments
             return false;
         }
 
+        if (seedVehicles > 0 && seedTrains > 0)
+        {
+            // Both seeders predict station and line ids from the same unbuilt state: the trains would get the buses' stops and line.
+            error = "--seed-vehicles and --seed-trains cannot be combined.";
+            return false;
+        }
+
         if (roadGrid is < 2)
         {
             error = "--road-grid must be at least 2.";

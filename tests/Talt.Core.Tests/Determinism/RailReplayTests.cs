@@ -15,8 +15,9 @@ namespace Talt.Core.Tests.Determinism;
 /// <remarks>Regenerate the golden only when rail rules, their data file, construction, stations or map generation change on purpose.</remarks>
 public class RailReplayTests
 {
-    // Feature 013 changed it on purpose: trains carry destination cargo (051623FE7E98467D before).
-    private const string ExpectedAtTick3000 = "51B7F8F782F00DFE";
+    // Changed on purpose: feature 013, trains carry destination cargo (051623FE7E98467D before); then the seeder levels
+    // sloping loops, so none is left open with its trains stuck in the depot (51B7F8F782F00DFE before).
+    private const string ExpectedAtTick3000 = "A71D30A0AD70B669";
 
     private static readonly ScenarioSettings Settings = new(
         Seed: 41,

@@ -65,7 +65,8 @@ In game: build a depot (J) beside a road, open it to buy a bus or truck, press "
 click your stations in order (Esc ends); the vehicle starts. F4 lists the lines.
 
 Railways (feature 015): `--seed-trains <n>` (debug: racetrack loops with two stations, one-way path signals, a depot
-and up to eight trains each; turns infinite money on). `--check-overlaps` also checks that no two trains share a tile.
+and up to eight trains each, levelling sloping land under a loop first; turns infinite money on; cannot be combined with
+`--seed-vehicles`, since both predict station and line ids from the same unbuilt map). `--check-overlaps` also checks that no two trains share a tile.
 
 In game: the top bar shows money, date and speed buttons, the toolbar on the left opens settings and
 the other tools, and clicking the map selects the tile, road, vehicle, industry or town under the cursor

@@ -902,7 +902,15 @@ Specs in `specs/015-railways/` (spec with five clarifications, plan, research R1
   removal) and their options (track type, signal kind, station size and axis); windows for trains, rail depots (the
   consist editor: new train from a locomotive, add wagons one or five at a time, remove parts) and the train list.
 - **Debug**: `--seed-trains <n>` (client and headless) lays clockwise racetrack loops (`TrainSeeder`) with two stations,
-  one-way path signals, a depot and up to eight trains each.
+  one-way path signals, a depot and up to eight trains each. The commands are previewed one by one on the unbuilt map,
+  which only holds on level land: on slopes a corner diagonal could meet a straight ending on a ramp (refused once the
+  straight was built) and track could be routed round a slope, leaving the loop open and its trains stuck in the depot
+  with no route. So loop corners are searched in row order every two tiles, a footprint with water, objects, industries
+  or more than five height steps is skipped, and a sloping one is levelled first (a `terraform` level command), with
+  each loop's levelled area kept a tile clear of the others. On level land the loops still form the old lattice. It
+  cannot be combined with `--seed-vehicles` (both predict station and line ids from the same unbuilt state); the client
+  and headless arguments refuse it. `RailReplayTests`' golden changed on purpose with this (`51B7F8F782F00DFE` →
+  `A71D30A0AD70B669`): its seed-41 map had one open loop with eight trains stuck.
 
 Known limits of version 1: signal heads show their kind, not their red/green state; trains reverse only when halted;
 blocks are rebuilt in full after a track or signal change (a few milliseconds on a 4096 map, once per action); a train

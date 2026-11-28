@@ -44,6 +44,15 @@ public class HeadlessArgumentsTests
     }
 
     [Fact]
+    public void SeedVehiclesAndSeedTrains_CannotBeCombined()
+    {
+        // Both seeders predict station and line ids from the same unbuilt state.
+        Assert.True(HeadlessArguments.TryParse(["run", "--ticks", "10", "--seed-trains", "8"], out _, out _));
+        Assert.False(HeadlessArguments.TryParse(["run", "--ticks", "10", "--seed-vehicles", "8", "--seed-trains", "8"], out _, out var error));
+        Assert.Contains("cannot be combined", error);
+    }
+
+    [Fact]
     public void Replay_WithSessionAndCheckpoints()
     {
         Assert.True(HeadlessArguments.TryParse(["replay", "s.json", "--checkpoint-every", "1000"], out var options, out _));
