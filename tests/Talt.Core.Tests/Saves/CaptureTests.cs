@@ -1,3 +1,4 @@
+using Talt.Core.Maps;
 using Talt.Core.Saves;
 using Talt.Tests.Support;
 
@@ -25,6 +26,40 @@ public class CaptureTests
 
         Assert.Equal(untouched.ComputeFingerprint(), saved.ComputeFingerprint());
         RoundTrip.AssertSameSections(untouched, saved);
+    }
+
+    [Fact]
+    public void Map_sites_ignore_legacy_padding_and_write_a_canonical_kind()
+    {
+        var settings = SaveTestGames.Settings.Map!;
+        using var legacy = new SaveBuffer();
+        using var writer = new SaveWriter(legacy);
+        writer.WriteString(settings.ToText());
+        writer.Write(default(MapStatistics));
+        writer.WriteInt(1);
+        writer.WriteInt(10);
+        writer.WriteInt(11);
+        writer.WriteInt(unchecked((int)0xABCDEF01));
+        writer.WriteInt(2);
+        writer.WriteInt(100);
+        var tiles = new byte[settings.Width * settings.Depth];
+        for (var layer = 0; layer < 5; layer++)
+        {
+            writer.WriteArray(tiles);
+        }
+
+        var map = MapData.ReadState(new SaveReader(legacy, SaveSections.Map), settings);
+        Assert.Equal(new Site(10, 11, SiteKind.IndustryCoast, 2, 100), Assert.Single(map.Sites));
+        using var canonical = new SaveBuffer();
+        using var output = new SaveWriter(canonical);
+        map.WriteState(output, settings.ToText());
+        var reader = new SaveReader(canonical, SaveSections.Map);
+        Assert.Equal(settings.ToText(), reader.ReadString());
+        Assert.Equal(default, reader.Read<MapStatistics>());
+        Assert.Equal(1, reader.ReadInt());
+        Assert.Equal(10, reader.ReadInt());
+        Assert.Equal(11, reader.ReadInt());
+        Assert.Equal(1, reader.ReadInt());
     }
 
     [Fact]

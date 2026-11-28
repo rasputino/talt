@@ -40,7 +40,10 @@ public class SaveStorageTests
             var timer = Stopwatch.StartNew();
             foreach (var path in Directory.EnumerateFiles(folder.FullName))
             {
-                Assert.Equal(SavePeekStatus.Ok, SaveGame.Peek(path).Status);
+                // The catalogue loads a thumbnail only when its row is selected.
+                var peek = SaveGame.Peek(path, includeThumbnail: false);
+                Assert.Equal(SavePeekStatus.Ok, peek.Status);
+                Assert.Null(peek.Thumbnail);
             }
 
             // The reference budget is 500 ms. Allow slower shared CI disks.

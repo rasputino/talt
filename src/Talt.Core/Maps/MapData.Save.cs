@@ -16,7 +16,13 @@ public sealed partial class MapData
         writer.WriteInt(sites.Count);
         for (var i = 0; i < sites.Count; i++)
         {
-            writer.Write(sites[i]);
+            var site = sites[i];
+            writer.WriteInt(site.X);
+            writer.WriteInt(site.Z);
+            // The v1 kind occupies four bytes. Clear the three former struct-padding bytes.
+            writer.WriteInt((byte)site.Kind);
+            writer.WriteInt(site.FreeRadius);
+            writer.WriteInt(site.Score);
         }
 
         writer.WriteArray(_height);
@@ -41,7 +47,10 @@ public sealed partial class MapData
         var sites = new Site[count];
         for (var i = 0; i < count; i++)
         {
-            sites[i] = reader.Read<Site>();
+            var x = reader.ReadInt();
+            var z = reader.ReadInt();
+            var kind = (SiteKind)(reader.ReadInt() & 0xff); // Older saves can contain arbitrary high bytes.
+            sites[i] = new Site(x, z, kind, reader.ReadInt(), reader.ReadInt());
         }
 
         var tiles = (long)expected.Width * expected.Depth;
