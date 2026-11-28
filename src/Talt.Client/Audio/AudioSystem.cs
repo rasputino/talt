@@ -21,6 +21,7 @@ internal sealed class AudioSystem : IDisposable
     private readonly float[] _vehicleGain;
     private readonly float[] _vehiclePan;
     private readonly int[] _vehicleVoiceId;
+    private readonly SoundDefinition?[] _vehicleSound;
     private readonly IAudioVoice?[] _oneShotVoices;
     private readonly float[] _oneShotGain;
     private readonly float[] _oneShotTarget;
@@ -55,6 +56,7 @@ internal sealed class AudioSystem : IDisposable
             _vehicleGain = [];
             _vehiclePan = [];
             _vehicleVoiceId = [];
+            _vehicleSound = [];
             _oneShotVoices = [];
             _oneShotGain = [];
             _oneShotTarget = [];
@@ -68,6 +70,7 @@ internal sealed class AudioSystem : IDisposable
         _vehicleGain = new float[definition.VoiceBudget];
         _vehiclePan = new float[definition.VoiceBudget];
         _vehicleVoiceId = new int[definition.VoiceBudget];
+        _vehicleSound = new SoundDefinition?[definition.VoiceBudget];
         for (var i = 0; i < _vehicleVoices.Length; i++)
         {
             _vehicleVoices[i] = backend.CreateVoice(AudioBus.Effects);
@@ -227,7 +230,7 @@ internal sealed class AudioSystem : IDisposable
         var start = Stopwatch.GetTimestamp();
         var delta = float.IsFinite(scene.DeltaSeconds) ? Math.Clamp(scene.DeltaSeconds, 0f, 0.1f) : 0f;
         _mixer.UpdateVehicles(scene);
-        UpdateVehicles(delta);
+        UpdateVehicles(delta, scene.RoadVehicles);
         UpdateOneShots(delta);
         UpdateAmbience(scene, delta);
         UpdateMusic(delta);
@@ -283,7 +286,7 @@ internal sealed class AudioSystem : IDisposable
         voice.SetPitch(1f);
     }
 
-    private void UpdateVehicles(float delta)
+    private void UpdateVehicles(float delta, Talt.Core.Vehicles.RoadVehicleSystem? vehicles)
     {
         if (_mixer is null || _definition is null || _vehicleSoundFailed)
         {
@@ -292,7 +295,7 @@ internal sealed class AudioSystem : IDisposable
 
         const float FadeInSeconds = 0.03f;
         const float FadeOutSeconds = 0.08f;
-        var engine = _definition.Cue(AudioCue.VehicleEngine);
+        var defaultEngine = _definition.Cue(AudioCue.VehicleEngine);
         var slots = _mixer.VehicleSlots;
         for (var i = 0; i < slots.Length; i++)
         {
@@ -323,7 +326,9 @@ internal sealed class AudioSystem : IDisposable
                 continue;
             }
 
-            if (_vehicleVoiceId[i] != slot.VehicleId)
+            var vehicleSlot = vehicles?.SlotOf(slot.VehicleId) ?? -1;
+            var engine = vehicleSlot >= 0 ? _definition.Cues[vehicles!.ModelAt(vehicleSlot).SoundId] : defaultEngine;
+            if (_vehicleVoiceId[i] != slot.VehicleId || _vehicleSound[i] != engine)
             {
                 if (voice.IsPlaying)
                 {
@@ -346,6 +351,7 @@ internal sealed class AudioSystem : IDisposable
                 }
 
                 _vehicleVoiceId[i] = slot.VehicleId;
+                _vehicleSound[i] = engine;
                 _vehicleGain[i] = 0f;
                 _vehiclePan[i] = slot.Pan;
             }

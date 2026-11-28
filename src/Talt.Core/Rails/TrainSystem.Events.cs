@@ -561,6 +561,7 @@ public sealed partial class TrainSystem
         train.Speed = 0;
         train.Route.Clear();
         train.RoutePos = 0;
+        ReplaceInDepot(train);
         var serviced = (train.Orders & (VehicleOrders.ServiceDue | VehicleOrders.Repair)) != 0;
         if (serviced || train.DaysSinceService > 0)
         {
@@ -576,6 +577,107 @@ public sealed partial class TrainSystem
 
         train.TargetKind = RouteGoalKind.None;
         ChooseTarget(train, advance: false);
+    }
+
+    internal void ReplaceInDepot(Train train)
+    {
+        var company = _state.FindCompany(train.Owner)!;
+        if (company.RailReplacements.Rules.Count == 0)
+        {
+            return;
+        }
+
+        // Price the entire consist before changing any part. Depot visits run sequentially.
+        long cost = 0;
+        var length = train.Length;
+        var depotTile = Depots.TileAt(Depots.IndexOf(train.Depot));
+        var electrified = Rules.Types[_rails.TypeAt(depotTile)].Electrified;
+        var changed = false;
+        foreach (var part in train.Parts)
+        {
+            var index = ReplacementFor(company, train, part);
+            if (index < 0)
+            {
+                continue;
+            }
+
+            var target = Rules.Models[index];
+            if (!target.AvailableIn(_state.Year) || (part.Cargo >= 0 && !target.Carries(part.Cargo)) ||
+                part.Hold.Total > target.Capacity || (target.Power == RailPower.Electric && !train.Electric && !electrified))
+            {
+                return;
+            }
+
+            changed = true;
+            length += target.Length - Rules.Models[part.Model].Length;
+            cost += (_finance?.Inflate(target.Price) ?? target.Price) - PartValue(part);
+        }
+
+        if (!changed || length > Rules.MaxTrainLength || (cost > company.Balance && !company.HasInfiniteMoney))
+        {
+            return;
+        }
+
+        company.Book(LedgerCategory.VehiclePurchase, -cost);
+        var oldestPower = 0;
+        foreach (var part in train.Parts)
+        {
+            var index = ReplacementFor(company, train, part);
+            if (index >= 0)
+            {
+                var target = Rules.Models[index];
+                part.Model = index;
+                part.Price = _finance?.Inflate(target.Price) ?? target.Price;
+                part.PurchaseDay = _stations.Today;
+                part.RenewalNotified = false;
+                if (part.Cargo < 0)
+                {
+                    part.Cargo = target.DefaultCargo;
+                }
+
+                _finance?.RunningCosts.Replace(part.RunningHandle, target.RunningCostPerYear, part.Price);
+            }
+
+            if (ModelOf(part).Kind == RollingStockKind.Locomotive)
+            {
+                oldestPower = Math.Max(oldestPower, _stations.Today - part.PurchaseDay);
+            }
+        }
+
+        train.AgeDays = oldestPower;
+        Recompute(train);
+        Version++;
+    }
+
+    private int ReplacementFor(Company company, Train train, TrainPart part)
+    {
+        var model = ModelOf(part);
+        if (!company.RailReplacements.TryGet(model.Id, out var rule))
+        {
+            return -1;
+        }
+
+        var due = _stations.Today - part.PurchaseDay >= model.LifeYears * 365;
+        if (rule.Target.Length > 0)
+        {
+            return due || !rule.EndOfLifeOnly ? Rules.FindModel(rule.Target) : -1;
+        }
+
+        if (due && rule.Renew)
+        {
+            if (model.AvailableIn(_state.Year))
+            {
+                return part.Model;
+            }
+
+            if (!part.RenewalNotified)
+            {
+                Notify(VehicleNoticeKind.RenewalDue, train, -1);
+                part.RenewalNotified = true;
+            }
+        }
+
+        return -1;
     }
 
     private void TryLeaveDepot(Train train)

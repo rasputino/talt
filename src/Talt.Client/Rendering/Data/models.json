@@ -107,11 +107,35 @@
     "train:loco-aurora": [
       { "file": "train-loco-aurora.vox", "paint": [1] }
     ],
+    "train:loco-fellward": [
+      { "file": "loco-fellward.vox", "paint": [1] }
+    ],
     "train:loco-ironhorse": [
       { "file": "train-loco-ironhorse.vox", "paint": [1] }
     ],
+    "train:loco-lightwell": [
+      { "file": "loco-lightwell.vox", "paint": [1] }
+    ],
     "train:loco-meridian": [
       { "file": "train-loco-meridian.vox", "paint": [1] }
+    ],
+    "train:loco-ridgeforge": [
+      { "file": "loco-ridgeforge.vox", "paint": [1] }
+    ],
+    "train:loco-stonewake": [
+      { "file": "loco-stonewake.vox", "paint": [1] }
+    ],
+    "train:loco-sunspoke": [
+      { "file": "loco-sunspoke.vox", "paint": [1] }
+    ],
+    "train:loco-velarium": [
+      { "file": "loco-velarium.vox", "paint": [1] }
+    ],
+    "train:railcar-finchmere": [
+      { "file": "railcar-finchmere.vox", "paint": [1] }
+    ],
+    "train:railcar-silverfen": [
+      { "file": "railcar-silverfen.vox", "paint": [1] }
     ],
     "train:railcar-swift": [
       { "file": "train-railcar-swift.vox", "paint": [1] }
@@ -119,8 +143,14 @@
     "train:wagon-boxcar": [
       { "file": "train-wagon-boxcar.vox", "paint": [1] }
     ],
+    "train:wagon-clearview": [
+      { "file": "wagon-clearview.vox", "paint": [1] }
+    ],
     "train:wagon-coach": [
       { "file": "train-wagon-coach.vox", "paint": [1] }
+    ],
+    "train:wagon-deepwell": [
+      { "file": "wagon-deepwell.vox", "paint": [1] }
     ],
     "train:wagon-hopper": [
       { "file": "train-wagon-hopper.vox", "paint": [1] }
@@ -151,6 +181,12 @@
       { "file": "bus.vox", "paint": [1] },
       { "file": "truck.vox", "paint": [1] }
     ],
+    "vehicle:bus-copperfin": [
+      { "file": "bus-copperfin.vox", "paint": [1] }
+    ],
+    "vehicle:bus-glasswing": [
+      { "file": "bus-glasswing.vox", "paint": [1] }
+    ],
     "vehicle:bus-townsman": [
       { "file": "road-bus.vox", "paint": [1] }
     ],
@@ -160,8 +196,17 @@
     "vehicle:truck-box": [
       { "file": "road-box.vox", "paint": [1] }
     ],
+    "vehicle:truck-bracken": [
+      { "file": "truck-bracken.vox", "paint": [1] }
+    ],
+    "vehicle:truck-ridgewell": [
+      { "file": "truck-ridgewell.vox", "paint": [1] }
+    ],
     "vehicle:truck-tanker": [
       { "file": "road-tanker.vox", "paint": [1] }
+    ],
+    "vehicle:truck-tidewell": [
+      { "file": "truck-tidewell.vox", "paint": [1] }
     ],
     "vehicle:truck-tipper": [
       { "file": "road-tipper.vox", "paint": [1] }

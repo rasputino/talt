@@ -208,9 +208,18 @@ public sealed class RailPlannerTests
     }
 
     [Fact]
+    public void ElectrificationIsUnavailableIn1959()
+    {
+        var kit = new RailKit(startYear: 1959);
+        Assert.False(kit.Track(5, 10, 20, 10, "electrified").Succeeded);
+        kit.Path((5, 10), (20, 10));
+        Assert.False(kit.Run(new ConvertRailCommand(Company.PlayerId, "electrified", 5, 10, 20, 10)).Succeeded);
+    }
+
+    [Fact]
     public void ElectrifyConvertsTrack()
     {
-        var kit = new RailKit();
+        var kit = new RailKit(startYear: 1960);
         Assert.True(kit.Track(5, 10, 20, 10).Succeeded);
         Assert.True(kit.Run(new ConvertRailCommand(Company.PlayerId, "electrified", 5, 10, 20, 10)).Succeeded, kit.Last.ReasonCode);
         Assert.Equal(kit.State.RailRules.ElectrifiedType(), kit.Rails.TypeAt(kit.Tile(12, 10)));

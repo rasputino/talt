@@ -36,7 +36,8 @@ public sealed record VehicleModel(
     int LastYear,
     VehiclePower Power,
     int LoadPerStep,
-    int Color)
+    int Color,
+    string SoundId)
 {
     /// <summary>True when the model is offered in <paramref name="year"/>.</summary>
     public bool AvailableIn(int year) => year >= FirstYear && year <= LastYear;
@@ -248,7 +249,7 @@ public sealed class VehicleRules
         {
             var p = $"models[{n++}].";
             j.Known(element, p, "id", "nameKey", "kind", "cargoCategory", "capacity", "speedKmh", "accelerationMilli", "lengthMilliTiles",
-                "price", "runningCostPerYear", "lifeYears", "reliabilityPerMille", "firstYear", "lastYear", "power", "loadPerStep", "color");
+                "price", "runningCostPerYear", "lifeYears", "reliabilityPerMille", "firstYear", "lastYear", "power", "loadPerStep", "color", "soundId");
             var id = j.String(element, "id", p);
             if (!ids.Add(id))
             {
@@ -315,7 +316,7 @@ public sealed class VehicleRules
                 lastYear,
                 power,
                 j.Int(element, "loadPerStep", p, 1, 200),
-                j.Color(element, "color", p)));
+                j.Color(element, "color", p), j.String(element, "soundId", p)));
         }
 
         // Every start year from 1850 to 2100 offers a bus and a truck of every category.

@@ -613,6 +613,7 @@ public sealed partial class RoadVehicleSystem
         h.Flags = (h.Flags | RoadVehicleBits.InDepot) & ~(RoadVehicleBits.Stuck | RoadVehicleBits.UrgentRoute | RoadVehicleBits.NoRoute);
         h.StillTicks = 0;
         _depotInside[slot] = _targetId[slot];
+        ReplaceInDepot(slot);
         var orders = _orders[slot];
         if ((orders & (VehicleOrders.ServiceDue | VehicleOrders.Repair)) != 0 || h.Has(RoadVehicleBits.BrokenDown))
         {
@@ -626,6 +627,57 @@ public sealed partial class RoadVehicleSystem
 
         _orders[slot] = VehicleOrders.None;
         ChooseNextTarget(slot, advance: false);
+    }
+
+    internal void ReplaceInDepot(int slot)
+    {
+        var current = ModelAt(slot);
+        var company = _state.FindCompany(_owner[slot])!;
+        if (!company.RoadReplacements.TryGet(current.Id, out var rule))
+        {
+            return;
+        }
+
+        var due = _ageDays[slot] >= current.LifeYears * 365;
+        ref var hot = ref _hot[slot];
+        if (rule.Target.Length == 0 && due && rule.Renew && !current.AvailableIn(_state.Year))
+        {
+            if (!hot.Has(RoadVehicleBits.RenewalNotified))
+            {
+                Notify(VehicleNoticeKind.RenewalDue, slot, -1);
+                hot.Flags |= RoadVehicleBits.RenewalNotified;
+            }
+            return;
+        }
+
+        if (!due && (rule.Target.Length == 0 || rule.EndOfLifeOnly))
+        {
+            return;
+        }
+
+        var index = rule.Target.Length == 0 ? _model[slot] : Rules.FindModel(rule.Target);
+        var target = Rules.Models[index];
+        var price = _finance?.Inflate(target.Price) ?? target.Price;
+        var cost = price - ValueAt(slot);
+        if (!target.AvailableIn(_state.Year) || !target.Carries(_cargo[slot]) || _hold[slot].Total > target.Capacity ||
+            (cost > company.Balance && !company.HasInfiniteMoney))
+        {
+            return;
+        }
+
+        company.Book(LedgerCategory.VehiclePurchase, -cost);
+        _finance?.RunningCosts.Replace(_runningHandle[slot], target.RunningCostPerYear, price);
+        _model[slot] = index;
+        _purchaseDay[slot] = _stations.Today;
+        _ageDays[slot] = 0;
+        _daysSinceService[slot] = 0;
+        _reliability[slot] = target.Reliability;
+        hot.ModelSpeed = target.Speed;
+        hot.Accel = target.Acceleration;
+        hot.Length = target.Length;
+        hot.Flags &= ~(RoadVehicleBits.RenewalNotified | RoadVehicleBits.BrokenDown);
+        hot.BreakdownTicks = 0;
+        Version++;
     }
 
     private void Service(int slot)

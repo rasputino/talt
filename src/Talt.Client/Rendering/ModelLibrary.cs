@@ -19,6 +19,10 @@ internal sealed class ModelEntry(string key, ModelMeshHandle[] variants)
 {
     public string Key { get; } = key;
 
+    /// <summary>First variant of a purchase model, shared with its depot preview.</summary>
+    public VoxModel? Preview { get; init; }
+
+
     public IReadOnlyList<ModelMeshHandle> Variants { get; } = variants;
 
     /// <summary>The variant for an object, stable for the same <paramref name="objectId"/>.</summary>
@@ -163,6 +167,7 @@ internal sealed class ModelLibrary
                 throw Invalid(key, "needs a non-empty list of variants");
             }
 
+            VoxModel? preview = null;
             var handles = new List<ModelMeshHandle>();
             foreach (var variant in property.Value.EnumerateArray())
             {
@@ -188,6 +193,11 @@ internal sealed class ModelLibrary
 
                     loaded = (model, ModelMesher.Build(model));
                     cache[file] = loaded;
+                }
+
+                if (key.StartsWith("vehicle:", StringComparison.Ordinal) || key.StartsWith("train:", StringComparison.Ordinal))
+                {
+                    preview ??= loaded.Model;
                 }
 
                 var paint = ReadIndices(variant, "paint", key);
@@ -217,7 +227,7 @@ internal sealed class ModelLibrary
                 handles.Add(new ModelMeshHandle(id, MathF.Sqrt((halfX * halfX) + (halfZ * halfZ)), mesh.SizeY / (float)VoxelsPerTile));
             }
 
-            entries[key] = new ModelEntry(key, [.. handles]);
+            entries[key] = new ModelEntry(key, [.. handles]) { Preview = preview };
         }
 
         var milliseconds = Stopwatch.GetElapsedTime(start).TotalMilliseconds;

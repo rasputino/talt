@@ -32,6 +32,7 @@ public static class CommandSerializer
         [Finance.EnableInfiniteMoneyCommand.Type] = Finance.EnableInfiniteMoneyCommand.Read,
         [Vehicles.BuildDepotCommand.Type] = Vehicles.BuildDepotCommand.Read,
         [Vehicles.RemoveDepotCommand.Type] = Vehicles.RemoveDepotCommand.Read,
+        [Vehicles.SetReplacementCommand.Type] = Vehicles.SetReplacementCommand.Read,
         [Vehicles.BuyVehicleCommand.Type] = Vehicles.BuyVehicleCommand.Read,
         [Vehicles.SellVehicleCommand.Type] = Vehicles.SellVehicleCommand.Read,
         [Vehicles.CloneVehicleCommand.Type] = Vehicles.CloneVehicleCommand.Read,

@@ -31,7 +31,7 @@ internal static class RailToolOptions
     {
         ArgumentNullException.ThrowIfNull(state);
         var index = state.RailRules.FindType(TypeId);
-        if (index < 0)
+        if (index < 0 || state.Year < state.RailRules.Types[index].FirstYear)
         {
             index = 0;
             TypeId = state.RailRules.Types[0].Id;
@@ -44,7 +44,16 @@ internal static class RailToolOptions
     {
         ArgumentNullException.ThrowIfNull(state);
         var types = state.RailRules.Types;
-        TypeId = types[(TypeFor(state) + 1) % types.Count].Id;
+        var start = TypeFor(state);
+        for (var offset = 1; offset <= types.Count; offset++)
+        {
+            var candidate = types[(start + offset) % types.Count];
+            if (state.Year >= candidate.FirstYear)
+            {
+                TypeId = candidate.Id;
+                break;
+            }
+        }
         Version++;
     }
 

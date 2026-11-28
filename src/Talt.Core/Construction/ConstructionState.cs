@@ -192,6 +192,8 @@ public sealed class ConstructionState : IStateHashable
         {
             hasher.Append(company.Id);
             hasher.Append(company.Balance);
+            company.RoadReplacements.AppendTo(hasher, "road-replacements");
+            company.RailReplacements.AppendTo(hasher, "rail-replacements");
         }
 
         Map.AppendStateTo(hasher);

@@ -522,6 +522,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
             CameraDistance = _camera.Distance,
             Vehicles = vehicles,
             VehicleIds = ids,
+            RoadVehicles = _session?.RoadVehicles,
             SelectedVehicleId = selected,
             HoveredVehicleId = hovered,
             Ambients = _audio!.Ambients,

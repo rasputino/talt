@@ -83,6 +83,12 @@ public sealed partial class RailPlanner
             return false;
         }
 
+        if (_state.Year < _rules.Types[type].FirstYear)
+        {
+            _plan.Reason = ConstructionReasons.RailTypeUnavailable;
+            return false;
+        }
+
         return true;
     }
 

@@ -25,6 +25,8 @@ internal readonly ref struct AudioScene
 
     public ReadOnlySpan<VehicleInstance> Vehicles { get; init; }
 
+    public Talt.Core.Vehicles.RoadVehicleSystem? RoadVehicles { get; init; }
+
     public ReadOnlySpan<int> VehicleIds { get; init; }
 
     public int SelectedVehicleId { get; init; }

@@ -186,6 +186,7 @@ public enum VehicleNoticeKind : byte
     SkippedStop = 2,
     BrokenDown = 3,
     Serviced = 4,
+    RenewalDue = 5,
 }
 
 /// <summary>One notice for the client; (X, Z) is the vehicle's tile.</summary>

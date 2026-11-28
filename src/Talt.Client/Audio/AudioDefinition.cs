@@ -151,6 +151,15 @@ internal sealed class AudioDefinition
             throw Invalid("cues and ambient must be objects");
         }
 
+        foreach (var model in Talt.Core.Vehicles.VehicleRules.Default.Models)
+        {
+            Require(Cues.ContainsKey(model.SoundId), $"road model {model.Id} references unknown sound {model.SoundId}");
+        }
+        foreach (var model in Talt.Core.Rails.RailRules.Default.Models)
+        {
+            Require(Cues.ContainsKey(model.SoundId), $"rail model {model.Id} references unknown sound {model.SoundId}");
+        }
+
         ValidateVehicle(Vehicle);
         ValidateMusic(Music, fileExists);
 
