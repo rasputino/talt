@@ -7,7 +7,7 @@ namespace Talt.Core.Finance;
 /// registers each vehicle with its yearly cost and value; the finance system charges the per-company totals
 /// a little every day. Handles are stable; freed slots are reused lowest first so the order is deterministic.
 /// </summary>
-public sealed class RunningCosts : IStateHashable
+public sealed partial class RunningCosts : IStateHashable
 {
     private int[] _company = new int[16];
     private long[] _yearlyCost = new long[16];

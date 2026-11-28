@@ -6,7 +6,7 @@ namespace Talt.Core.Rails;
 /// The rail depots of a game (feature 015, data-model.md RailDepot): id, owner, tile and entrance direction. Few, so a
 /// list in creation order with stable ids; hashed with the train system once anything existed.
 /// </summary>
-public sealed class RailDepotRegistry : IStateHashable
+public sealed partial class RailDepotRegistry : IStateHashable
 {
     private readonly List<Depot> _depots = [];
     private readonly Dictionary<int, int> _indexByTile = [];

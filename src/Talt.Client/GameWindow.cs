@@ -8,11 +8,13 @@ using Talt.Client.Input;
 using Talt.Client.Localization;
 using Talt.Client.Picking;
 using Talt.Client.Rendering;
+using Talt.Client.Saves;
 using Talt.Client.Screens;
 using Talt.Client.Ui;
 using Talt.Client.Ui.Font;
 using Talt.Client.Ui.Widgets;
 using Talt.Client.Ui.Windows;
+using Talt.Core.Saves;
 using Talt.Core.Simulation;
 
 namespace Talt.Client;
@@ -32,14 +34,15 @@ internal sealed record ClientOptions(
     GraphicsPreset? GraphicsOverride = null,
     bool DayNightOverride = false,
     double? TimeOfDayStart = null,
-    double? MeasureEffectsSeconds = null);
+    double? MeasureEffectsSeconds = null,
+    string? LoadPath = null);
 
 /// <summary>
 /// Owns the window, the renderer, the interface and the current screen (main menu, new game, game).
 /// Input goes through <see cref="InputRouter"/> (interface first, then key bindings, then the world);
 /// the game itself lives in <see cref="GameSession"/>.
 /// </summary>
-internal sealed class GameWindow : IDisposable, IScreenHost
+internal sealed class GameWindow : IDisposable, IScreenHost, ISaveHost
 {
     private const double LongFrameMilliseconds = 33.4; // Two refreshes at 60 Hz.
     private const int AtlasSize = 1024;
@@ -64,6 +67,14 @@ internal sealed class GameWindow : IDisposable, IScreenHost
     private readonly UiDrawList _drawList = new();
     private readonly DefaultNewGameOptionsSource _newGameSource = new();
     private readonly Func<Key, bool> _isKeyDown;
+    private readonly SaveController _saver = new();
+    private readonly AutosaveScheduler _autosave = new();
+    private Task<(SaveLoadResult Result, GeneratedGame? Game)>? _loading;
+    private string? _loadingPath;
+    private IScreen? _previousScreen;
+    private Widget? _previousOverlay;
+    private WindowManager? _previousWindows;
+    private GenerationProgress? _loadingProgress;
 
     private WebGpuRenderer? _renderer;
     private IInputContext? _input;
@@ -137,6 +148,18 @@ internal sealed class GameWindow : IDisposable, IScreenHost
 
     public void Dispose()
     {
+        // Setup workers may still be priming the capture buffers when the window closes.
+        try
+        {
+            _generation?.Wait();
+            _loading?.Wait();
+        }
+        catch (AggregateException exception)
+        {
+            Console.Error.WriteLine(exception.GetBaseException().Message);
+        }
+
+        _saver.Dispose();
         _audio?.Dispose();
         _input?.Dispose();
         // Release GPU resources after the render loop has stopped, never during it.
@@ -145,13 +168,17 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         _session?.SaveRecording();
     }
 
-    public void ShowMainMenu()
+    public void ShowMainMenu() => ConfirmDiscard(() =>
     {
         LeaveGame();
         SetScreen(new MainMenuScreen(this));
-    }
+    });
 
-    public void ShowNewGame() => SetScreen(new NewGameScreen(this, _newGameSource));
+    public void ShowNewGame() => ConfirmDiscard(() =>
+    {
+        LeaveGame();
+        SetScreen(new NewGameScreen(this, _newGameSource));
+    });
 
     public void StartGame(NewGameOptions options)
     {
@@ -171,7 +198,12 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         // screen shows the stage and a progress bar (feature 004 progress, task T069).
         var progress = new GenerationProgress();
         newGame.SetGenerating(true, progress: progress);
-        _generation = Task.Run(() => GameSetup.Create(options, Console.WriteLine, progress));
+        _generation = Task.Run(() =>
+        {
+            var game = GameSetup.Create(options, Console.WriteLine, progress);
+            _saver.Prepare(game.Simulation);
+            return game;
+        });
     }
 
     public void OpenSettings() => Ui.Windows.Open(SettingsWindow.Create(this));
@@ -209,7 +241,232 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         SaveSettings();
     }
 
-    public void Quit() => _window.Close();
+    public void Quit() => ConfirmDiscard(_window.Close);
+
+    // ---- Saving and loading (feature 014) ----
+
+    /// <summary>The player's saves folder.</summary>
+    public SaveStore Saves { get; } = new(SaveStore.DefaultFolder);
+
+    /// <summary>The game version written into saves.</summary>
+    private static string GameVersion { get; } = typeof(GameWindow).Assembly.GetName().Version?.ToString() ?? "0";
+
+    public string SuggestedSaveName => _session is null ? string.Empty : Ui.Strings.FormatDate(_session.Simulation.Date);
+
+    public void OpenSaveWindow()
+    {
+        if (_session is not null)
+        {
+            OpenCatalogWindow(() => SaveWindow.Create(this));
+        }
+    }
+
+    public void OpenLoadWindow() => OpenCatalogWindow(() => LoadWindow.Create(this));
+
+    private void OpenCatalogWindow(Func<UiWindow> create)
+    {
+        try
+        {
+            Ui.Windows.Open(create());
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            ShowMessage(TextRef.Of("load.failed.title"), TextRef.Of("load.failed.io", ("reason", error.Message)));
+        }
+    }
+
+    public void ConfirmDiscard(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        ReportSave(_saver.WaitForWrite());
+        if (_session is { HasUnsavedProgress: true })
+        {
+            Ui.Windows.Open(ConfirmDialog.Create(Ui, TextRef.Of("unsaved.title"), TextRef.Of("unsaved.body"), TextRef.Of("unsaved.yes"), action));
+        }
+        else
+        {
+            action();
+        }
+    }
+
+    public void ShowFileError(string messageKey) => ShowMessage(TextRef.Of("load.title"), TextRef.Of(messageKey));
+
+    public void SaveAs(string name)
+    {
+        try
+        {
+            StartSave(Saves.Existing(name) ?? Saves.PathFor(name), name, SaveKind.Manual);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Notify(TextRef.Of("save.failed", ("reason", error.Message)));
+        }
+    }
+
+    /// <summary>F5: saves to the single quick save slot without asking (FR-008a).</summary>
+    private void QuickSave()
+    {
+        if (_session is not null)
+        {
+            StartSave(Saves.QuickSavePath, Ui.Strings.Get("load.quicksave"), SaveKind.QuickSave);
+        }
+    }
+
+    /// <summary>F9: loads the quick save, asking first when there is unsaved progress (FR-008a).</summary>
+    private void QuickLoad()
+    {
+        ReportSave(_saver.WaitForWrite());
+        if (!File.Exists(Saves.QuickSavePath))
+        {
+            Notify(TextRef.Of("load.quick.none"));
+            return;
+        }
+
+        ConfirmDiscard(() => LoadSave(Saves.QuickSavePath));
+    }
+
+    private void Autosave()
+    {
+        _autosave.Reset();
+        try
+        {
+            StartSave(Saves.NextAutosavePath(Settings.AutosaveKeep), Ui.Strings.Get("load.autosave"), SaveKind.Autosave);
+        }
+        catch (IOException exception)
+        {
+            Notify(TextRef.Of("save.failed", ("reason", exception.Message)));
+        }
+    }
+
+    private void StartSave(string path, string name, SaveKind kind)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        if (_saver.IsWriting)
+        {
+            // A manual or quick save waits for the running write (spec edge cases); an autosave would just try again.
+            ReportSave(_saver.WaitForWrite());
+        }
+
+        if (_saver.TryStart(_session.Simulation, _camera, path, name, kind, GameVersion))
+        {
+            _autosave.Reset();
+            _session.MarkSaved(_session.Simulation.CurrentTick);
+            Console.WriteLine($"Saving '{name}' ({kind}): captured in {_saver.LastCaptureMilliseconds:F1} ms on the main thread.");
+        }
+    }
+
+    private void ReportSave(SaveOutcome? outcome)
+    {
+        if (outcome is null)
+        {
+            return;
+        }
+
+        if (outcome.Result.Succeeded)
+        {
+            if (outcome.Kind == SaveKind.Autosave)
+            {
+                Saves.PruneAutosaves(Settings.AutosaveKeep);
+            }
+
+            Console.WriteLine($"Saved {outcome.Result.Path} ({outcome.Result.Bytes / 1048576.0:F1} MB).");
+            Notify(TextRef.Of(outcome.Kind == SaveKind.QuickSave ? "save.quick.done" : outcome.Kind == SaveKind.Autosave ? "save.auto.done" : "save.done", ("name", outcome.Name)));
+        }
+        else
+        {
+            Console.Error.WriteLine($"Could not save {outcome.Result.Path}: {outcome.Result.Problem}");
+            _session?.MarkSaved(-1); // The progress was not saved after all.
+            Notify(TextRef.Of("save.failed", ("reason", outcome.Result.Problem ?? "?")));
+        }
+    }
+
+    public void LoadSave(string path)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(path);
+        if (_loading is not null || _generation is not null)
+        {
+            return;
+        }
+
+        ReportSave(_saver.WaitForWrite());
+        _loadingProgress = new GenerationProgress();
+        _loadingPath = path;
+        _previousScreen = _screen;
+        _previousOverlay = Ui.Overlay;
+        _previousWindows = Ui.Windows;
+        Ui.Windows = new WindowManager();
+        Ui.ResetInteraction();
+        Ui.Overlay = null;
+        _screen = new LoadingScreen(_loadingProgress);
+        Ui.Screen = _screen.Root;
+        var progress = _loadingProgress;
+        _loading = Task.Run(() =>
+        {
+            var loaded = GameSetup.FromSave(path, progress);
+            if (loaded.Game is { } game)
+            {
+                _saver.Prepare(game.Simulation);
+            }
+
+            return loaded;
+        });
+    }
+
+    private void FinishLoading((SaveLoadResult Result, GeneratedGame? Game) loaded)
+    {
+        var (result, game) = loaded;
+        _screen = _previousScreen;
+        Ui.Overlay = _previousOverlay;
+        Ui.Windows = _previousWindows!;
+        _previousWindows = null;
+        _previousScreen = null;
+        _previousOverlay = null;
+        if (game is null)
+        {
+            Console.Error.WriteLine($"Could not load {_loadingPath}: {result.Status}. {result.Problem}");
+            SetScreen(_screen ?? new MainMenuScreen(this));
+
+            var key = result.Status switch
+            {
+                SaveLoadStatus.TooNew => "load.failed.tooNew",
+                SaveLoadStatus.MissingContent => "load.failed.missingContent",
+                SaveLoadStatus.IoError => "load.failed.io",
+                _ => "load.failed.damaged",
+            };
+            ShowMessage(TextRef.Of("load.failed.title"), TextRef.Of(key, ("missing", string.Join(", ", result.MissingContent)), ("reason", result.Problem ?? string.Empty)));
+            return;
+        }
+
+        LeaveGame();
+        EnterGame(game, result);
+        if (result.Status == SaveLoadStatus.LoadedWithChangedData)
+        {
+            ShowMessage(TextRef.Of("load.warning.title"), TextRef.Of("load.warning.changedData"));
+        }
+    }
+
+    private void ShowMessage(TextRef title, TextRef body)
+    {
+        var window = new UiWindow("message", title) { SingleInstance = true };
+        window.Content = new Label(body) { Wrap = true, Width = 380 };
+        Ui.Windows.Open(window);
+    }
+
+    private void Notify(TextRef message)
+    {
+        if (_session is not null)
+        {
+            _session.Notify(message);
+        }
+        else
+        {
+            ShowMessage(TextRef.Of("load.title"), message);
+        }
+    }
 
     /// <summary>Graphics settings in use: the saved ones, or the preset given with --graphics for this run.</summary>
     public GraphicsSettings ActiveGraphics => _probe is { Finished: false } probe ? probe.Current : _graphicsOverride ?? Settings.Graphics;
@@ -268,7 +525,11 @@ internal sealed class GameWindow : IDisposable, IScreenHost
             keyboard.KeyChar += (_, character) => _router.Char(character);
         }
 
-        if (_options.StartGame is { } start)
+        if (_options.LoadPath is { } load)
+        {
+            LoadSave(load); // --load: straight into a save (feature 014).
+        }
+        else if (_options.StartGame is { } start)
         {
             StartGame(start); // Game arguments on the command line skip the menu (smoke test).
         }
@@ -319,6 +580,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
             game.Leave();
         }
 
+        _saver.WaitForWrite(); // The last save of this game is on disk before it goes away.
         _session.SaveRecording();
         _session.CommandFeedback -= OnCommandFeedback;
         _session.Detach();
@@ -328,9 +590,11 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         _renderer?.ClearWorld();
     }
 
-    private void EnterGame(GeneratedGame game)
+    private void EnterGame(GeneratedGame game, SaveLoadResult? loaded = null)
     {
-        _session = new GameSession(game, _options.Session ?? new SessionOptions(), Settings.FastForwardUnlocked);
+        // A loaded game is not recorded (spec assumption: recordings start from a new game); --print-fingerprint-at still works.
+        var sessionOptions = _options.Session ?? new SessionOptions();
+        _session = new GameSession(game, loaded is null ? sessionOptions : sessionOptions with { RecordPath = null }, Settings.FastForwardUnlocked);
         _session.ExitRequested += () => _window.Close();
         _session.CommandFeedback += OnCommandFeedback;
         _audio?.SetGame(game.Map);
@@ -341,6 +605,18 @@ internal sealed class GameWindow : IDisposable, IScreenHost
         _camera.Distance = _options.InitialZoom ?? 350f;
         var center = _options.InitialCameraTarget ?? new Vector2(map.Width / 2f, map.Depth / 2f);
         _camera.Target = new Vector3(center.X, map.Get(center.X, center.Y), center.Y);
+        if (loaded is not null)
+        {
+            // Feature 014 (FR-005): the camera where it was and the game paused.
+            SaveController.TryReadCamera(loaded.ExtraSections, _camera);
+            if (!_session.Runner.IsPaused)
+            {
+                _session.Runner.TogglePause();
+            }
+        }
+
+        _session.MarkSaved(_session.Simulation.CurrentTick);
+        _autosave.Reset();
 
         _renderer?.SetWorld(game.World);
         _renderer?.SetMap(game.Map);
@@ -382,7 +658,7 @@ internal sealed class GameWindow : IDisposable, IScreenHost
 
     private void OnAction(string action, bool shift)
     {
-        if (_screen?.HandleAction(action, shift) == true)
+        if (_screen is LoadingScreen || _screen?.HandleAction(action, shift) == true)
         {
             return;
         }
@@ -400,6 +676,12 @@ internal sealed class GameWindow : IDisposable, IScreenHost
                 break;
             case "statistics":
                 ShowStatistics = !ShowStatistics;
+                break;
+            case "quickSave":
+                QuickSave();
+                break;
+            case "quickLoad":
+                QuickLoad();
                 break;
         }
     }
@@ -444,12 +726,34 @@ internal sealed class GameWindow : IDisposable, IScreenHost
             }
         }
 
+        if (_loading is { IsCompleted: true } loading)
+        {
+            _loading = null;
+            if (loading.IsCompletedSuccessfully)
+            {
+                FinishLoading(loading.Result);
+            }
+            else
+            {
+                var message = loading.Exception?.GetBaseException().Message ?? "?";
+                FinishLoading((SaveLoadResult.Failed(SaveLoadStatus.Damaged, message), null));
+            }
+        }
+
+        ReportSave(_saver.Poll());
         _ui.Update(deltaSeconds);
         _screen?.Update(deltaSeconds);
-        if (_session is not null)
+        if (_session is not null && _loading is null)
         {
             var stats = _session.Advance(deltaSeconds);
             _ticksThisSecond += stats.TicksRun;
+
+            // Feature 014: autosave after the frame's ticks, at a tick boundary (FR-011, FR-013).
+            var menuOpen = _screen is InGameScreen { IsPauseMenuOpen: true };
+            if (_autosave.Update(deltaSeconds, _session.Runner.IsPaused || menuOpen, Settings.AutosaveMinutes, _saver.IsWriting))
+            {
+                Autosave();
+            }
         }
 
         if (_audio is not null)

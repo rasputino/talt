@@ -7,7 +7,7 @@ namespace Talt.Core.Rails;
 /// facing travel <c>d</c> on tile X sits on X's edge towards <c>d</c>, so the link X → d is a boundary. Derived from the rail
 /// layer (not hashed); rebuilt when the layer's version changes, before trains reserve.
 /// </summary>
-public sealed class RailBlocks
+public sealed partial class RailBlocks
 {
     private readonly RailLayer _rails;
     private readonly int[] _block;

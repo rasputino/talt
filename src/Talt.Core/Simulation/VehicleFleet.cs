@@ -31,7 +31,7 @@ public readonly record struct VehiclePose(Vector2 Position, Vector2 Direction);
 /// identical results because all arithmetic is integer.
 /// </para>
 /// </remarks>
-public sealed class VehicleFleet : IStateHashable
+public sealed partial class VehicleFleet : IStateHashable
 {
     /// <summary>Acceleration, units per tick² (1.5 tiles/s²).</summary>
     public static readonly int Acceleration = FixedMath.AccelerationFromTilesPerSecondSquared(1.5);

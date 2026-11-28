@@ -104,18 +104,18 @@ public class NewGameOptionsTests
 public class MainMenuTests
 {
     [Fact]
-    public void Menu_OffersTheFourEntries_LoadIsDisabledWithTooltip()
+    public void Menu_OffersTheFourEntries_LoadOpensTheCatalog()
     {
         var ui = UiTestKit.CreateContext();
         var host = new FakeHost(ui);
         var menu = new MainMenuScreen(host);
         Assert.Equal(4, menu.Buttons.Count);
-        Assert.False(menu.Buttons[1].Enabled);
+        Assert.True(menu.Buttons[1].Enabled);
         Assert.NotNull(menu.Buttons[1].Tooltip);
         menu.Buttons[0].Click();
         menu.Buttons[1].Click();
         menu.Buttons[3].Click();
-        Assert.Equal(["newGame", "quit"], host.Calls);
+        Assert.Equal(["newGame", "load", "quit"], host.Calls);
     }
 }
 

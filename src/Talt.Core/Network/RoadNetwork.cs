@@ -26,7 +26,7 @@ public readonly record struct RoadEdgeInfo(int FromTile, int FirstDirection, int
 /// through a changed tile or its linked neighbours, walked before and after the change.
 /// </para>
 /// </remarks>
-public sealed class RoadNetwork
+public sealed partial class RoadNetwork
 {
     public const int RegionBits = 6;
     public const int RegionSize = 1 << RegionBits;

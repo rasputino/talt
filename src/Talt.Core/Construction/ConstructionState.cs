@@ -13,7 +13,7 @@ namespace Talt.Core.Construction;
 /// record. Owned by <see cref="Simulation.GameSimulation"/> when the scenario has a map; changed only by
 /// construction commands, so it is deterministic and part of the fingerprint.
 /// </summary>
-public sealed class ConstructionState : IStateHashable
+public sealed partial class ConstructionState : IStateHashable
 {
     private readonly List<Company> _companies = [];
     private readonly List<int> _changedTiles = [];

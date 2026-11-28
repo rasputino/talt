@@ -18,7 +18,7 @@ public readonly record struct DemandPair(int TownA, int TownB, int Unserved);
 /// their carry and statistics. Everything is integer and deterministic; the tables are hashed once the router is
 /// active (<see cref="AppendTo"/> is called only then).
 /// </remarks>
-public sealed class DestinationTables : IStateHashable
+public sealed partial class DestinationTables : IStateHashable
 {
     private const int WeightShift = 24;
     private const int SliceDays = 30;
@@ -455,7 +455,7 @@ public sealed class DestinationTables : IStateHashable
     }
 
     /// <summary>The tables of one destination cargo, flat by row × width.</summary>
-    private sealed class RuleTables(DemandCargoRule rule, int width)
+    private sealed partial class RuleTables(DemandCargoRule rule, int width)
     {
         public DemandCargoRule Rule { get; } = rule;
 

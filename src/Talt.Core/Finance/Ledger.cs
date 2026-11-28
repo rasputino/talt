@@ -26,7 +26,7 @@ public enum LedgerCategory : byte
 /// entry per game year. Each period holds one signed total per slot (fixed categories, then one income slot
 /// per cargo). Bookings add to the current month and the current year; month and year ends rotate them.
 /// </summary>
-public sealed class Ledger : IStateHashable
+public sealed partial class Ledger : IStateHashable
 {
     /// <summary>Months kept.</summary>
     public const int MonthsKept = 24;

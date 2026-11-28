@@ -9,7 +9,7 @@ namespace Talt.Core.Demand;
 /// by group key then town; the groups on the company's lines are kept too (nodes), so cargo at a group on no line
 /// can be told apart from cargo with no route.
 /// </summary>
-public sealed class RouteTable : IStateHashable
+public sealed partial class RouteTable : IStateHashable
 {
     private int[] _group = new int[16];
     private int[] _town = new int[16];

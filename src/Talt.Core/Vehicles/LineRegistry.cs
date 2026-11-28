@@ -26,7 +26,7 @@ public readonly record struct LineStop(int StationId, StopRule Rule);
 /// vehicle assigned to the line, a number for the automatic name, an optional custom name and a colour. Ids are
 /// stable and never reused; lines are few, so each is a small object (not a hot path).
 /// </summary>
-public sealed class LineRegistry : IStateHashable
+public sealed partial class LineRegistry : IStateHashable
 {
     /// <summary>Most stops of one line.</summary>
     public const int MaxStops = 64;

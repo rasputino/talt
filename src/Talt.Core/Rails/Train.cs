@@ -59,7 +59,7 @@ public enum TrainBits : ushort
 }
 
 /// <summary>One locomotive or wagon of a train.</summary>
-public sealed class TrainPart
+public sealed partial class TrainPart
 {
     internal TrainPart(int model, int cargo, int runningHandle, int purchaseDay, long price)
     {
@@ -92,7 +92,7 @@ public sealed class TrainPart
 /// tail to the end of its authority, with the head's position on it. Mutated only by <see cref="TrainSystem"/>: the move
 /// phase writes only the train's own head and speed; everything else changes in the sequential phase.
 /// </summary>
-public sealed class Train
+public sealed partial class Train
 {
     private int[] _stepFrom = new int[32];
     private byte[] _stepDir = new byte[32];

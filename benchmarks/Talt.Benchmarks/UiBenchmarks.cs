@@ -70,6 +70,10 @@ public class UiFrameBenchmarks
         public void StartGame(NewGameOptions options) { }
         public void OpenSettings() { }
         public void OpenKeyBindings() { }
+        public void OpenSaveWindow() { }
+
+        public void OpenLoadWindow() { }
+
         public void ApplySettings() { }
         public void Quit() { }
     }

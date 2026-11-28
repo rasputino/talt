@@ -6,7 +6,7 @@ namespace Talt.Core.Vehicles;
 /// makes each tick, and safe for concurrent readers while nobody writes (the parallel step only reads). Keys are
 /// non-negative; entries are never removed. Derived data, never hashed.
 /// </summary>
-internal sealed class LaneIndexMap
+internal sealed partial class LaneIndexMap
 {
     private int[] _keys = new int[1024];
     private int[] _values = new int[1024];

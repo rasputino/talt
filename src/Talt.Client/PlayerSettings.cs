@@ -11,7 +11,10 @@ namespace Talt.Client;
 /// </summary>
 internal sealed class PlayerSettings
 {
-    public const int CurrentVersion = 4;
+    public const int CurrentVersion = 5;
+
+    /// <summary>Autosave intervals the settings offer, in real minutes of unpaused play (0 = off; feature 014).</summary>
+    public static readonly int[] AutosaveChoices = [0, 5, 10, 15, 30];
     public const int MinimumWindowWidth = 800;
     public const int MinimumWindowHeight = 600;
 
@@ -23,7 +26,7 @@ internal sealed class PlayerSettings
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
     };
 
-    /// <summary>Format version of the file (1 = feature 001; 3 = feature 019 audio; 4 = feature 018 graphics).</summary>
+    /// <summary>Format version of the file (1 = feature 001; 3 = feature 019 audio; 4 = feature 018 graphics; 5 = feature 014 autosave).</summary>
     public int Version { get; set; } = CurrentVersion;
 
     /// <summary>"en" or "es"; null until chosen (the system language is used).</summary>
@@ -63,6 +66,12 @@ internal sealed class PlayerSettings
 
     /// <summary>Graphics preset and effects (feature 018, contracts/graphics-settings.md).</summary>
     public GraphicsSettings Graphics { get; set; } = GraphicsSettings.For(GraphicsPreset.Medium);
+
+    /// <summary>Autosave interval in real minutes of unpaused play, one of <see cref="AutosaveChoices"/> (0 = off; feature 014).</summary>
+    public int AutosaveMinutes { get; set; } = 10;
+
+    /// <summary>Autosaves kept (1–10); the oldest is replaced (feature 014).</summary>
+    public int AutosaveKeep { get; set; } = 3;
 
     /// <summary>Key binding overrides: action id → key names per slot ("" = empty slot).</summary>
     public Dictionary<string, string[]> KeyBindings { get; set; } = new(StringComparer.Ordinal);
@@ -222,6 +231,22 @@ internal sealed class PlayerSettings
             case "graphics":
                 Graphics = GraphicsSettings.Read(value, LoadProblems);
                 return true;
+            case "autosaveminutes":
+                if (value.TryGetInt32(out var minutes) && AutosaveChoices.Contains(minutes))
+                {
+                    AutosaveMinutes = minutes;
+                    return true;
+                }
+
+                return false;
+            case "autosavekeep":
+                if (value.TryGetInt32(out var keep) && keep is >= 1 and <= 10)
+                {
+                    AutosaveKeep = keep;
+                    return true;
+                }
+
+                return false;
             default:
                 return false; // Unknown property: reported and dropped on the next save.
         }

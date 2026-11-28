@@ -13,7 +13,7 @@ namespace Talt.Core.Roads;
 /// the far end's); exits are a subset of links; a tile with links has a type (a piece without links, left by
 /// removing its neighbours, is allowed); the two ends of a long link name each other with the same span.
 /// </remarks>
-public sealed class RoadLayer : IStateHashable
+public sealed partial class RoadLayer : IStateHashable
 {
     private readonly byte[] _links;
     private readonly byte[] _exits;

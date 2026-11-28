@@ -10,7 +10,7 @@ namespace Talt.Core.Vehicles;
 /// id dictionary answers "is there a depot here". Depot tiles are <see cref="TileObjectKind.Depot"/> objects with a
 /// one-link road piece, so the routing graph sees them as dead ends (research R5).
 /// </summary>
-public sealed class DepotRegistry : IStateHashable
+public sealed partial class DepotRegistry : IStateHashable
 {
     private readonly Dictionary<int, int> _slotById = [];
     private readonly Dictionary<int, int> _idByTile = [];

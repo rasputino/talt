@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Talt.Core.Maps;
+using Talt.Core.Saves;
 using Talt.Core.Scenarios;
 using Talt.Core.Simulation;
 using Talt.Core.Terrain;
@@ -120,6 +121,37 @@ internal static class GameSetup
         // No meshing here: the renderer fills the map in, nearest first (feature 003 FR-012).
         return new GeneratedGame(options, settings, simulation, map, world, heightmap);
     }
+
+    /// <summary>
+    /// A game from a save (feature 014, research R8): the save is read, verified and restored (first half of the bar),
+    /// then the voxel world and heightmap are built from the restored map exactly as after map generation. The caller
+    /// checks <see cref="SaveLoadResult.Succeeded"/>; the world is only built for a loaded game.
+    /// </summary>
+    public static (SaveLoadResult Result, GeneratedGame? Game) FromSave(string path, IProgress<MapGenerationProgress>? progress = null)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var result = SaveGame.Load(path, new SaveLoadOptions { ExtraSectionIds = [Saves.SaveController.CameraSection] },
+            progress is null ? null : new Progress<float>(value => progress.Report(new MapGenerationProgress(MapGenerationStage.World, value * LoadShare))));
+        if (!result.Succeeded || result.Simulation is not { Construction: { } construction } simulation)
+        {
+            return (result, null);
+        }
+
+        Console.WriteLine($"Loaded {path} at tick {simulation.CurrentTick} in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
+        stopwatch.Restart();
+        var settings = simulation.Settings;
+        var map = construction.Map;
+        var options = new NewGameOptions(
+            ChunksPerSide: Math.Max(1, settings.MapSizeTiles / Chunk.Size), VehicleCount: settings.VehicleCount, Seed: settings.Seed, StartYear: settings.StartYear,
+            Map: settings.Map, Towns: settings.Towns, Stations: settings.Stations, Finance: settings.Finance);
+        var world = WorldBuilder.Build(map, Scaled(progress, LoadShare, 1f - LoadShare));
+        var heightmap = Heightmap.FromMapData(map);
+        Console.WriteLine($"Built the world of the save ({world.ChunkCount} chunks) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms.");
+        return (result, new GeneratedGame(options, settings, simulation, map, world, heightmap));
+    }
+
+    /// <summary>Share of the load progress bar taken by reading the save; the rest is building the world.</summary>
+    private const float LoadShare = 0.5f;
 
     /// <summary>Share of the progress bar taken by map generation; the rest is building the world.</summary>
     private const float MapShare = 0.8f;

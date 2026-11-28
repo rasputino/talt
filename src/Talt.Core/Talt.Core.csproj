@@ -34,6 +34,8 @@
     <EmbeddedResource Include="Vehicles\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Vehicles.Data.%(Filename)%(Extension)" />
     <!-- Destination demand and cargo routing (feature 013, contracts/data-files.md). -->
     <EmbeddedResource Include="Demand\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Demand.Data.%(Filename)%(Extension)" />
+    <!-- Save thumbnail colours (feature 014, research R14). -->
+    <EmbeddedResource Include="Saves\Data\*.json" WithCulture="false" LogicalName="Talt.Core.Saves.Data.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

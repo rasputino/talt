@@ -10,7 +10,7 @@ namespace Talt.Core.Vehicles;
 public readonly record struct ReplacementRule(string Target, bool EndOfLifeOnly, bool Renew);
 
 /// <summary>Company rules keyed by permanent model ID, in ordinal order for hashing and persistence.</summary>
-public sealed class ReplacementPolicy
+public sealed partial class ReplacementPolicy
 {
     private readonly SortedList<string, ReplacementRule> _rules = new(StringComparer.Ordinal);
 

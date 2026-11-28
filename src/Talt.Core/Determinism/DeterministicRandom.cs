@@ -94,6 +94,19 @@ public sealed class DeterministicRandom : IStateHashable
         return new DeterministicRandom(seed);
     }
 
+    /// <summary>The four state words (saves, feature 014).</summary>
+    internal (ulong S0, ulong S1, ulong S2, ulong S3) State => (_s0, _s1, _s2, _s3);
+
+    /// <summary>Overwrites the state words with saved ones (loading, feature 014). The saved state is never all zero.</summary>
+    internal void Restore(ulong s0, ulong s1, ulong s2, ulong s3)
+    {
+        _s0 = s0;
+        _s1 = s1;
+        _s2 = s2;
+        _s3 = s3;
+        EnsureNotAllZero();
+    }
+
     public void AppendTo(StateHasher hasher)
     {
         ArgumentNullException.ThrowIfNull(hasher);

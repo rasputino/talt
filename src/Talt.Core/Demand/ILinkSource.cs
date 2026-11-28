@@ -19,7 +19,7 @@ public interface ILinkSource
 /// Receives lines from <see cref="ILinkSource"/>s: <see cref="BeginLine"/>, one <see cref="AddStop"/> per stop in
 /// order, then <see cref="EndLine"/>. Storage is reused between collections (no allocation in steady state).
 /// </summary>
-public sealed class LinkCollector
+public sealed partial class LinkCollector
 {
     private int[] _lineCompany = new int[64];
     private int[] _lineCargo = new int[64];

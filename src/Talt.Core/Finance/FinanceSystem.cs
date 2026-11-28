@@ -29,7 +29,7 @@ public readonly record struct CompanyFinance(
 /// Hashes nothing until something is booked, borrowed or registered, or the settings differ from the defaults
 /// (research R11), so games where the player did nothing keep their earlier fingerprints.
 /// </remarks>
-public sealed class FinanceSystem : IStateHashable, IDeliveryListener, ITransferValuer
+public sealed partial class FinanceSystem : IStateHashable, IDeliveryListener, ITransferValuer
 {
     private readonly ConstructionState _state;
     private readonly StationRegistry? _stations;

@@ -4,6 +4,10 @@
     { "name": "default-sequential", "args": ["run", "--ticks", "5000", "--sequential"], "fingerprint": "C9F573FD7DE5CBE3" },
     { "name": "reference", "args": ["run", "--map", "4096", "--vehicles", "50000", "--ticks", "10000"], "fingerprint": "C0C656C5AB2D3302" }
   ],
+  "saves": [
+    { "path": "tests/Talt.Core.Tests/Saves/Fixtures/rich-v1.talt", "ticks": 1000, "loaded": "0F7B71D994547B77", "continued": "D8B2D20809F77FA6" },
+    { "path": "tests/Talt.Core.Tests/Saves/Fixtures/rich-catalog.talt", "ticks": 1000, "loaded": "C90394B68BFB9BC6", "continued": "F47EB3106355E9F0" }
+  ],
   "replays": [
     { "name": "windows-reference", "session": "ci/sessions/windows-reference.json" }
   ]

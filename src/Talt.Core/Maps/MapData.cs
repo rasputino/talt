@@ -13,7 +13,7 @@ public readonly record struct MapStatistics(int SeaTiles, int LakeTiles, int Riv
 /// The result of map generation: compact per-tile arrays and the reserved sites (data-model.md,
 /// MapData). Index of tile (x, z) is <c>x + z * Width</c>. Gameplay reads this, never the voxels.
 /// </summary>
-public sealed class MapData
+public sealed partial class MapData
 {
     private readonly byte[] _height;
     private readonly byte[] _terrain;

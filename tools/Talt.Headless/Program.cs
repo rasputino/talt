@@ -29,7 +29,12 @@ try
         return 2;
     }
 
-    return options!.Command == HeadlessCommand.Run ? Run(options) : Replay(options);
+    return options!.Command switch
+    {
+        HeadlessCommand.Run => Run(options),
+        HeadlessCommand.Load => Load(options),
+        _ => Replay(options),
+    };
 }
 catch (Exception exception) when (exception is IOException or JsonException or NotSupportedException)
 {
@@ -113,6 +118,8 @@ static int Run(HeadlessOptions options)
         {
             recorder.AddCheckpoint(simulation);
         }
+
+        PrintCheckpoint(simulation, options.CheckpointEvery);
     }
 
     var simulate = stopwatch.Elapsed;
@@ -128,6 +135,61 @@ static int Run(HeadlessOptions options)
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"second-half-avg-tick-ms: {secondHalfMs:F3}"));
     }
 
+    return options.SavePath is null ? 0 : Save(simulation, options.SavePath);
+}
+
+// Feature 014: loads a save, prints its fingerprint, continues it and optionally saves it again.
+static int Load(HeadlessOptions options)
+{
+    var stopwatch = Stopwatch.StartNew();
+    var result = Talt.Core.Saves.SaveGame.Load(options.SessionPath!);
+    var loadMs = stopwatch.Elapsed.TotalMilliseconds;
+    if (!result.Succeeded)
+    {
+        Console.Error.WriteLine($"Cannot load {options.SessionPath}: {result.Status}. {result.Problem}");
+        return 2;
+    }
+
+    var simulation = result.Simulation!;
+    if (result.Status == Talt.Core.Saves.SaveLoadStatus.LoadedWithChangedData)
+    {
+        Console.Error.WriteLine("Warning: the installed game data differs from the save's; the game may play differently.");
+    }
+
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"loaded tick={simulation.CurrentTick} fingerprint={StateHasher.Format(simulation.ComputeFingerprint())}"));
+    stopwatch.Restart();
+    var ticks = options.Ticks ?? 0;
+    for (long t = 0; t < ticks; t++)
+    {
+        simulation.Tick(!options.Sequential);
+        PrintCheckpoint(simulation, options.CheckpointEvery);
+    }
+
+    PrintSummary(simulation, TimeSpan.FromMilliseconds(loadMs), stopwatch.Elapsed, ticks);
+    return options.SavePath is null ? 0 : Save(simulation, options.SavePath);
+}
+
+static void PrintCheckpoint(GameSimulation simulation, int every)
+{
+    if (every > 0 && simulation.CurrentTick % every == 0)
+    {
+        Console.WriteLine($"tick={simulation.CurrentTick} fingerprint={StateHasher.Format(simulation.ComputeFingerprint())}");
+    }
+}
+
+static int Save(GameSimulation simulation, string path)
+{
+    var stopwatch = Stopwatch.StartNew();
+    var details = new Talt.Core.Saves.SaveDetailsInput(Path.GetFileNameWithoutExtension(path), Talt.Core.Saves.SaveKind.Manual, DateTimeOffset.UtcNow,
+        typeof(GameSimulation).Assembly.GetName().Version?.ToString() ?? "0", IncludeFingerprint: true);
+    var result = Talt.Core.Saves.SaveGame.Save(simulation, path, details);
+    if (!result.Succeeded)
+    {
+        Console.Error.WriteLine($"Cannot save {path}: {result.Problem}");
+        return 2;
+    }
+
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"saved: {result.Path} ({result.Bytes / 1024.0 / 1024.0:F1} MB) in {stopwatch.Elapsed.TotalMilliseconds:F0} ms"));
     return 0;
 }
 

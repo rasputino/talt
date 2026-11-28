@@ -98,6 +98,10 @@ internal sealed class FakeHost : IScreenHost
 
     public void OpenKeyBindings() => Calls.Add("keyBindings");
 
+    public void OpenSaveWindow() => Calls.Add("save");
+
+    public void OpenLoadWindow() => Calls.Add("load");
+
     public void ApplySettings()
     {
         Calls.Add("apply");

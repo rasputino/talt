@@ -6,7 +6,7 @@ public readonly record struct PendingCommand(long SubmissionId, int IssuerId, IS
 /// <summary>
 /// First-in, first-out inbox of submitted commands (named Inbox because analyzers reserve the Queue suffix), drained completely at the start of each tick.
 /// </summary>
-public sealed class CommandInbox
+public sealed partial class CommandInbox
 {
     private readonly Queue<PendingCommand> _pending = new();
     private long _nextSubmissionId = 1;

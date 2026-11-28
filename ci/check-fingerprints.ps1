@@ -52,5 +52,16 @@ foreach ($replay in $expected.replays) {
     }
 }
 
+foreach ($save in $expected.saves) {
+    $result = Invoke-Headless @('load', $save.path, '--ticks', $save.ticks)
+    if ($result.ExitCode -eq 0 -and $result.Output -match "(?m)^loaded tick=\d+ fingerprint=$($save.loaded)\s*$" -and
+        $result.Output -match "(?m)^fingerprint: $($save.continued)\s*$") {
+        Write-Host "PASS $($save.path) and $($save.ticks)-tick continuation"
+    } else {
+        Write-Host "FAIL $($save.path): $($result.Output)"
+        $failed = $true
+    }
+}
+
 if ($failed) { exit 1 }
 exit 0
